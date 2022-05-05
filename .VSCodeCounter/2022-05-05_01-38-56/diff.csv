@@ -1,9 +1,0 @@
-"filename", "language", "odin", "comment", "blank", "total"
-"d:\Repository\compiler\lily\src\check.odin", "odin", 7, 0, 0, 7
-"d:\Repository\compiler\lily\src\debug.odin", "odin", 11, 0, 0, 11
-"d:\Repository\compiler\lily\src\parser.odin", "odin", 82, 2, 4, 88
-"d:\Repository\compiler\lily\src\token.odin", "odin", 6, 0, 0, 6
-"d:\Repository\compiler\lily\src\value.odin", "odin", 6, 0, 0, 6
-"d:\Repository\compiler\lily\src\vm.odin", "odin", 17, 2, 3, 22
-"d:\Repository\compiler\lily\tests\test.odin", "odin", 10, 0, 2, 12
-"Total", "-", 139, 4, 9, 152
