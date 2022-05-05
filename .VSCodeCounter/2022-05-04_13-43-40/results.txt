@@ -1,0 +1,43 @@
+Date : 2022-05-04 13:43:40
+Directory : d:\Repository\compiler\lily
+Total : 14 files,  1319 codes, 31 comments, 210 blanks, all 1560 lines
+
+Languages
++----------+------------+------------+------------+------------+------------+
+| language | files      | code       | comment    | blank      | total      |
++----------+------------+------------+------------+------------+------------+
+| odin     |         10 |      1,294 |         31 |        210 |      1,535 |
+| JSON     |          2 |         19 |          0 |          0 |         19 |
+| Batch    |          2 |          6 |          0 |          0 |          6 |
++----------+------------+------------+------------+------------+------------+
+
+Directories
++-------------------------------------------------------+------------+------------+------------+------------+------------+
+| path                                                  | files      | code       | comment    | blank      | total      |
++-------------------------------------------------------+------------+------------+------------+------------+------------+
+| .                                                     |         14 |      1,319 |         31 |        210 |      1,560 |
+| .vs                                                   |          1 |          3 |          0 |          0 |          3 |
+| src                                                   |          8 |      1,185 |         31 |        181 |      1,397 |
+| tests                                                 |          2 |        109 |          0 |         29 |        138 |
++-------------------------------------------------------+------------+------------+------------+------------+------------+
+
+Files
++-------------------------------------------------------+----------+------------+------------+------------+------------+
+| filename                                              | language | code       | comment    | blank      | total      |
++-------------------------------------------------------+----------+------------+------------+------------+------------+
+| d:\Repository\compiler\lily\.vs\ProjectSettings.json  | JSON     |          3 |          0 |          0 |          3 |
+| d:\Repository\compiler\lily\build.bat                 | Batch    |          3 |          0 |          0 |          3 |
+| d:\Repository\compiler\lily\ols.json                  | JSON     |         16 |          0 |          0 |         16 |
+| d:\Repository\compiler\lily\src\ast.odin              | odin     |         73 |          3 |         18 |         94 |
+| d:\Repository\compiler\lily\src\check.odin            | odin     |        305 |         15 |         39 |        359 |
+| d:\Repository\compiler\lily\src\debug.odin            | odin     |        143 |          0 |         25 |        168 |
+| d:\Repository\compiler\lily\src\error.odin            | odin     |         17 |          0 |          4 |         21 |
+| d:\Repository\compiler\lily\src\parser.odin           | odin     |        240 |          4 |         35 |        279 |
+| d:\Repository\compiler\lily\src\token.odin            | odin     |        210 |          4 |         26 |        240 |
+| d:\Repository\compiler\lily\src\value.odin            | odin     |         40 |          2 |          5 |         47 |
+| d:\Repository\compiler\lily\src\vm.odin               | odin     |        157 |          3 |         29 |        189 |
+| d:\Repository\compiler\lily\test.bat                  | Batch    |          3 |          0 |          0 |          3 |
+| d:\Repository\compiler\lily\tests\semantic_tests.odin | odin     |         30 |          0 |         11 |         41 |
+| d:\Repository\compiler\lily\tests\test.odin           | odin     |         79 |          0 |         18 |         97 |
+| Total                                                 |          |      1,319 |         31 |        210 |      1,560 |
++-------------------------------------------------------+----------+------------+------------+------------+------------+

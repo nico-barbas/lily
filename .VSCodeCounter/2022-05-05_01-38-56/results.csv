@@ -1,0 +1,16 @@
+"filename", "language", "odin", "Batch", "JSON", "comment", "blank", "total"
+"d:\Repository\compiler\lily\.vs\ProjectSettings.json", "JSON", 0, 0, 3, 0, 0, 3
+"d:\Repository\compiler\lily\build.bat", "Batch", 0, 3, 0, 0, 0, 3
+"d:\Repository\compiler\lily\ols.json", "JSON", 0, 0, 16, 0, 0, 16
+"d:\Repository\compiler\lily\src\ast.odin", "odin", 73, 0, 0, 3, 18, 94
+"d:\Repository\compiler\lily\src\check.odin", "odin", 312, 0, 0, 15, 39, 366
+"d:\Repository\compiler\lily\src\debug.odin", "odin", 154, 0, 0, 0, 25, 179
+"d:\Repository\compiler\lily\src\error.odin", "odin", 17, 0, 0, 0, 4, 21
+"d:\Repository\compiler\lily\src\parser.odin", "odin", 322, 0, 0, 6, 39, 367
+"d:\Repository\compiler\lily\src\token.odin", "odin", 216, 0, 0, 4, 26, 246
+"d:\Repository\compiler\lily\src\value.odin", "odin", 46, 0, 0, 2, 5, 53
+"d:\Repository\compiler\lily\src\vm.odin", "odin", 174, 0, 0, 5, 32, 211
+"d:\Repository\compiler\lily\test.bat", "Batch", 0, 3, 0, 0, 0, 3
+"d:\Repository\compiler\lily\tests\semantic_tests.odin", "odin", 30, 0, 0, 0, 11, 41
+"d:\Repository\compiler\lily\tests\test.odin", "odin", 89, 0, 0, 0, 20, 109
+"Total", "-", 1433, 6, 19, 35, 219, 1712
