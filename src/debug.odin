@@ -28,6 +28,10 @@ print_expr :: proc(p: ^AST_Printer, expr: Expression) {
 		write(p, "Literal Expression: ")
 		fmt.sbprint(&p.builder, e.value)
 
+	case ^String_Literal_Expression:
+		write(p, "String Literal Expression: ")
+		fmt.sbprint(&p.builder, e.value)
+
 	case ^Unary_Expression:
 		write(p, "Unary Expression: ")
 		increment(p)

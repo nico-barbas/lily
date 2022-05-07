@@ -92,6 +92,26 @@ eval_expr :: proc(vm: ^Vm, expr: Expression) -> (result: Value, err: Error) {
 	case ^Literal_Expression:
 		result = e.value
 
+	case ^String_Literal_Expression:
+		// FIXME: Very naive approach. No reuse of constant strings or stack allocation
+		str := make([]rune, len(e.value))
+		for r, i in e.value {
+			str[i] = r
+		}
+		obj := new_clone(String_Object{base = Object{kind = .String}, data = str})
+		result = Value {
+			kind = .Object_Ref,
+			data = cast(^Object)obj,
+		}
+
+	case ^Array_Literal_Expression:
+		array := make([dynamic]Value)
+		for element_expr, i in e.value {
+			value := eval_expr(vm, element_expr) or_return
+			append(&array, value)
+		}
+		obj := new_clone(Array_Object{base = Object{kind = .Array}, data = array})
+
 	case ^Unary_Expression:
 		result = eval_expr(vm, e.expr) or_return
 		#partial switch e.op {

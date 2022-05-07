@@ -25,6 +25,7 @@ Token_Kind :: enum {
 	// Literals
 	_literal_start_,
 	Number_Literal,
+	String_Literal,
 	_literal_end_,
 
 	// Operators
@@ -109,6 +110,14 @@ scan_token :: proc(l: ^Lexer) -> (t: Token) {
 		t.kind = .Newline
 		l.line += 1
 
+	case '"':
+		t.kind = .String_Literal
+		string_loop: for {
+			if is_eof(l) || advance(l) == '"' {
+				break string_loop
+			}
+		}
+
 	case '=':
 		if peek(l) == '=' {
 			advance(l)
@@ -136,7 +145,18 @@ scan_token :: proc(l: ^Lexer) -> (t: Token) {
 	case '+':
 		t.kind = .Plus
 	case '-':
-		t.kind = .Minus
+		if peek(l) == '-' {
+			advance(l)
+			t.kind = .Comment
+			comment_loop: for {
+				if is_eof(l) || advance(l) == '\n' {
+					l.line += 1
+					break comment_loop
+				}
+			}
+		} else {
+			t.kind = .Minus
+		}
 	case '*':
 		t.kind = .Star
 	case '/':
@@ -145,6 +165,8 @@ scan_token :: proc(l: ^Lexer) -> (t: Token) {
 		t.kind = .Percent
 
 	case '.':
+		// FIXME: Probably crashes if a malformed number is put at the end of the file
+		// or a double dot 
 		t.kind = .Dot
 		if peek(l) == '.' {
 			advance(l)

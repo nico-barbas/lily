@@ -8,6 +8,7 @@ package lily
 NIL_SYMBOL: Type_Symbol : "nil"
 NUMBER_SYMBOL: Type_Symbol : "number"
 BOOL_SYMBOL: Type_Symbol : "bool"
+STRING_SYMBOL: Type_Symbol : "string"
 
 reserved_keywords :: [?]string{"result"}
 
@@ -48,6 +49,7 @@ new_checker :: proc() -> (checker: ^Checker) {
 	checker.builtins["nil"] = NIL_SYMBOL
 	checker.builtins["number"] = NUMBER_SYMBOL
 	checker.builtins["bool"] = BOOL_SYMBOL
+	checker.builtins["string"] = STRING_SYMBOL
 	checker.scope = new_scope()
 	return
 }
@@ -220,9 +222,15 @@ check_expr :: proc(c: ^Checker, expr: Expression) -> (result: Symbol, err: Error
 			result = c.builtins["number"]
 		case .Boolean:
 			result = c.builtins["bool"]
-		case .Fn:
-		// ?????
+		case .Object_Ref:
+			assert(false, "Object not implemented yet")
 		}
+
+	case ^String_Literal_Expression:
+		result = c.builtins["string"]
+
+	// case
+
 	case ^Unary_Expression:
 		// check that minus goes with number literal and not goes with bool
 		expr_symbol := check_expr(c, e.expr) or_return

@@ -2,6 +2,8 @@ package lily
 
 Expression :: union {
 	^Literal_Expression,
+	^String_Literal_Expression,
+	^Array_Literal_Expression,
 	^Unary_Expression,
 	^Binary_Expression,
 	^Identifier_Expression,
@@ -11,6 +13,18 @@ Expression :: union {
 
 Literal_Expression :: struct {
 	value: Value,
+}
+
+// We separate this from the other fixed sized native value types
+// to avoid having to allocate a Object_Ref during parsing and let
+// the vm/interpreter do that at runtime
+String_Literal_Expression :: struct {
+	value: string,
+}
+
+Array_Literal_Expression :: struct {
+	value:           [dynamic]Expression,
+	value_type_name: string,
 }
 
 Unary_Expression :: struct {

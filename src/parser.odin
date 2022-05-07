@@ -11,6 +11,7 @@ parser_rules := map[Token_Kind]struct {
 } {
 	.Identifier =      {prec = .Lowest,  prefix_fn = parse_identifier, infix_fn = nil},
 	.Number_Literal =  {prec = .Lowest,  prefix_fn = parse_number    , infix_fn = nil},
+    .String_Literal =  {prec = .Lowest,  prefix_fn = parse_string    , infix_fn = nil},
 	.True =            {prec = .Lowest,  prefix_fn = parse_boolean   , infix_fn = nil},
 	.False =           {prec = .Lowest,  prefix_fn = parse_boolean   , infix_fn = nil},
 	.Not = 	           {prec = .Term  ,  prefix_fn = parse_unary     , infix_fn = nil},
@@ -370,6 +371,11 @@ parse_number :: proc(p: ^Parser) -> (result: Expression, err: Error) {
 parse_boolean :: proc(p: ^Parser) -> (result: Expression, err: Error) {
 	b := false if p.previous.kind == .False else true
 	result = new_clone(Literal_Expression{value = Value{kind = .Boolean, data = b}})
+	return
+}
+
+parse_string :: proc(p: ^Parser) -> (result: Expression, err: Error) {
+	result = new_clone(String_Literal_Expression{value = p.previous.text[1:len(p.previous.text) - 1]})
 	return
 }
 

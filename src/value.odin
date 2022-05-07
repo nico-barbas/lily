@@ -4,7 +4,7 @@ Value_Kind :: enum {
 	Nil,
 	Number,
 	Boolean,
-	Fn,
+	Object_Ref,
 }
 
 Value :: struct {
@@ -12,7 +12,33 @@ Value :: struct {
 	data: union {
 		f64,
 		bool,
+		^Object,
 	},
+}
+
+Object_Kind :: enum {
+	String,
+	Array,
+	Map,
+}
+
+Object :: struct {
+	kind: Object_Kind,
+}
+
+String_Object :: struct {
+	using base: Object,
+	data:       []rune,
+}
+
+Array_Object :: struct {
+	using base: Object,
+	data:       [dynamic]Value,
+}
+
+Map_Object :: struct {
+	using base: Object,
+	data:       map[Value]Value,
 }
 
 token_to_operator :: proc(kind: Token_Kind) -> Operator {
