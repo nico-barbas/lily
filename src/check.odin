@@ -229,7 +229,8 @@ check_expr :: proc(c: ^Checker, expr: Expression) -> (result: Symbol, err: Error
 	case ^String_Literal_Expression:
 		result = c.builtins["string"]
 
-	// case
+	case ^Array_Literal_Expression:
+		assert(false, "Array checking not implemented")
 
 	case ^Unary_Expression:
 		// check that minus goes with number literal and not goes with bool

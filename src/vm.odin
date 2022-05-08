@@ -106,7 +106,7 @@ eval_expr :: proc(vm: ^Vm, expr: Expression) -> (result: Value, err: Error) {
 
 	case ^Array_Literal_Expression:
 		array := make([dynamic]Value)
-		for element_expr, i in e.value {
+		for element_expr, i in e.values {
 			value := eval_expr(vm, element_expr) or_return
 			append(&array, value)
 		}

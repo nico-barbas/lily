@@ -20,6 +20,10 @@ Token_Kind :: enum {
 	False,
 	Number,
 	Boolean,
+	String,
+	Array,
+	Map,
+	Of,
 	_keyword_end_,
 
 	// Literals
@@ -53,8 +57,10 @@ Token_Kind :: enum {
 	Triple_Dot,
 	Colon,
 	Comma,
-	Paren_Open,
-	Paren_Close,
+	Open_Paren,
+	Close_Paren,
+	Open_Bracket,
+	Close_Bracket,
 	_punctuation_end_,
 }
 
@@ -82,6 +88,10 @@ keywords := map[string]Token_Kind {
 	"false"  = .False,
 	"number" = .Number,
 	"bool"   = .Boolean,
+	"string" = .String,
+	"array"  = .Array,
+	"map"    = .Map,
+	"of"     = .Of,
 }
 
 Lexer :: struct {
@@ -181,9 +191,13 @@ scan_token :: proc(l: ^Lexer) -> (t: Token) {
 	case ',':
 		t.kind = .Comma
 	case '(':
-		t.kind = .Paren_Open
+		t.kind = .Open_Paren
 	case ')':
-		t.kind = .Paren_Close
+		t.kind = .Close_Paren
+	case '[':
+		t.kind = .Open_Bracket
+	case ']':
+		t.kind = .Close_Bracket
 
 	case:
 		switch {

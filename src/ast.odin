@@ -23,7 +23,7 @@ String_Literal_Expression :: struct {
 }
 
 Array_Literal_Expression :: struct {
-	value:           [dynamic]Expression,
+	values:          [dynamic]Expression,
 	value_type_name: string,
 }
 

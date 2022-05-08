@@ -12,6 +12,7 @@ parser_rules := map[Token_Kind]struct {
 	.Identifier =      {prec = .Lowest,  prefix_fn = parse_identifier, infix_fn = nil},
 	.Number_Literal =  {prec = .Lowest,  prefix_fn = parse_number    , infix_fn = nil},
     .String_Literal =  {prec = .Lowest,  prefix_fn = parse_string    , infix_fn = nil},
+	.Array =           {prec = .Lowest,  prefix_fn = parse_array     , infix_fn = nil},
 	.True =            {prec = .Lowest,  prefix_fn = parse_boolean   , infix_fn = nil},
 	.False =           {prec = .Lowest,  prefix_fn = parse_boolean   , infix_fn = nil},
 	.Not = 	           {prec = .Term  ,  prefix_fn = parse_unary     , infix_fn = nil},
@@ -22,7 +23,7 @@ parser_rules := map[Token_Kind]struct {
 	.Percent =         {prec = .Factor,  prefix_fn = nil             , infix_fn = parse_binary},
 	.And =             {prec = .Factor,  prefix_fn = nil             , infix_fn = parse_binary},
 	.Or =              {prec = .Factor,  prefix_fn = nil             , infix_fn = parse_binary},
-	.Paren_Open =      {prec = .Highest, prefix_fn = parse_group     , infix_fn = parse_call},
+	.Open_Paren =      {prec = .Highest, prefix_fn = parse_group     , infix_fn = parse_call},
 }
 //odinfmt: enable
 
@@ -287,7 +288,7 @@ parse_fn_decl :: proc(p: ^Parser) -> (result: ^Fn_Declaration, err: Error) {
 	name_token := consume(p)
 	if name_token.kind == .Identifier {
 		result.identifier = name_token.text
-		match_next(p, .Paren_Open) or_return
+		match_next(p, .Open_Paren) or_return
 
 		// FIXME: Account for parameterless functions
 		params: for {
@@ -306,7 +307,7 @@ parse_fn_decl :: proc(p: ^Parser) -> (result: ^Fn_Declaration, err: Error) {
 			#partial switch p.current.kind {
 			case .Comma:
 				continue params
-			case .Paren_Close:
+			case .Close_Paren:
 				break params
 			case:
 				err = Parsing_Error.Invalid_Syntax
@@ -379,6 +380,32 @@ parse_string :: proc(p: ^Parser) -> (result: Expression, err: Error) {
 	return
 }
 
+parse_array :: proc(p: ^Parser) -> (result: Expression, err: Error) {
+	// check that the syntax is right: "array of T"
+	match(p, .Of) or_return
+	if is_type_token(consume(p).kind) {
+		array := new(Array_Literal_Expression)
+		match_next(p, .Open_Bracket) or_return
+		array_elements: for {
+			element := parse_expr(p, .Lowest) or_return
+			append(&array.values, element)
+			consume(p)
+			#partial switch p.previous.kind {
+			case .Close_Bracket:
+				break array_elements
+			case .Comma:
+				continue array_elements
+			case:
+				err = Parsing_Error.Invalid_Syntax
+				return
+			}
+		}
+	} else {
+		err = Parsing_Error.Invalid_Syntax
+	}
+	return
+}
+
 parse_unary :: proc(p: ^Parser) -> (result: Expression, err: Error) {
 	unary := new_clone(Unary_Expression{op = token_to_operator(p.previous.kind)})
 	unary.expr, err = parse_expr(p, parser_rules[p.previous.kind].prec)
@@ -395,7 +422,7 @@ parse_binary :: proc(p: ^Parser, left: Expression) -> (result: Expression, err: 
 
 parse_group :: proc(p: ^Parser) -> (result: Expression, err: Error) {
 	result = parse_expr(p, .Lowest) or_return
-	if consume(p).kind != .Paren_Close {
+	if consume(p).kind != .Close_Paren {
 		err = Parsing_Error.Invalid_Syntax
 	}
 	return
@@ -412,7 +439,7 @@ parse_call :: proc(p: ^Parser, left: Expression) -> (result: Expression, err: Er
 		call.arg_count += 1
 		consume(p)
 		#partial switch p.previous.kind {
-		case .Paren_Close:
+		case .Close_Paren:
 			break args
 		case .Comma:
 			continue args
