@@ -33,7 +33,7 @@ print_expr :: proc(p: ^AST_Printer, expr: Expression) {
 		fmt.sbprint(&p.builder, e.value)
 
 	case ^Array_Literal_Expression:
-		write(p, "String Literal Expression: ")
+		write(p, "Array Expression: ")
 		for element in e.values {
 			print_expr(p, element)
 		}

@@ -2,6 +2,7 @@ package lily
 
 import "core:strconv"
 import "core:strings"
+import "core:fmt"
 
 //odinfmt: disable
 parser_rules := map[Token_Kind]struct {
@@ -384,13 +385,13 @@ parse_array :: proc(p: ^Parser) -> (result: Expression, err: Error) {
 	// check that the syntax is right: "array of T"
 	match(p, .Of) or_return
 	if is_type_token(consume(p).kind) {
-		array := new(Array_Literal_Expression)
+		array := new_clone(Array_Literal_Expression{value_type_name = p.current.text})
 		match_next(p, .Open_Bracket) or_return
 		array_elements: for {
+			consume(p)
 			element := parse_expr(p, .Lowest) or_return
 			append(&array.values, element)
-			consume(p)
-			#partial switch p.previous.kind {
+			#partial switch p.current.kind {
 			case .Close_Bracket:
 				break array_elements
 			case .Comma:
@@ -400,6 +401,8 @@ parse_array :: proc(p: ^Parser) -> (result: Expression, err: Error) {
 				return
 			}
 		}
+		result = array
+		fmt.println(result)
 	} else {
 		err = Parsing_Error.Invalid_Syntax
 	}

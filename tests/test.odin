@@ -19,32 +19,7 @@ main :: proc() {
 playground :: proc() {
 	using lily
 	input: string = `
-        var str = "Hello world"
-		var stop = true
-		var foobar = go(false) and stop
-		var foo = add(10, 20)
-
-		fn add(a: number, b: number): number
-			var d = 10
-			result = a + b + d
-		end
-
-		fn go(a: bool): bool
-			result = not a
-		end
-
-		var bar = foo + 10
-
-		if stop:
-			bar = 10
-		else:
-			bar = 20
-		end
-
-		var test = 10
-		for i in 0..10:
-			test = test + i
-		end
+       var arr = array of number[10, 1, 2]
 	`
 	program := make_program()
 	defer delete_program(program)

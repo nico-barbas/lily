@@ -1,4 +1,7 @@
 package lily
+
+import "core:strings"
+
 // - Disallow function declaration inside functions scope 
 
 // Stategy:
@@ -230,7 +233,27 @@ check_expr :: proc(c: ^Checker, expr: Expression) -> (result: Symbol, err: Error
 		result = c.builtins["string"]
 
 	case ^Array_Literal_Expression:
-		assert(false, "Array checking not implemented")
+		if contain_symbol_by_name(c, e.value_type_name) {
+			value_type := find_symbol(c, e.value_type_name) or_return
+			for element in e.values {
+				element_type := check_expr(c, element) or_return
+				if element_type != value_type {
+					err = Semantic_Error.Mismatched_Types
+					return
+				}
+			}
+			// FIXME: Pretty bad memory leak
+			array_type := strings.concatenate({e.value_type_name, "array"})
+			if !contain_symbol_by_name(c, array_type) {
+				add_symbol(c, Type_Symbol(array_type)) or_return
+				result = Type_Symbol(array_type)
+			} else {
+				result = find_symbol(c, array_type) or_return
+				delete(array_type)
+			}
+		} else {
+			err = Semantic_Error.Unknown_Symbol
+		}
 
 	case ^Unary_Expression:
 		// check that minus goes with number literal and not goes with bool
