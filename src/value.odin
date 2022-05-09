@@ -1,5 +1,13 @@
 package lily
 
+// TODO: remove the hard-coded length of parameters and arguments in functions
+
+// Values are runtime representation of different object kinds.
+// For now, they do not store type informations.
+// There is 2 main types of values: basic values and reference values
+// Basic values are Number, Bool.
+// Reference values are String, Array, Map, Function, Class.
+
 Value_Kind :: enum {
 	Nil,
 	Number,
@@ -20,6 +28,7 @@ Object_Kind :: enum {
 	String,
 	Array,
 	Map,
+	Fn,
 }
 
 Object :: struct {
@@ -39,6 +48,13 @@ Array_Object :: struct {
 Map_Object :: struct {
 	using base: Object,
 	data:       map[Value]Value,
+}
+
+Fn_Object :: struct {
+	using base:  Object,
+	parameters:  [5]string,
+	param_count: int,
+	body:        ^Block_Statement,
 }
 
 token_to_operator :: proc(kind: Token_Kind) -> Operator {

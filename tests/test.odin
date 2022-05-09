@@ -19,7 +19,11 @@ main :: proc() {
 playground :: proc() {
 	using lily
 	input: string = `
-       var arr = array of number[10, 1, 2]
+		var a = 10
+		a = 20
+		fn add(a: number, b: number): number
+			result = a + b
+		end
 	`
 	program := make_program()
 	defer delete_program(program)
@@ -36,9 +40,7 @@ playground :: proc() {
 	print_ast(program)
 	run_program(vm, program.nodes[:])
 	fmt.println(vm.names)
-	fmt.println(vm.functions)
-	// fmt.println(vm.stack)
-	fmt.println(get_stack_value(vm, "str"))
+	// fmt.println(get_stack_value(vm, "str"))
 }
 
 test_lexer :: proc() {

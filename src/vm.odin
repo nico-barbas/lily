@@ -8,7 +8,6 @@ Vm :: struct {
 	header_ptr:  int,
 	stack_ptr:   int,
 	stack_depth: int,
-	functions:   map[string]^Fn_Declaration,
 }
 
 Stack_ID :: distinct u8
@@ -48,7 +47,7 @@ run_program :: proc(vm: ^Vm, program: []Node) {
 			push_stack_value(vm, n.identifier)
 
 		case ^Fn_Declaration:
-			vm.functions[n.identifier] = n
+			push_stack_value(vm, n.identifier)
 		}
 	}
 
@@ -111,6 +110,7 @@ eval_expr :: proc(vm: ^Vm, expr: Expression) -> (result: Value, err: Error) {
 			append(&array, value)
 		}
 		obj := new_clone(Array_Object{base = Object{kind = .Array}, data = array})
+	// FIXME: ??
 
 	case ^Unary_Expression:
 		result = eval_expr(vm, e.expr) or_return
@@ -175,13 +175,14 @@ eval_expr :: proc(vm: ^Vm, expr: Expression) -> (result: Value, err: Error) {
 		assert(false, "Function Literal and pointers not implemented yet")
 
 	case ^Call_Expression:
-		fn := vm.functions[e.name]
+		value := eval_expr(vm, e.func) or_return
+		fn := cast(^Fn_Object)value.data.(^Object)
 		push_stack(vm)
 		defer pop_stack(vm)
 		push_stack_value(vm, "result")
 		for i in 0 ..< fn.param_count {
 			arg := eval_expr(vm, e.args[i]) or_return
-			push_stack_value(vm, fn.parameters[i].name, arg)
+			push_stack_value(vm, fn.parameters[i], arg)
 		}
 		eval_node(vm, fn.body) or_return
 		result = get_stack_value(vm, "result")
@@ -201,8 +202,13 @@ eval_node :: proc(vm: ^Vm, node: Node) -> (err: Error) {
 		}
 
 	case ^Assignment_Statement:
-		result := eval_expr(vm, n.expr) or_return
-		set_stack_value(vm, n.identifier, result)
+		result := eval_expr(vm, n.right) or_return
+		#partial switch left in n.left {
+		case ^Identifier_Expression:
+			set_stack_value(vm, left.name, result)
+		case:
+			assert(false, "Left handside expression kind in Assignment Statement not implemented")
+		}
 
 	case ^If_Statement:
 		push_stack(vm)
@@ -246,7 +252,8 @@ eval_node :: proc(vm: ^Vm, node: Node) -> (err: Error) {
 		}
 
 	case ^Fn_Declaration:
-	// Not allowed to declare functions outside of the file scope
+		fn := new_clone(Fn_Object{base = Object{kind = .Fn}, param_count = n.param_count, body = n.body})
+		set_stack_value(vm, n.identifier, Value{kind = .Object_Ref, data = cast(^Object)fn})
 
 	}
 	return

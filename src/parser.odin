@@ -138,9 +138,9 @@ parse_expression_stmt :: proc(p: ^Parser) -> (result: ^Expression_Statement, err
 
 parse_assign_stmt :: proc(p: ^Parser) -> (result: ^Assignment_Statement, err: Error) {
 	result = new(Assignment_Statement)
-	result.identifier = p.previous.text
+	result.left = parse_expr(p, .Lowest) or_return
 	consume(p)
-	result.expr = parse_expr(p, .Lowest) or_return
+	result.right = parse_expr(p, .Lowest) or_return
 	return
 }
 
@@ -433,7 +433,7 @@ parse_group :: proc(p: ^Parser) -> (result: Expression, err: Error) {
 
 parse_call :: proc(p: ^Parser, left: Expression) -> (result: Expression, err: Error) {
 	call := new(Call_Expression)
-	call.name = left.(^Identifier_Expression).name
+	call.func = left
 	free(left.(^Identifier_Expression))
 
 	// FIXME: Account for parameterless functions

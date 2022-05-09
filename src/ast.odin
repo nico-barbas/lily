@@ -53,7 +53,7 @@ Fn_Literal_Expression :: struct {
 }
 
 Call_Expression :: struct {
-	name:      string,
+	func:      Expression,
 	args:      [5]Expression,
 	arg_count: int,
 }
@@ -86,8 +86,8 @@ Block_Statement :: struct {
 }
 
 Assignment_Statement :: struct {
-	identifier: string,
-	expr:       Expression,
+	left:  Expression,
+	right: Expression,
 }
 
 If_Statement :: struct {

@@ -73,8 +73,8 @@ print_expr :: proc(p: ^AST_Printer, expr: Expression) {
 		write(p, "Call Expression: ")
 		increment(p)
 		{
-			write_line(p, "Name: ")
-			write(p, e.name)
+			write_line(p, "Func: ")
+			print_expr(p, e.func)
 			write_line(p, "Arguments: ")
 			increment(p)
 			for i in 0 ..< e.arg_count {
@@ -106,10 +106,10 @@ print_node :: proc(p: ^AST_Printer, node: Node) {
 		write_line(p, "Assignment Statement: ")
 		increment(p)
 		{
-			write_line(p, "Identifier name: ")
-			write(p, n.identifier)
-			write_line(p, "Expression: ")
-			print_expr(p, n.expr)
+			write_line(p, "Left: ")
+			print_expr(p, n.left)
+			write_line(p, "Right: ")
+			print_expr(p, n.right)
 		}
 		decrement(p)
 

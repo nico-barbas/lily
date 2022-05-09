@@ -305,7 +305,7 @@ check_binary_expr :: proc(c: ^Checker, e: ^Binary_Expression) -> (result: Symbol
 }
 
 check_call_expr :: proc(c: ^Checker, e: ^Call_Expression) -> (result: Symbol, err: Error) {
-	symbol := find_symbol(c, e.name) or_return
+	symbol := check_expr(c, e.func) or_return
 	if fn_symbol, ok := symbol.(Fn_Symbol); ok {
 		if e.arg_count == fn_symbol.param_count {
 			// check all the arguments
@@ -340,12 +340,12 @@ check_node :: proc(c: ^Checker, node: Node) -> (err: Error) {
 
 	case ^Assignment_Statement:
 		// check if the symbol exist
-		vs := find_symbol(c, n.identifier) or_return
-		et := check_expr(c, n.expr) or_return
+		l := check_expr(c, n.left) or_return
+		r := check_expr(c, n.right) or_return
 
-		var_symbol := vs.(Identifier_Symbol)
-		expr_type := et.(Type_Symbol)
-		if var_symbol.type_symbol != expr_type {
+		var_symbol := l.(Type_Symbol)
+		expr_type := r.(Type_Symbol)
+		if var_symbol != expr_type {
 			err = Semantic_Error.Mismatched_Types
 		}
 	// check if expression is correct
