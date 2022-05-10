@@ -441,7 +441,6 @@ parse_group :: proc(p: ^Parser) -> (result: Expression, err: Error) {
 parse_call :: proc(p: ^Parser, left: Expression) -> (result: Expression, err: Error) {
 	call := new(Call_Expression)
 	call.func = left
-	free(left.(^Identifier_Expression))
 
 	// FIXME: Account for parameterless functions
 	args: for {

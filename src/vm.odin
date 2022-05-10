@@ -1,6 +1,6 @@
 package lily
 
-import "core:fmt"
+import "core:strings"
 
 VM_STACK_SIZE :: 255
 
@@ -52,6 +52,9 @@ run_program :: proc(vm: ^Vm, program: []Node) {
 			fn := new(Fn_Object)
 			fn.base = Object {
 				kind = .Fn,
+			}
+			for i in 0 ..< n.param_count {
+				fn.parameters[i] = strings.clone(n.parameters[i].name)
 			}
 			fn.param_count = n.param_count
 			fn.body = n.body
@@ -175,8 +178,6 @@ eval_expr :: proc(vm: ^Vm, expr: Expression) -> (result: Value, err: Error) {
 				data = f64(int(left.data.(f64)) % int(right.data.(f64))),
 			}
 		}
-		fmt.println(vm.stack[:vm.stack_ptr])
-		fmt.println(left, right, result)
 
 	case ^Identifier_Expression:
 		result = get_stack_value(vm, e.name)

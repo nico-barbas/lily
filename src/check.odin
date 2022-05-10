@@ -309,7 +309,9 @@ check_call_expr :: proc(c: ^Checker, e: ^Call_Expression) -> (result: Symbol, er
 	#partial switch fn in e.func {
 	case ^Identifier_Expression:
 		s := find_symbol(c, fn.name) or_return
-		fn_symbol = s.(Fn_Symbol)
+		f, ok := s.(Fn_Symbol)
+		assert(ok)
+		fn_symbol = f
 	case ^Fn_Literal_Expression:
 	case:
 		assert(false)

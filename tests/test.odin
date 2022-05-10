@@ -31,15 +31,16 @@ playground :: proc() {
 	err := append_to_program(input, program)
 
 	assert(err == nil, fmt.tprint("Failed, Error raised ->", err))
+	fmt.println(input)
+	print_ast(program)
 
 
 	checker := new_checker()
 	check_err := check_program(checker, program.nodes[:])
 	assert(check_err == nil, fmt.tprint("Failed, Error raised ->", check_err))
 
-	print_ast(program)
 	run_program(vm, program.nodes[:])
-	fmt.println(get_stack_value(vm, "a"))
+	fmt.println(get_stack_value(vm, "foo"))
 }
 
 // test_lexer :: proc() {
