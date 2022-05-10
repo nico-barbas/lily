@@ -182,6 +182,9 @@ eval_expr :: proc(vm: ^Vm, expr: Expression) -> (result: Value, err: Error) {
 	case ^Identifier_Expression:
 		result = get_stack_value(vm, e.name)
 
+	case ^Index_Expression:
+		assert(false, "Index Expression runtime not implemented yet")
+
 	case ^Fn_Literal_Expression:
 		assert(false, "Function Literal and pointers not implemented yet")
 

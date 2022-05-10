@@ -67,6 +67,9 @@ print_expr :: proc(p: ^AST_Printer, expr: Expression) {
 		write(p, "Identifier Expression: ")
 		fmt.sbprint(&p.builder, e.name)
 
+	case ^Index_Expression:
+		assert(false, "Index AST print not implemented yet")
+
 	case ^Fn_Literal_Expression:
 
 	case ^Call_Expression:

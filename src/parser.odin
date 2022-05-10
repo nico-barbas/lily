@@ -16,7 +16,7 @@ parser_rules := map[Token_Kind]struct {
 	.Array =           {prec = .Lowest,  prefix_fn = parse_array     , infix_fn = nil},
 	.True =            {prec = .Lowest,  prefix_fn = parse_boolean   , infix_fn = nil},
 	.False =           {prec = .Lowest,  prefix_fn = parse_boolean   , infix_fn = nil},
-	.Not = 	           {prec = .Term  ,  prefix_fn = parse_unary     , infix_fn = nil},
+	.Not = 	           {prec = .Unary  ,  prefix_fn = parse_unary     , infix_fn = nil},
 	.Plus =            {prec = .Term  ,  prefix_fn = nil             , infix_fn = parse_binary},
 	.Minus =           {prec = .Term  ,  prefix_fn = parse_unary     , infix_fn = parse_binary},
 	.Star =            {prec = .Factor,  prefix_fn = nil             , infix_fn = parse_binary},
@@ -25,6 +25,7 @@ parser_rules := map[Token_Kind]struct {
 	.And =             {prec = .Factor,  prefix_fn = nil             , infix_fn = parse_binary},
 	.Or =              {prec = .Factor,  prefix_fn = nil             , infix_fn = parse_binary},
 	.Open_Paren =      {prec = .Highest, prefix_fn = parse_group     , infix_fn = parse_call},
+	.Open_Bracket =    {prec = .Highest, prefix_fn = nil             , infix_fn = parse_index},
 }
 //odinfmt: enable
 
@@ -82,7 +83,7 @@ append_to_program :: proc(i: string, program: ^Program) -> (err: Error) {
 	return
 }
 
-consume :: proc(p: ^Parser) -> Token {
+consume_token :: proc(p: ^Parser) -> Token {
 	p.previous = p.current
 	p.current = scan_token(&p.lexer)
 	return p.current
@@ -95,22 +96,30 @@ peek_next_token :: proc(p: ^Parser) -> (result: Token) {
 	return
 }
 
-match :: proc(p: ^Parser, kind: Token_Kind) -> (err: Error) {
+match_token_kind :: proc(p: ^Parser, kind: Token_Kind) -> (err: Error) {
 	if p.current.kind != kind {
-		err = Parsing_Error.Invalid_Syntax
+		err = Parsing_Error {
+			kind    = .Invalid_Syntax,
+			token   = p.current,
+			details = fmt.tprintf("Expected %s, got %s", kind, p.current.kind),
+		}
 	}
 	return
 }
 
-match_next :: proc(p: ^Parser, kind: Token_Kind) -> (err: Error) {
-	if consume(p).kind != kind {
-		err = Parsing_Error.Invalid_Syntax
+match_token_kind_next :: proc(p: ^Parser, kind: Token_Kind) -> (err: Error) {
+	if consume_token(p).kind != kind {
+		err = Parsing_Error {
+			kind    = .Invalid_Syntax,
+			token   = p.current,
+			details = fmt.tprintf("Expected %s, got %s", kind, p.current.kind),
+		}
 	}
 	return
 }
 
 parse_node :: proc(p: ^Parser) -> (result: Node, err: Error) {
-	token := consume(p)
+	token := consume_token(p)
 	#partial switch token.kind {
 	case .EOF:
 		result = nil
@@ -146,7 +155,7 @@ parse_expression_stmt :: proc(p: ^Parser) -> (result: ^Expression_Statement, err
 parse_assign_stmt :: proc(p: ^Parser) -> (result: ^Assignment_Statement, err: Error) {
 	result = new(Assignment_Statement)
 	result.left = parse_expr(p, .Lowest) or_return
-	consume(p)
+	consume_token(p)
 	result.right = parse_expr(p, .Lowest) or_return
 	return
 }
@@ -168,9 +177,9 @@ parse_if_stmt :: proc(p: ^Parser) -> (result: ^If_Statement, err: Error) {
 				}
 			}
 		case false:
-			consume(p)
+			consume_token(p)
 			result.condition = parse_expr(p, .Lowest) or_return
-			match_next(p, .Colon) or_return
+			match_token_kind_next(p, .Colon) or_return
 			result.body = new_clone(Block_Statement{nodes = make([dynamic]Node)})
 			else_if_body: for {
 				body_node := parse_node(p) or_return
@@ -181,13 +190,22 @@ parse_if_stmt :: proc(p: ^Parser) -> (result: ^If_Statement, err: Error) {
 				case .End:
 					break else_if_body
 				case .Else:
-					#partial switch consume(p).kind {
+					#partial switch consume_token(p).kind {
 					case .If:
 						result.next_branch = parse_branch(p, false) or_return
 					case .Colon:
 						result.next_branch = parse_branch(p, true) or_return
 					case:
-						err = Parsing_Error.Invalid_Syntax
+						err = Parsing_Error {
+							kind    = .Invalid_Syntax,
+							token   = p.current,
+							details = fmt.tprintf(
+								"Expected one of: %s, %s, got %s",
+								Token_Kind.If,
+								Token_Kind.Colon,
+								p.current.kind,
+							),
+						}
 					}
 				}
 			}
@@ -196,9 +214,9 @@ parse_if_stmt :: proc(p: ^Parser) -> (result: ^If_Statement, err: Error) {
 	}
 
 	result = new(If_Statement)
-	consume(p)
+	consume_token(p)
 	result.condition = parse_expr(p, .Lowest) or_return
-	match(p, .Colon) or_return
+	match_token_kind(p, .Colon) or_return
 
 	result.body = new_clone(Block_Statement{nodes = make([dynamic]Node)})
 	body: for {
@@ -210,7 +228,7 @@ parse_if_stmt :: proc(p: ^Parser) -> (result: ^If_Statement, err: Error) {
 		case .End:
 			break body
 		case .Else:
-			#partial switch consume(p).kind {
+			#partial switch consume_token(p).kind {
 			case .If:
 				result.next_branch = parse_branch(p, false) or_return
 				break body
@@ -218,7 +236,16 @@ parse_if_stmt :: proc(p: ^Parser) -> (result: ^If_Statement, err: Error) {
 				result.next_branch = parse_branch(p, true) or_return
 				break body
 			case:
-				err = Parsing_Error.Invalid_Syntax
+				err = Parsing_Error {
+					kind    = .Invalid_Syntax,
+					token   = p.current,
+					details = fmt.tprintf(
+						"Expected one of: %s, %s, got %s",
+						Token_Kind.If,
+						Token_Kind.Colon,
+						p.current.kind,
+					),
+				}
 			}
 		}
 	}
@@ -227,11 +254,11 @@ parse_if_stmt :: proc(p: ^Parser) -> (result: ^If_Statement, err: Error) {
 
 parse_range_stmt :: proc(p: ^Parser) -> (result: ^Range_Statement, err: Error) {
 	result = new(Range_Statement)
-	name_token := consume(p)
+	name_token := consume_token(p)
 	if name_token.kind == .Identifier {
 		result.iterator_name = name_token.text
-		match_next(p, .In) or_return
-		consume(p)
+		match_token_kind_next(p, .In) or_return
+		consume_token(p)
 		result.low = parse_expr(p, .Lowest) or_return
 		#partial switch p.current.kind {
 		case .Double_Dot:
@@ -239,10 +266,19 @@ parse_range_stmt :: proc(p: ^Parser) -> (result: ^Range_Statement, err: Error) {
 		case .Triple_Dot:
 			result.op = .Inclusive
 		case:
-			err = Parsing_Error.Invalid_Syntax
+			err = Parsing_Error {
+				kind    = .Invalid_Syntax,
+				token   = p.current,
+				details = fmt.tprintf(
+					"Expected one of: %s, %s, got %s",
+					Token_Kind.Double_Dot,
+					Token_Kind.Triple_Dot,
+					p.current.kind,
+				),
+			}
 			return
 		}
-		consume(p)
+		consume_token(p)
 		result.high = parse_expr(p, .Lowest) or_return
 
 		result.body = new_clone(Block_Statement{nodes = make([dynamic]Node)})
@@ -257,7 +293,11 @@ parse_range_stmt :: proc(p: ^Parser) -> (result: ^Range_Statement, err: Error) {
 		}
 
 	} else {
-		err = Parsing_Error.Invalid_Syntax
+		err = Parsing_Error {
+			kind    = .Invalid_Syntax,
+			token   = p.current,
+			details = fmt.tprintf("Expected %s, got %s", Token_Kind.Identifier, p.current.kind),
+		}
 	}
 	return
 }
@@ -265,27 +305,40 @@ parse_range_stmt :: proc(p: ^Parser) -> (result: ^Range_Statement, err: Error) {
 parse_var_decl :: proc(p: ^Parser) -> (result: ^Var_Declaration, err: Error) {
 	result = new(Var_Declaration)
 
-	name_token := consume(p)
+	name_token := consume_token(p)
 	if name_token.kind == .Identifier {
 		result.identifier = name_token.text
-		next := consume(p)
+		next := consume_token(p)
 		#partial switch next.kind {
 		case .Assign:
-			consume(p)
+			consume_token(p)
 			result.type_name = "unresolved"
 			result.expr, err = parse_expr(p, .Lowest)
 
 		case .Colon:
-			result.type_name = consume(p).text
-			match_next(p, .Assign) or_return
-			consume(p)
+			result.type_name = consume_token(p).text
+			match_token_kind_next(p, .Assign) or_return
+			consume_token(p)
 			result.expr, err = parse_expr(p, .Lowest)
 
 		case:
-			err = Parsing_Error.Invalid_Syntax
+			err = Parsing_Error {
+				kind    = .Invalid_Syntax,
+				token   = p.current,
+				details = fmt.tprintf(
+					"Expected one of: %s, %s, got %s",
+					Token_Kind.Assign,
+					Token_Kind.Colon,
+					p.current.kind,
+				),
+			}
 		}
 	} else {
-		err = Parsing_Error.Invalid_Syntax
+		err = Parsing_Error {
+			kind    = .Invalid_Syntax,
+			token   = p.current,
+			details = fmt.tprintf("Expected %s, got %s", Token_Kind.Identifier, p.current.kind),
+		}
 	}
 
 	return
@@ -293,41 +346,54 @@ parse_var_decl :: proc(p: ^Parser) -> (result: ^Var_Declaration, err: Error) {
 
 parse_fn_decl :: proc(p: ^Parser) -> (result: ^Fn_Declaration, err: Error) {
 	result = new(Fn_Declaration)
-	name_token := consume(p)
+	name_token := consume_token(p)
 	if name_token.kind == .Identifier {
 		result.identifier = name_token.text
-		match_next(p, .Open_Paren) or_return
+		match_token_kind_next(p, .Open_Paren) or_return
 
 		// FIXME: Account for parameterless functions
 		params: for {
-			match_next(p, .Identifier) or_return
+			match_token_kind_next(p, .Identifier) or_return
 			result.parameters[result.param_count].name = p.current.text
 
-			match_next(p, .Colon) or_return
-			if !is_type_token(consume(p).kind) {
-				err = Parsing_Error.Invalid_Syntax
+			match_token_kind_next(p, .Colon) or_return
+			if !is_type_token(consume_token(p).kind) {
+				err = Parsing_Error {
+					kind    = .Invalid_Syntax,
+					token   = p.current,
+					details = fmt.tprintf("Expected type token, got %s", p.current.kind),
+				}
 				return
 			}
 			result.parameters[result.param_count].type_name = p.current.text
 			result.param_count += 1
 
-			consume(p)
+			consume_token(p)
 			#partial switch p.current.kind {
 			case .Comma:
 				continue params
 			case .Close_Paren:
 				break params
 			case:
-				err = Parsing_Error.Invalid_Syntax
+				err = Parsing_Error {
+					kind    = .Invalid_Syntax,
+					token   = p.current,
+					details = fmt.tprintf(
+						"Expected one of: %s, %s, got %s",
+						Token_Kind.Comma,
+						Token_Kind.Close_Paren,
+						p.current.kind,
+					),
+				}
 				return
 			}
 		}
 
-		match_next(p, .Colon) or_return
+		match_token_kind_next(p, .Colon) or_return
 
-		if is_type_token(consume(p).kind) {
+		if is_type_token(consume_token(p).kind) {
 			result.return_type_name = p.current.text
-			consume(p)
+			consume_token(p)
 		}
 
 		// FIXME: Refactor into separate procedure
@@ -342,18 +408,22 @@ parse_fn_decl :: proc(p: ^Parser) -> (result: ^Fn_Declaration, err: Error) {
 			}
 		}
 	} else {
-		err = Parsing_Error.Invalid_Syntax
+		err = Parsing_Error {
+			kind    = .Invalid_Syntax,
+			token   = p.current,
+			details = fmt.tprintf("Expected %s, got %s", Token_Kind.Identifier, p.current.kind),
+		}
 	}
 	return
 }
 
 parse_expr :: proc(p: ^Parser, prec: Precedence) -> (result: Expression, err: Error) {
-	consume(p)
+	consume_token(p)
 	if rule, exist := parser_rules[p.previous.kind]; exist {
 		result = rule.prefix_fn(p) or_return
 	}
 	for p.current.kind != .EOF && prec < parser_rules[p.current.kind].prec {
-		consume(p)
+		consume_token(p)
 		if rule, exist := parser_rules[p.previous.kind]; exist {
 			result = rule.infix_fn(p, result) or_return
 		}
@@ -372,7 +442,10 @@ parse_number :: proc(p: ^Parser) -> (result: Expression, err: Error) {
 	if ok {
 		result = new_clone(Literal_Expression{value = Value{kind = .Number, data = num}})
 	} else {
-		err = .Malformed_Number
+		err = Parsing_Error {
+			kind  = .Malformed_Number,
+			token = p.previous,
+		}
 	}
 	return
 }
@@ -390,12 +463,12 @@ parse_string :: proc(p: ^Parser) -> (result: Expression, err: Error) {
 
 parse_array :: proc(p: ^Parser) -> (result: Expression, err: Error) {
 	// check that the syntax is right: "array of T"
-	match(p, .Of) or_return
-	if is_type_token(consume(p).kind) {
+	match_token_kind(p, .Of) or_return
+	if is_type_token(consume_token(p).kind) {
 		array := new_clone(Array_Literal_Expression{value_type_name = p.current.text})
-		match_next(p, .Open_Bracket) or_return
+		match_token_kind_next(p, .Open_Bracket) or_return
 		array_elements: for {
-			consume(p)
+			consume_token(p)
 			element := parse_expr(p, .Lowest) or_return
 			append(&array.values, element)
 			#partial switch p.current.kind {
@@ -404,14 +477,27 @@ parse_array :: proc(p: ^Parser) -> (result: Expression, err: Error) {
 			case .Comma:
 				continue array_elements
 			case:
-				err = Parsing_Error.Invalid_Syntax
+				err = Parsing_Error {
+					kind    = .Invalid_Syntax,
+					token   = p.current,
+					details = fmt.tprintf(
+						"Expected one of: %s, %s, got %s",
+						Token_Kind.Comma,
+						Token_Kind.Close_Bracket,
+						p.current.kind,
+					),
+				}
 				return
 			}
 		}
 		result = array
 		fmt.println(result)
 	} else {
-		err = Parsing_Error.Invalid_Syntax
+		err = Parsing_Error {
+			kind    = .Invalid_Syntax,
+			token   = p.current,
+			details = fmt.tprintf("Expected %s, got %s", Token_Kind.Identifier, p.current.kind),
+		}
 	}
 	return
 }
@@ -432,9 +518,17 @@ parse_binary :: proc(p: ^Parser, left: Expression) -> (result: Expression, err: 
 
 parse_group :: proc(p: ^Parser) -> (result: Expression, err: Error) {
 	result = parse_expr(p, .Lowest) or_return
-	if consume(p).kind != .Close_Paren {
-		err = Parsing_Error.Invalid_Syntax
-	}
+	match_token_kind_next(p, .Close_Paren) or_return
+	return
+}
+
+parse_index :: proc(p: ^Parser, left: Expression) -> (result: Expression, err: Error) {
+	index_expr := new(Index_Expression)
+	index_expr.left = left
+	consume_token(p)
+	index_expr.index = parse_expr(p, .Lowest) or_return
+	match_token_kind(p, .Close_Bracket) or_return
+	result = index_expr
 	return
 }
 
@@ -446,14 +540,23 @@ parse_call :: proc(p: ^Parser, left: Expression) -> (result: Expression, err: Er
 	args: for {
 		call.args[call.arg_count] = parse_expr(p, .Lowest) or_return
 		call.arg_count += 1
-		consume(p)
+		consume_token(p)
 		#partial switch p.previous.kind {
 		case .Close_Paren:
 			break args
 		case .Comma:
 			continue args
 		case:
-			err = Parsing_Error.Invalid_Syntax
+			err = Parsing_Error {
+				kind    = .Invalid_Syntax,
+				token   = p.current,
+				details = fmt.tprintf(
+					"Expected one of: %s, %s, got %s",
+					Token_Kind.Comma,
+					Token_Kind.Close_Paren,
+					p.previous.kind,
+				),
+			}
 			return
 		}
 

@@ -18,6 +18,7 @@ reserved_keywords :: [?]string{"result"}
 Symbol :: union {
 	Type_Symbol,
 	Identifier_Symbol,
+	// Array_Symbol,
 	Fn_Symbol,
 }
 
@@ -27,6 +28,8 @@ Identifier_Symbol :: struct {
 	name:        string,
 	type_symbol: Type_Symbol,
 }
+
+Array_Symbol :: struct {}
 
 Fn_Symbol :: struct {
 	name:          string,
@@ -270,6 +273,16 @@ check_expr :: proc(c: ^Checker, expr: Expression) -> (result: Symbol, err: Error
 	case ^Identifier_Expression:
 		symbol := find_symbol(c, e.name) or_return
 		result = symbol.(Identifier_Symbol).type_symbol
+
+	case ^Index_Expression:
+		i := check_expr(c, e.index) or_return
+		if index_type, ok := i.(Type_Symbol); ok {
+			if index_type != NUMBER_SYMBOL {
+				err = Semantic_Error.Mismatched_Types
+			}
+		} else {
+			err = Semantic_Error.Mismatched_Types
+		}
 
 	case ^Fn_Literal_Expression:
 

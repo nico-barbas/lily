@@ -7,6 +7,7 @@ Expression :: union {
 	^Unary_Expression,
 	^Binary_Expression,
 	^Identifier_Expression,
+	^Index_Expression,
 	^Fn_Literal_Expression,
 	^Call_Expression,
 }
@@ -40,6 +41,11 @@ Binary_Expression :: struct {
 
 Identifier_Expression :: struct {
 	name: string,
+}
+
+Index_Expression :: struct {
+	left:  Expression,
+	index: Expression,
 }
 
 Fn_Literal_Expression :: struct {

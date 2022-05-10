@@ -5,9 +5,13 @@ Error :: union {
 	Semantic_Error,
 }
 
-Parsing_Error :: enum {
-	Invalid_Syntax,
-	Malformed_Number,
+Parsing_Error :: struct {
+	kind:    enum {
+		Invalid_Syntax,
+		Malformed_Number,
+	},
+	token:   Token,
+	details: string,
 }
 
 Semantic_Error :: enum {
