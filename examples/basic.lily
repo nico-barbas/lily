@@ -10,7 +10,7 @@ var str = "Hello world!"
 var char = 'a'
 -- Arrays are dynamically allocated, can resize,
 -- and are passed by reference 
-var arr = array[10, 2, 3, 4]
+var arr = array of number[10, 2, 3, 4]
 -- Maps are dynamically allocated, can resize,
 -- and are passed by reference 
 var m = map["hi" = 10, "hello" = 2]
@@ -39,7 +39,7 @@ end
 for j in 0..10:
     print("Hello :)")
 end
--- There is builtin iterator for arrays and map
+-- There is builtin iterators for array and map types
 for element, i in arr:
     print(element, i)
 end
@@ -54,11 +54,6 @@ end
 --
 -- These are a user defined type declarations
 --
--- Records are passed by value
-type Point is record
-    x: number
-    y: number
-end
 
 -- It is however possible to define custom number types
 -- by either specifying a range, or using the distinct keyword
@@ -77,7 +72,7 @@ type Animal is class
 end
 
 -- And lastly, you can define interfaces
--- A class implementing an interface is implicit (like Go) 
+-- A class implementing an interface is implicit (like Go, but this is subject to change) 
 type Writer is interface
     fn write(s: string)
 end

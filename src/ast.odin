@@ -39,6 +39,7 @@ Unary_Expression :: struct {
 }
 
 Binary_Expression :: struct {
+	token: Token,
 	left:  Expression,
 	right: Expression,
 	op:    Operator,
@@ -52,11 +53,13 @@ unresolved_identifier := Identifier_Expression {
 }
 
 Index_Expression :: struct {
+	token: Token, // the '[' token
 	left:  Expression,
 	index: Expression,
 }
 
 Call_Expression :: struct {
+	token:     Token, // the '(' token
 	func:      Expression,
 	args:      [5]Expression,
 	arg_count: int,
@@ -92,11 +95,13 @@ Block_Statement :: struct {
 }
 
 Assignment_Statement :: struct {
+	token: Token, // the '=' token
 	left:  Expression,
 	right: Expression,
 }
 
 If_Statement :: struct {
+	token:       Token, // the "if" token
 	condition:   Expression,
 	body:        ^Block_Statement,
 	next_branch: ^If_Statement,

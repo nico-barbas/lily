@@ -229,6 +229,11 @@ eval_node :: proc(vm: ^Vm, node: Node) -> (err: Error) {
 		#partial switch left in n.left {
 		case ^Identifier_Expression:
 			set_stack_value(vm, left.name, result)
+		case ^Index_Expression:
+			obj := get_stack_value(vm, left.left.(^Identifier_Expression).name)
+			array := cast(^Array_Object)obj.data.(^Object)
+			index_value := eval_expr(vm, left.index) or_return
+			array.data[int(index_value.data.(f64))] = result
 		case:
 			assert(false, "Left handside expression kind in Assignment Statement not implemented")
 		}
