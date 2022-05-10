@@ -11,12 +11,14 @@ parser_rules := map[Token_Kind]struct {
 	infix_fn:  proc(p: ^Parser, left: Expression) -> (Expression, Error),
 } {
 	.Identifier =      {prec = .Lowest,  prefix_fn = parse_identifier, infix_fn = nil},
+	.Number =          {prec = .Lowest,  prefix_fn = parse_identifier, infix_fn = nil},
+	.Boolean =         {prec = .Lowest,  prefix_fn = parse_identifier, infix_fn = nil},
+	.Array =           {prec = .Lowest,  prefix_fn = parse_array_type, infix_fn = nil},
 	.Number_Literal =  {prec = .Lowest,  prefix_fn = parse_number    , infix_fn = nil},
     .String_Literal =  {prec = .Lowest,  prefix_fn = parse_string    , infix_fn = nil},
-	.Array =           {prec = .Lowest,  prefix_fn = parse_array     , infix_fn = nil},
 	.True =            {prec = .Lowest,  prefix_fn = parse_boolean   , infix_fn = nil},
 	.False =           {prec = .Lowest,  prefix_fn = parse_boolean   , infix_fn = nil},
-	.Not = 	           {prec = .Unary  ,  prefix_fn = parse_unary     , infix_fn = nil},
+	.Not = 	           {prec = .Unary  ,  prefix_fn = parse_unary    , infix_fn = nil},
 	.Plus =            {prec = .Term  ,  prefix_fn = nil             , infix_fn = parse_binary},
 	.Minus =           {prec = .Term  ,  prefix_fn = parse_unary     , infix_fn = parse_binary},
 	.Star =            {prec = .Factor,  prefix_fn = nil             , infix_fn = parse_binary},
@@ -24,8 +26,8 @@ parser_rules := map[Token_Kind]struct {
 	.Percent =         {prec = .Factor,  prefix_fn = nil             , infix_fn = parse_binary},
 	.And =             {prec = .Factor,  prefix_fn = nil             , infix_fn = parse_binary},
 	.Or =              {prec = .Factor,  prefix_fn = nil             , infix_fn = parse_binary},
-	.Open_Paren =      {prec = .Highest, prefix_fn = parse_group     , infix_fn = parse_call},
-	.Open_Bracket =    {prec = .Highest, prefix_fn = nil             , infix_fn = parse_index},
+	.Open_Paren =      {prec = .Call, prefix_fn = parse_group     , infix_fn = parse_call},
+	.Open_Bracket =    {prec = .Call, prefix_fn = nil             , infix_fn = parse_infix_open_bracket},
 }
 //odinfmt: enable
 
@@ -45,6 +47,7 @@ Precedence :: enum {
 	Term,
 	Factor,
 	Unary,
+	Call,
 	Highest,
 }
 
@@ -130,7 +133,7 @@ parse_node :: proc(p: ^Parser) -> (result: Node, err: Error) {
 	case .Identifier:
 		next := peek_next_token(p)
 		#partial switch next.kind {
-		case .Assign:
+		case .Assign, .Open_Bracket:
 			result, err = parse_assign_stmt(p)
 		case:
 			result, err = parse_expression_stmt(p)
@@ -254,6 +257,7 @@ parse_if_stmt :: proc(p: ^Parser) -> (result: ^If_Statement, err: Error) {
 
 parse_range_stmt :: proc(p: ^Parser) -> (result: ^Range_Statement, err: Error) {
 	result = new(Range_Statement)
+	result.token = p.current
 	name_token := consume_token(p)
 	if name_token.kind == .Identifier {
 		result.iterator_name = name_token.text
@@ -304,7 +308,7 @@ parse_range_stmt :: proc(p: ^Parser) -> (result: ^Range_Statement, err: Error) {
 
 parse_var_decl :: proc(p: ^Parser) -> (result: ^Var_Declaration, err: Error) {
 	result = new(Var_Declaration)
-
+	result.token = p.current
 	name_token := consume_token(p)
 	if name_token.kind == .Identifier {
 		result.identifier = name_token.text
@@ -312,12 +316,13 @@ parse_var_decl :: proc(p: ^Parser) -> (result: ^Var_Declaration, err: Error) {
 		#partial switch next.kind {
 		case .Assign:
 			consume_token(p)
-			result.type_name = "unresolved"
+			result.type_expr = &unresolved_identifier
 			result.expr, err = parse_expr(p, .Lowest)
 
 		case .Colon:
-			result.type_name = consume_token(p).text
-			match_token_kind_next(p, .Assign) or_return
+			consume_token(p)
+			result.type_expr = parse_expr(p, .Lowest) or_return
+			match_token_kind(p, .Assign) or_return
 			consume_token(p)
 			result.expr, err = parse_expr(p, .Lowest)
 
@@ -355,20 +360,11 @@ parse_fn_decl :: proc(p: ^Parser) -> (result: ^Fn_Declaration, err: Error) {
 		params: for {
 			match_token_kind_next(p, .Identifier) or_return
 			result.parameters[result.param_count].name = p.current.text
-
 			match_token_kind_next(p, .Colon) or_return
-			if !is_type_token(consume_token(p).kind) {
-				err = Parsing_Error {
-					kind    = .Invalid_Syntax,
-					token   = p.current,
-					details = fmt.tprintf("Expected type token, got %s", p.current.kind),
-				}
-				return
-			}
-			result.parameters[result.param_count].type_name = p.current.text
+			consume_token(p)
+			result.parameters[result.param_count].type_expr = parse_expr(p, .Lowest) or_return
 			result.param_count += 1
 
-			consume_token(p)
 			#partial switch p.current.kind {
 			case .Comma:
 				continue params
@@ -391,10 +387,8 @@ parse_fn_decl :: proc(p: ^Parser) -> (result: ^Fn_Declaration, err: Error) {
 
 		match_token_kind_next(p, .Colon) or_return
 
-		if is_type_token(consume_token(p).kind) {
-			result.return_type_name = p.current.text
-			consume_token(p)
-		}
+		consume_token(p)
+		result.return_type_expr = parse_expr(p, .Lowest) or_return
 
 		// FIXME: Refactor into separate procedure
 		result.body = new_clone(Block_Statement{nodes = make([dynamic]Node)})
@@ -461,47 +455,6 @@ parse_string :: proc(p: ^Parser) -> (result: Expression, err: Error) {
 	return
 }
 
-parse_array :: proc(p: ^Parser) -> (result: Expression, err: Error) {
-	// check that the syntax is right: "array of T"
-	match_token_kind(p, .Of) or_return
-	if is_type_token(consume_token(p).kind) {
-		array := new_clone(Array_Literal_Expression{value_type_name = p.current.text})
-		match_token_kind_next(p, .Open_Bracket) or_return
-		array_elements: for {
-			consume_token(p)
-			element := parse_expr(p, .Lowest) or_return
-			append(&array.values, element)
-			#partial switch p.current.kind {
-			case .Close_Bracket:
-				break array_elements
-			case .Comma:
-				continue array_elements
-			case:
-				err = Parsing_Error {
-					kind    = .Invalid_Syntax,
-					token   = p.current,
-					details = fmt.tprintf(
-						"Expected one of: %s, %s, got %s",
-						Token_Kind.Comma,
-						Token_Kind.Close_Bracket,
-						p.current.kind,
-					),
-				}
-				return
-			}
-		}
-		result = array
-		fmt.println(result)
-	} else {
-		err = Parsing_Error {
-			kind    = .Invalid_Syntax,
-			token   = p.current,
-			details = fmt.tprintf("Expected %s, got %s", Token_Kind.Identifier, p.current.kind),
-		}
-	}
-	return
-}
-
 parse_unary :: proc(p: ^Parser) -> (result: Expression, err: Error) {
 	unary := new_clone(Unary_Expression{op = token_to_operator(p.previous.kind)})
 	unary.expr, err = parse_expr(p, parser_rules[p.previous.kind].prec)
@@ -522,15 +475,6 @@ parse_group :: proc(p: ^Parser) -> (result: Expression, err: Error) {
 	return
 }
 
-parse_index :: proc(p: ^Parser, left: Expression) -> (result: Expression, err: Error) {
-	index_expr := new(Index_Expression)
-	index_expr.left = left
-	consume_token(p)
-	index_expr.index = parse_expr(p, .Lowest) or_return
-	match_token_kind(p, .Close_Bracket) or_return
-	result = index_expr
-	return
-}
 
 parse_call :: proc(p: ^Parser, left: Expression) -> (result: Expression, err: Error) {
 	call := new(Call_Expression)
@@ -563,5 +507,66 @@ parse_call :: proc(p: ^Parser, left: Expression) -> (result: Expression, err: Er
 	}
 
 	result = call
+	return
+}
+
+parse_infix_open_bracket :: proc(p: ^Parser, left: Expression) -> (result: Expression, err: Error) {
+	#partial switch l in left {
+	case ^Array_Type:
+		result = parse_array(p, left) or_return
+	case ^Identifier_Expression:
+		result = parse_index(p, left) or_return
+	}
+	return
+}
+
+parse_array :: proc(p: ^Parser, left: Expression) -> (result: Expression, err: Error) {
+	array := new_clone(Array_Literal_Expression{type_expr = left, values = make([dynamic]Expression)})
+	array_elements: for {
+		element := parse_expr(p, .Lowest) or_return
+		append(&array.values, element)
+		consume_token(p)
+		#partial switch p.previous.kind {
+		case .Close_Bracket:
+			break array_elements
+		case .Comma:
+			continue array_elements
+		case:
+			err = Parsing_Error {
+				kind    = .Invalid_Syntax,
+				token   = p.previous,
+				details = fmt.tprintf(
+					"Expected one of: %s, %s, got %s",
+					Token_Kind.Comma,
+					Token_Kind.Close_Bracket,
+					p.previous.kind,
+				),
+			}
+			return
+		}
+	}
+	result = array
+	return
+}
+
+parse_array_type :: proc(p: ^Parser) -> (result: Expression, err: Error) {
+	array_type := new(Array_Type)
+	array_type.token = p.previous
+	match_token_kind(p, .Of) or_return
+	array_type.of_token = p.current
+	consume_token(p)
+	array_type.elem_type = parse_expr(p, .Highest) or_return
+	result = array_type
+	return
+}
+
+parse_index :: proc(p: ^Parser, left: Expression) -> (result: Expression, err: Error) {
+	index_expr := new(Index_Expression)
+	index_expr.left = left
+	// consume_token(p)
+	index_expr.index = parse_expr(p, .Lowest) or_return
+	match_token_kind(p, .Close_Bracket) or_return
+	consume_token(p)
+	result = index_expr
 	return
 }

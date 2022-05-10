@@ -29,22 +29,28 @@ run_program :: proc(vm: ^Vm, program: []Node) {
 		#partial switch n in node {
 		case ^Var_Declaration:
 			value: Value
-			switch n.type_name {
-			case "number":
-				value = Value {
-					kind = .Number,
-					data = 0,
+			#partial switch t in n.type_expr {
+			case ^Identifier_Expression:
+				switch t.name {
+				case "number":
+					value = Value {
+						kind = .Number,
+						data = 0,
+					}
+				case "boolean":
+					value = Value {
+						kind = .Boolean,
+						data = false,
+					}
+				case:
+					value = Value {
+						kind = .Nil,
+						data = nil,
+					}
 				}
-			case "boolean":
-				value = Value {
-					kind = .Boolean,
-					data = false,
-				}
-			case:
-				value = Value {
-					kind = .Nil,
-					data = nil,
-				}
+
+			case ^Array_Type:
+				assert(false, "Array not implemented yet")
 			}
 			push_stack_value(vm, n.identifier)
 
@@ -121,7 +127,10 @@ eval_expr :: proc(vm: ^Vm, expr: Expression) -> (result: Value, err: Error) {
 			append(&array, value)
 		}
 		obj := new_clone(Array_Object{base = Object{kind = .Array}, data = array})
-	// FIXME: ??
+		result = Value {
+			kind = .Object_Ref,
+			data = cast(^Object)obj,
+		}
 
 	case ^Unary_Expression:
 		result = eval_expr(vm, e.expr) or_return
@@ -185,8 +194,8 @@ eval_expr :: proc(vm: ^Vm, expr: Expression) -> (result: Value, err: Error) {
 	case ^Index_Expression:
 		assert(false, "Index Expression runtime not implemented yet")
 
-	case ^Fn_Literal_Expression:
-		assert(false, "Function Literal and pointers not implemented yet")
+	case ^Array_Type:
+		assert(false, "Invalid branch")
 
 	case ^Call_Expression:
 		value := eval_expr(vm, e.func) or_return

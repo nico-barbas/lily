@@ -1,3 +1,3 @@
 @echo off
-odin run tests/test.odin -file -out:tests/lily-tests.exe -debug -strict-style -vet
+odin run tests/playground.odin -file -out:tests/playground.exe -debug -strict-style -vet
 @echo on

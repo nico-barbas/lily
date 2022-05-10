@@ -1,6 +1,7 @@
 package lily
 
 Expression :: union {
+	// Value Expressions
 	^Literal_Expression,
 	^String_Literal_Expression,
 	^Array_Literal_Expression,
@@ -8,8 +9,10 @@ Expression :: union {
 	^Binary_Expression,
 	^Identifier_Expression,
 	^Index_Expression,
-	^Fn_Literal_Expression,
 	^Call_Expression,
+
+	// Type Expressions
+	^Array_Type,
 }
 
 Literal_Expression :: struct {
@@ -24,8 +27,10 @@ String_Literal_Expression :: struct {
 }
 
 Array_Literal_Expression :: struct {
-	values:          [dynamic]Expression,
-	value_type_name: string,
+	// This is either a Identifier (for builtin types and user defined types) 
+	// or another composite type (array or map)
+	type_expr: Expression,
+	values:    [dynamic]Expression,
 }
 
 Unary_Expression :: struct {
@@ -42,26 +47,25 @@ Binary_Expression :: struct {
 Identifier_Expression :: struct {
 	name: string,
 }
+unresolved_identifier := Identifier_Expression {
+	name = "untyped",
+}
 
 Index_Expression :: struct {
 	left:  Expression,
 	index: Expression,
 }
 
-Fn_Literal_Expression :: struct {
-	parameters:       [5]struct {
-		name:      string,
-		type_name: string,
-	},
-	param_count:      int,
-	body:             ^Block_Statement,
-	return_type_name: string,
-}
-
 Call_Expression :: struct {
 	func:      Expression,
 	args:      [5]Expression,
 	arg_count: int,
+}
+
+Array_Type :: struct {
+	token:     Token, // The "array" token
+	of_token:  Token, //The "of" token
+	elem_type: Expression, // Either Identifier or another Type Expression. Allows for multi-arrays
 }
 
 //////
@@ -83,10 +87,6 @@ Expression_Statement :: struct {
 	expr: Expression,
 }
 
-Return_Statement :: struct {
-	expr: Expression,
-}
-
 Block_Statement :: struct {
 	nodes: [dynamic]Node,
 }
@@ -103,6 +103,7 @@ If_Statement :: struct {
 }
 
 Range_Statement :: struct {
+	token:         Token, // the "for" token
 	iterator_name: string,
 	low:           Expression,
 	high:          Expression,
@@ -112,12 +113,19 @@ Range_Statement :: struct {
 }
 
 Var_Declaration :: struct {
+	token:      Token, // the "var" token
 	identifier: string,
-	type_name:  string,
+	type_expr:  Expression,
 	expr:       Expression,
 }
 
 Fn_Declaration :: struct {
-	using _:    Fn_Literal_Expression,
-	identifier: string,
+	identifier:       string,
+	parameters:       [5]struct {
+		name:      string,
+		type_expr: Expression,
+	},
+	param_count:      int,
+	body:             ^Block_Statement,
+	return_type_expr: Expression,
 }

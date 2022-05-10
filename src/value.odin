@@ -27,7 +27,7 @@ Value :: struct {
 Object_Kind :: enum {
 	String,
 	Array,
-	Map,
+	// Map,
 	Fn,
 }
 

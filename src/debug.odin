@@ -34,9 +34,18 @@ print_expr :: proc(p: ^AST_Printer, expr: Expression) {
 
 	case ^Array_Literal_Expression:
 		write(p, "Array Expression: ")
-		for element in e.values {
-			print_expr(p, element)
+		increment(p)
+		{
+			write_line(p, "Type: ")
+			print_expr(p, e.type_expr)
+			write_line(p, "Elements: ")
+			for element in e.values {
+				print_expr(p, element)
+			}
+
 		}
+		decrement(p)
+
 
 	case ^Unary_Expression:
 		write(p, "Unary Expression: ")
@@ -68,9 +77,15 @@ print_expr :: proc(p: ^AST_Printer, expr: Expression) {
 		fmt.sbprint(&p.builder, e.name)
 
 	case ^Index_Expression:
-		assert(false, "Index AST print not implemented yet")
-
-	case ^Fn_Literal_Expression:
+		write(p, "Index Expression: ")
+		increment(p)
+		{
+			write_line(p, "Left: ")
+			print_expr(p, e.left)
+			write_line(p, "Index: ")
+			print_expr(p, e.index)
+		}
+		decrement(p)
 
 	case ^Call_Expression:
 		write(p, "Call Expression: ")
@@ -88,7 +103,11 @@ print_expr :: proc(p: ^AST_Printer, expr: Expression) {
 		}
 		decrement(p)
 
+	case ^Array_Type:
+		write(p, "Array of ")
+		print_expr(p, e.elem_type)
 	}
+
 }
 
 print_node :: proc(p: ^AST_Printer, node: Node) {
@@ -153,7 +172,7 @@ print_node :: proc(p: ^AST_Printer, node: Node) {
 			write_line(p, "Identifier name: ")
 			write(p, n.identifier)
 			write_line(p, "Type: ")
-			write(p, n.type_name)
+			print_expr(p, n.type_expr)
 			write_line(p, "Expression: ")
 			print_expr(p, n.expr)
 		}
@@ -169,11 +188,12 @@ print_node :: proc(p: ^AST_Printer, node: Node) {
 			increment(p)
 			for i in 0 ..< n.param_count {
 				write_line(p)
-				fmt.sbprintf(&p.builder, "Name: %s, Type: %s", n.parameters[i].name, n.parameters[i].type_name)
+				fmt.sbprintf(&p.builder, "Name: %s, Type: ", n.parameters[i].name)
+				print_expr(p, n.parameters[i].type_expr)
 			}
 			decrement(p)
 			write_line(p, "Return type: ")
-			write(p, n.return_type_name)
+			print_expr(p, n.return_type_expr)
 
 			print_node(p, n.body)
 		}
