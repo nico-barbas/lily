@@ -1,5 +1,7 @@
 package lily
 
+import "core:fmt"
+
 VM_STACK_SIZE :: 255
 
 Vm :: struct {
@@ -47,7 +49,13 @@ run_program :: proc(vm: ^Vm, program: []Node) {
 			push_stack_value(vm, n.identifier)
 
 		case ^Fn_Declaration:
-			push_stack_value(vm, n.identifier)
+			fn := new(Fn_Object)
+			fn.base = Object {
+				kind = .Fn,
+			}
+			fn.param_count = n.param_count
+			fn.body = n.body
+			push_stack_value(vm, n.identifier, Value{kind = .Object_Ref, data = cast(^Object)fn})
 		}
 	}
 
@@ -167,6 +175,8 @@ eval_expr :: proc(vm: ^Vm, expr: Expression) -> (result: Value, err: Error) {
 				data = f64(int(left.data.(f64)) % int(right.data.(f64))),
 			}
 		}
+		fmt.println(vm.stack[:vm.stack_ptr])
+		fmt.println(left, right, result)
 
 	case ^Identifier_Expression:
 		result = get_stack_value(vm, e.name)
@@ -252,8 +262,6 @@ eval_node :: proc(vm: ^Vm, node: Node) -> (err: Error) {
 		}
 
 	case ^Fn_Declaration:
-		fn := new_clone(Fn_Object{base = Object{kind = .Fn}, param_count = n.param_count, body = n.body})
-		set_stack_value(vm, n.identifier, Value{kind = .Object_Ref, data = cast(^Object)fn})
 
 	}
 	return

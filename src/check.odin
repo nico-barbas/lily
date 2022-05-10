@@ -305,25 +305,29 @@ check_binary_expr :: proc(c: ^Checker, e: ^Binary_Expression) -> (result: Symbol
 }
 
 check_call_expr :: proc(c: ^Checker, e: ^Call_Expression) -> (result: Symbol, err: Error) {
-	symbol := check_expr(c, e.func) or_return
-	if fn_symbol, ok := symbol.(Fn_Symbol); ok {
-		if e.arg_count == fn_symbol.param_count {
-			// check all the arguments
-			for i in 0 ..< e.arg_count {
-				expr_symbol := check_expr(c, e.args[i]) or_return
-				param_symbol := fn_symbol.param_symbols[i]
-				if expr_symbol.(Type_Symbol) == param_symbol.type_symbol {
-					result = param_symbol.type_symbol
-				} else {
-					err = Semantic_Error.Mismatched_Types
-				}
+	fn_symbol: Fn_Symbol
+	#partial switch fn in e.func {
+	case ^Identifier_Expression:
+		s := find_symbol(c, fn.name) or_return
+		fn_symbol = s.(Fn_Symbol)
+	case ^Fn_Literal_Expression:
+	case:
+		assert(false)
+	}
+	if e.arg_count == fn_symbol.param_count {
+		// check all the arguments
+		for i in 0 ..< e.arg_count {
+			expr_symbol := check_expr(c, e.args[i]) or_return
+			param_symbol := fn_symbol.param_symbols[i]
+			if expr_symbol.(Type_Symbol) == param_symbol.type_symbol {
+				result = param_symbol.type_symbol
+			} else {
+				err = Semantic_Error.Mismatched_Types
 			}
-			result = fn_symbol.return_symbol
-		} else {
-			err = Semantic_Error.Invalid_Arg_Count
 		}
+		result = fn_symbol.return_symbol
 	} else {
-		err = Semantic_Error.Mismatched_Types
+		err = Semantic_Error.Invalid_Arg_Count
 	}
 	return
 }

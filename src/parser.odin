@@ -88,6 +88,13 @@ consume :: proc(p: ^Parser) -> Token {
 	return p.current
 }
 
+peek_next_token :: proc(p: ^Parser) -> (result: Token) {
+	start := p.lexer.current
+	result = scan_token(&p.lexer)
+	p.lexer.current = start
+	return
+}
+
 match :: proc(p: ^Parser, kind: Token_Kind) -> (err: Error) {
 	if p.current.kind != kind {
 		err = Parsing_Error.Invalid_Syntax
@@ -112,7 +119,7 @@ parse_node :: proc(p: ^Parser) -> (result: Node, err: Error) {
 	case .Fn:
 		result, err = parse_fn_decl(p)
 	case .Identifier:
-		next := consume(p)
+		next := peek_next_token(p)
 		#partial switch next.kind {
 		case .Assign:
 			result, err = parse_assign_stmt(p)
