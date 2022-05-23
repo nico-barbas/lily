@@ -18,8 +18,13 @@ playground :: proc() {
 		var foo = array of number[2, 3]
 		foo[0] = 10
 		foo[1] = add(4, 9)
+		foo[0] = add(foo[0], foo[1])
 		fn add(a: number, b: number): number
 			result = a + b
+		end
+
+		fn testParemeterless():
+	
 		end
 	`
 	program := make_program()

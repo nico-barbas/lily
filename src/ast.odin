@@ -134,3 +134,15 @@ Fn_Declaration :: struct {
 	body:             ^Block_Statement,
 	return_type_expr: Expression,
 }
+
+Type_Declaration :: struct {
+	token:      Token, // the "type" token
+	is_token:   Token,
+	identifier: string,
+	type_expr:  Expression,
+	fields:     [dynamic]struct {
+		name:      string,
+		type_expr: Expression,
+	},
+	// methods:    [dynamic]^Fn_Declaration,
+}

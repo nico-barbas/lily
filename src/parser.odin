@@ -130,6 +130,8 @@ parse_node :: proc(p: ^Parser) -> (result: Node, err: Error) {
 		result, err = parse_var_decl(p)
 	case .Fn:
 		result, err = parse_fn_decl(p)
+	case .Type:
+	// result, err = parse_type_decl(p)
 	case .Identifier:
 		next := peek_next_token(p)
 		#partial switch next.kind {
@@ -306,6 +308,8 @@ parse_range_stmt :: proc(p: ^Parser) -> (result: ^Range_Statement, err: Error) {
 	return
 }
 
+// FIXME: Allow for "var a, b := 10, false"
+// FIXME: Allow for uninitialized variable declaration: "var a: number"
 parse_var_decl :: proc(p: ^Parser) -> (result: ^Var_Declaration, err: Error) {
 	result = new(Var_Declaration)
 	result.token = p.current
@@ -357,38 +361,56 @@ parse_fn_decl :: proc(p: ^Parser) -> (result: ^Fn_Declaration, err: Error) {
 		match_token_kind_next(p, .Open_Paren) or_return
 
 		// FIXME: Account for parameterless functions
-		params: for {
-			match_token_kind_next(p, .Identifier) or_return
-			result.parameters[result.param_count].name = p.current.text
-			match_token_kind_next(p, .Colon) or_return
-			consume_token(p)
-			result.parameters[result.param_count].type_expr = parse_expr(p, .Lowest) or_return
-			result.param_count += 1
+		#partial switch peek_next_token(p).kind {
+		case .Identifier:
+			params: for {
+				match_token_kind_next(p, .Identifier) or_return
+				result.parameters[result.param_count].name = p.current.text
+				match_token_kind_next(p, .Colon) or_return
+				consume_token(p)
+				result.parameters[result.param_count].type_expr = parse_expr(p, .Lowest) or_return
+				result.param_count += 1
 
-			#partial switch p.current.kind {
-			case .Comma:
-				continue params
-			case .Close_Paren:
-				break params
-			case:
-				err = Parsing_Error {
-					kind    = .Invalid_Syntax,
-					token   = p.current,
-					details = fmt.tprintf(
-						"Expected one of: %s, %s, got %s",
-						Token_Kind.Comma,
-						Token_Kind.Close_Paren,
-						p.current.kind,
-					),
+				#partial switch p.current.kind {
+				case .Comma:
+					continue params
+				case .Close_Paren:
+					break params
+				case:
+					err = Parsing_Error {
+						kind    = .Invalid_Syntax,
+						token   = p.current,
+						details = fmt.tprintf(
+							"Expected one of: %s, %s, got %s",
+							Token_Kind.Comma,
+							Token_Kind.Close_Paren,
+							p.current.kind,
+						),
+					}
+					return
 				}
-				return
+			}
+		case .Close_Paren:
+			consume_token(p)
+		case:
+			err = Parsing_Error {
+				kind    = .Invalid_Syntax,
+				token   = p.current,
+				details = fmt.tprintf(
+					"Expected one of: %s, %s, got %s",
+					Token_Kind.Identifier,
+					Token_Kind.Close_Paren,
+					p.current.kind,
+				),
 			}
 		}
 
+
 		match_token_kind_next(p, .Colon) or_return
 
-		consume_token(p)
-		result.return_type_expr = parse_expr(p, .Lowest) or_return
+		if consume_token(p).kind != .Newline {
+			result.return_type_expr = parse_expr(p, .Lowest) or_return
+		}
 
 		// FIXME: Refactor into separate procedure
 		result.body = new_clone(Block_Statement{nodes = make([dynamic]Node)})
@@ -406,6 +428,36 @@ parse_fn_decl :: proc(p: ^Parser) -> (result: ^Fn_Declaration, err: Error) {
 			kind    = .Invalid_Syntax,
 			token   = p.current,
 			details = fmt.tprintf("Expected %s, got %s", Token_Kind.Identifier, p.current.kind),
+		}
+	}
+	return
+}
+
+// Disallow nested type declaration
+parse_type_decl :: proc(p: ^Parser) -> (result: ^Type_Declaration, err: Error) {
+	result = new_clone(Type_Declaration{token = p.current})
+	name_token := consume_token(p)
+	if name_token.kind == .Identifier {
+		result.identifier = name_token.text
+		match_token_kind_next(p, .Is) or_return
+		result.is_token = p.current
+		consume_token(p)
+		result.type_expr = parse_expr(p, .Lowest) or_return
+		fields: for {
+			t := consume_token(p)
+			#partial switch t.kind {
+			case .Comment, .Newline:
+				continue fields
+
+			case .Identifier:
+			// Allow for "a, b: number"
+			// expect ':' or ','
+			// expect expression
+			// expect newline?
+
+			case:
+			// error
+			}
 		}
 	}
 	return

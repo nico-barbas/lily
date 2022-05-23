@@ -49,3 +49,5 @@ var myMap = map of (string, number)["foo" = 11, "bar" = 4]
 myMap["foobar"] = 62
 var mapValue = myMap["foo"]
 ```
+
+## Status and Roadmap:

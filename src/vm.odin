@@ -192,7 +192,11 @@ eval_expr :: proc(vm: ^Vm, expr: Expression) -> (result: Value, err: Error) {
 		result = get_stack_value(vm, e.name)
 
 	case ^Index_Expression:
-		assert(false, "Index Expression runtime not implemented yet")
+		obj := get_stack_value(vm, e.left.(^Identifier_Expression).name)
+		array := cast(^Array_Object)obj.data.(^Object)
+		index_value := eval_expr(vm, e.index) or_return
+		result = array.data[int(index_value.data.(f64))]
+	// e.
 
 	case ^Array_Type:
 		assert(false, "Invalid branch")
