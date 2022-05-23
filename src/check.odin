@@ -29,6 +29,8 @@ Symbol_Kind :: enum {
 	Basic, // number, bool, string
 	Array,
 	Fn,
+	Alias,
+	Class,
 }
 
 Semantic_Scope :: struct {
@@ -156,11 +158,25 @@ update_symbol :: proc(c: ^Checker, name: string, symbol: Symbol) -> (err: Error)
 	return
 }
 
+gen_type_id :: proc(c: ^Checker) -> Type_ID {
+	c.next_type_id += 1
+	return Type_ID(c.next_type_id - 1)
+}
+
 check_nodes :: proc(c: ^Checker, nodes: []Node) -> (err: Error) {
+	for node in nodes {
+		if n, ok := node.(^Type_Declaration); ok {
+			type_symbol := Symbol {
+				name    = n.identifier,
+				kind    = .Alias if n.is_alias else .Class,
+				type_id = gen_type_id(c),
+			}
+			add_symbol(c, type_symbol) or_return
+		}
+	}
 	// Gather all the function definitions
 	for node in nodes {
-		#partial switch n in node {
-		case ^Fn_Declaration:
+		if n, ok := node.(^Fn_Declaration); ok {
 			return_symbol := check_expr_type(c, n.return_type_expr) or_return
 			fn_symbol := Symbol {
 				name = n.identifier,
@@ -224,6 +240,9 @@ check_node :: proc(c: ^Checker, node: Node) -> (err: Error) {
 		defer pop_scope(c)
 		check_node_symbols(c, n) or_return
 		check_node_type(c, n) or_return
+
+	case ^Type_Declaration:
+		check_node_symbols(c, n) or_return
 	}
 	return
 }
@@ -296,6 +315,12 @@ check_node_symbols :: proc(c: ^Checker, node: Node) -> (err: Error) {
 		check_node_symbols(c, n.body) or_return
 		check_expr_symbols(c, n.return_type_expr) or_return
 
+	case ^Type_Declaration:
+		if n.is_alias {
+			check_expr_symbols(c, n.type_expr) or_return
+		} else {
+			// Branch for class declaration
+		}
 	}
 	return
 }
@@ -367,6 +392,8 @@ check_node_type :: proc(c: ^Checker, node: Node) -> (err: Error) {
 		}
 
 	case ^Fn_Declaration:
+	case ^Type_Declaration:
+	// assert(false, "Type declaration not supported yet")
 	}
 	return
 }

@@ -23,9 +23,8 @@ playground :: proc() {
 			result = a + b
 		end
 
-		fn testParemeterless():
-	
-		end
+		type MyType is number
+		var bar: MyType = 4
 	`
 	program := make_program()
 	defer delete_program(program)

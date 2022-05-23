@@ -198,6 +198,17 @@ print_node :: proc(p: ^AST_Printer, node: Node) {
 			print_node(p, n.body)
 		}
 		decrement(p)
+
+	case ^Type_Declaration:
+		write_line(p, "Type Declaration: ")
+		increment(p)
+		{
+			write_line(p, "Identifier name: ")
+			write(p, n.identifier)
+			write_line(p, "Type name: ")
+			print_expr(p, n.type_expr)
+		}
+		decrement(p)
 	}
 }
 

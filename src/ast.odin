@@ -84,6 +84,7 @@ Node :: union {
 	// Declarations
 	^Var_Declaration,
 	^Fn_Declaration,
+	^Type_Declaration,
 }
 
 Expression_Statement :: struct {
@@ -118,10 +119,11 @@ Range_Statement :: struct {
 }
 
 Var_Declaration :: struct {
-	token:      Token, // the "var" token
-	identifier: string,
-	type_expr:  Expression,
-	expr:       Expression,
+	token:       Token, // the "var" token
+	identifier:  string,
+	type_expr:   Expression,
+	expr:        Expression,
+	initialized: bool,
 }
 
 Fn_Declaration :: struct {
@@ -140,6 +142,7 @@ Type_Declaration :: struct {
 	is_token:   Token,
 	identifier: string,
 	type_expr:  Expression,
+	is_alias:   bool,
 	fields:     [dynamic]struct {
 		name:      string,
 		type_expr: Expression,

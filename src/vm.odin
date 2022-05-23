@@ -276,7 +276,19 @@ eval_node :: proc(vm: ^Vm, node: Node) -> (err: Error) {
 		}
 
 	case ^Var_Declaration:
-		result := eval_expr(vm, n.expr) or_return
+		result: Value
+		switch n.initialized {
+		case true:
+			result = eval_expr(vm, n.expr) or_return
+
+		// We zero initialize the value
+		case false:
+			// FIXME: Undecided on this semantic
+			// Should the complex types (array, map, class, which are dynamically allocated)
+			// Be initialized or left as nil?
+			// In any case, need a transformed "typed" AST before being able to do any of that
+			assert(false, "Uninitialized value not supported at runtime yet")
+		}
 		if vm.stack_depth > 0 {
 			push_stack_value(vm, n.identifier, result)
 		} else {
@@ -284,7 +296,20 @@ eval_node :: proc(vm: ^Vm, node: Node) -> (err: Error) {
 		}
 
 	case ^Fn_Declaration:
-
+	case ^Type_Declaration:
+		assert(false)
 	}
 	return
 }
+
+// zero_initialize_primitive_value :: proc(kind: Value_Kind) -> (result: Value, err: Error) {
+// 	result = Value {
+// 		kind = kind,
+// 	}
+// 	return
+// }
+
+// zero_initialize_object_value :: proc() -> (result: Value, err: Error) {
+// 	assert(false, "Complex type zero initialization not implemented yet")
+// 	return
+// }

@@ -131,7 +131,7 @@ parse_node :: proc(p: ^Parser) -> (result: Node, err: Error) {
 	case .Fn:
 		result, err = parse_fn_decl(p)
 	case .Type:
-	// result, err = parse_type_decl(p)
+		result, err = parse_type_decl(p)
 	case .Identifier:
 		next := peek_next_token(p)
 		#partial switch next.kind {
@@ -322,13 +322,34 @@ parse_var_decl :: proc(p: ^Parser) -> (result: ^Var_Declaration, err: Error) {
 			consume_token(p)
 			result.type_expr = &unresolved_identifier
 			result.expr, err = parse_expr(p, .Lowest)
+			result.initialized = true
 
 		case .Colon:
 			consume_token(p)
 			result.type_expr = parse_expr(p, .Lowest) or_return
-			match_token_kind(p, .Assign) or_return
-			consume_token(p)
-			result.expr, err = parse_expr(p, .Lowest)
+			#partial switch p.current.kind {
+			case .Assign:
+				consume_token(p)
+				result.expr, err = parse_expr(p, .Lowest)
+				result.initialized = true
+
+			// Uninitialized variable declaration. We mark it as is and let
+			// the checker and vm deal with it
+			case .Newline:
+				result.initialized = false
+
+			case:
+				err = Parsing_Error {
+					kind    = .Invalid_Syntax,
+					token   = p.current,
+					details = fmt.tprintf(
+						"Expected one of: %s, %s, got %s",
+						Token_Kind.Assign,
+						Token_Kind.Colon,
+						p.current.kind,
+					),
+				}
+			}
 
 		case:
 			err = Parsing_Error {
@@ -360,8 +381,9 @@ parse_fn_decl :: proc(p: ^Parser) -> (result: ^Fn_Declaration, err: Error) {
 		result.identifier = name_token.text
 		match_token_kind_next(p, .Open_Paren) or_return
 
-		// FIXME: Account for parameterless functions
+		// We check if the function has parameters or not 
 		#partial switch peek_next_token(p).kind {
+		// If it has, we loop and gather all their relevant data (name and type expression) 
 		case .Identifier:
 			params: for {
 				match_token_kind_next(p, .Identifier) or_return
@@ -390,8 +412,12 @@ parse_fn_decl :: proc(p: ^Parser) -> (result: ^Fn_Declaration, err: Error) {
 					return
 				}
 			}
+
+		// Otherwise, we just move on
 		case .Close_Paren:
 			consume_token(p)
+
+		// Any other token kind is an error
 		case:
 			err = Parsing_Error {
 				kind    = .Invalid_Syntax,
@@ -405,11 +431,14 @@ parse_fn_decl :: proc(p: ^Parser) -> (result: ^Fn_Declaration, err: Error) {
 			}
 		}
 
-
+		// The after ':' after the parameters parenthesis
 		match_token_kind_next(p, .Colon) or_return
 
+		// We check if the function has a return value or if it is void
+		// A newline is the delimiter for the function declaration signature 
 		if consume_token(p).kind != .Newline {
 			result.return_type_expr = parse_expr(p, .Lowest) or_return
+			match_token_kind(p, .Newline)
 		}
 
 		// FIXME: Refactor into separate procedure
@@ -443,22 +472,36 @@ parse_type_decl :: proc(p: ^Parser) -> (result: ^Type_Declaration, err: Error) {
 		result.is_token = p.current
 		consume_token(p)
 		result.type_expr = parse_expr(p, .Lowest) or_return
-		fields: for {
-			t := consume_token(p)
-			#partial switch t.kind {
-			case .Comment, .Newline:
-				continue fields
+		#partial switch p.previous.kind {
+		case .Class:
+			fields: for {
+				t := consume_token(p)
+				#partial switch t.kind {
+				case .Comment, .Newline:
+					continue fields
 
-			case .Identifier:
-			// Allow for "a, b: number"
-			// expect ':' or ','
-			// expect expression
-			// expect newline?
+				case .Identifier:
+				// Allow for "a, b: number"
+				// expect ':' or ','
+				// expect expression
+				// expect newline?
 
-			case:
-			// error
+				case:
+				// error
+				}
+			}
+
+		case:
+			result.is_alias = true
+			if !is_type_token(p.previous.kind) {
+				err = Parsing_Error {
+					kind    = .Invalid_Syntax,
+					token   = p.current,
+					details = fmt.tprintf("Expected type, got %s", p.current.kind),
+				}
 			}
 		}
+
 	}
 	return
 }
