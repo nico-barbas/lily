@@ -259,7 +259,7 @@ parse_range_stmt :: proc(p: ^Parser) -> (result: ^Range_Statement, err: Error) {
 	result.token = p.current
 	name_token := consume_token(p)
 	if name_token.kind == .Identifier {
-		result.iterator_name = name_token.text
+		result.iterator_name = name_token
 		match_token_kind_next(p, .In) or_return
 		consume_token(p)
 		result.low = parse_expr(p, .Lowest) or_return
@@ -312,7 +312,7 @@ parse_var_decl :: proc(p: ^Parser) -> (result: ^Var_Declaration, err: Error) {
 	result.token = p.current
 	name_token := consume_token(p)
 	if name_token.kind == .Identifier {
-		result.identifier = name_token.text
+		result.identifier = name_token
 		next := consume_token(p)
 		#partial switch next.kind {
 		case .Assign:
@@ -375,7 +375,7 @@ parse_fn_decl :: proc(p: ^Parser) -> (result: ^Fn_Declaration, err: Error) {
 	result = new(Fn_Declaration)
 	name_token := consume_token(p)
 	if name_token.kind == .Identifier {
-		result.identifier = name_token.text
+		result.identifier = name_token
 		match_token_kind_next(p, .Open_Paren) or_return
 
 		// We check if the function has parameters or not 
@@ -383,12 +383,13 @@ parse_fn_decl :: proc(p: ^Parser) -> (result: ^Fn_Declaration, err: Error) {
 		// If it has, we loop and gather all their relevant data (name and type expression) 
 		case .Identifier:
 			params: for {
+				param: Typed_Identifier
 				match_token_kind_next(p, .Identifier) or_return
-				result.parameters[result.param_count].name = p.current.text
+				param.name = p.current
 				match_token_kind_next(p, .Colon) or_return
 				consume_token(p)
-				result.parameters[result.param_count].type_expr = parse_expr(p, .Lowest) or_return
-				result.param_count += 1
+				param.type_expr = parse_expr(p, .Lowest) or_return
+				append(&result.parameters, param)
 
 				#partial switch p.current.kind {
 				case .Comma:
@@ -464,7 +465,7 @@ parse_type_decl :: proc(p: ^Parser) -> (result: ^Type_Declaration, err: Error) {
 	result = new_clone(Type_Declaration{token = p.current})
 	name_token := consume_token(p)
 	if name_token.kind == .Identifier {
-		result.identifier = name_token.text
+		result.identifier = name_token
 		match_token_kind_next(p, .Is) or_return
 		result.is_token = p.current
 		consume_token(p)
@@ -519,7 +520,7 @@ parse_expr :: proc(p: ^Parser, prec: Precedence) -> (result: Expression, err: Er
 
 parse_identifier :: proc(p: ^Parser) -> (result: Expression, err: Error) {
 	err = nil
-	result = new_clone(Identifier_Expression{name = p.previous.text})
+	result = new_clone(Identifier_Expression{name = p.previous})
 	return
 }
 

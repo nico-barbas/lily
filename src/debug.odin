@@ -154,7 +154,7 @@ print_node :: proc(p: ^AST_Printer, node: Node) {
 		increment(p)
 		{
 			write_line(p, "Iterator identifier name: ")
-			write(p, n.iterator_name)
+			write(p, n.iterator_name.text)
 			write_line(p, "Operator: ")
 			fmt.sbprint(&p.builder, n.op)
 			write_line(p, "Low: ")
@@ -170,7 +170,7 @@ print_node :: proc(p: ^AST_Printer, node: Node) {
 		increment(p)
 		{
 			write_line(p, "Identifier name: ")
-			write(p, n.identifier)
+			write(p, n.identifier.text)
 			write_line(p, "Type: ")
 			print_expr(p, n.type_expr)
 			write_line(p, "Expression: ")
@@ -183,13 +183,13 @@ print_node :: proc(p: ^AST_Printer, node: Node) {
 		increment(p)
 		{
 			write_line(p, "Identifier name: ")
-			write(p, n.identifier)
+			write(p, n.identifier.text)
 			write_line(p, "Parameters: ")
 			increment(p)
-			for i in 0 ..< n.param_count {
+			for param in n.parameters {
 				write_line(p)
-				fmt.sbprintf(&p.builder, "Name: %s, Type: ", n.parameters[i].name)
-				print_expr(p, n.parameters[i].type_expr)
+				fmt.sbprintf(&p.builder, "Name: %s, Type: ", param.name)
+				print_expr(p, param.type_expr)
 			}
 			decrement(p)
 			write_line(p, "Return type: ")
@@ -204,7 +204,7 @@ print_node :: proc(p: ^AST_Printer, node: Node) {
 		increment(p)
 		{
 			write_line(p, "Identifier name: ")
-			write(p, n.identifier)
+			write(p, n.identifier.text)
 			write_line(p, "Type name: ")
 			print_expr(p, n.type_expr)
 		}

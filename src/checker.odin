@@ -1,6 +1,6 @@
 package lily
 
-// import "core:fmt"
+import "core:fmt"
 
 // Type_ID :: distinct int
 // // INVALID_TYPE_ID :: -1
@@ -569,10 +569,18 @@ package lily
 //////////////
 
 Type_ID :: distinct int
+UNTYPED_ID :: 0
+NUMBER_ID :: 1
+BOOL_ID :: 2
+STRING_ID :: 3
+
 
 Type_Info :: struct {
-	name:    string,
-	type_id: Type_ID,
+	name:               string,
+	type_id:            Type_ID,
+	underlying_type_id: union {
+		Type_ID,
+	},
 }
 
 // Here a scope is only used to gather symbol defintions 
@@ -582,8 +590,10 @@ Semantic_Scope :: struct {
 }
 
 Checker :: struct {
-	modules: [dynamic]^Checked_Module,
-	scope:   ^Semantic_Scope,
+	modules:         [dynamic]^Checked_Module,
+	builtin_symbols: [4]string,
+	builtin_types:   [4]Type_Info,
+	type_id_ptr:     Type_ID,
 }
 
 // In Lily, type and function declaration is only 
@@ -596,7 +606,10 @@ Checked_Module :: struct {
 	classes:     [dynamic]Checked_Node,
 	types:       [dynamic]Type_Info,
 	type_lookup: map[string]^Type_Info,
-	type_count:  int,
+
+	// symbols
+	scope:       ^Semantic_Scope,
+	scope_depth: int,
 }
 
 Checked_Expression :: struct {
@@ -604,7 +617,17 @@ Checked_Expression :: struct {
 	type_id: Type_ID,
 }
 
-Checked_Node :: union {}
+Checked_Node :: union {
+	^Checked_Expression_Statement,
+	^Checked_Block_Statement,
+	^Checked_Assigment_Statement,
+	^Checked_If_Statement,
+	^Checked_Range_Statement,
+	^Checked_Var_Declaration,
+	^Checked_Fn_Declaration,
+	^Checked_Type_Declaration,
+	^Checked_Class_Declaration,
+}
 
 Checked_Expression_Statement :: struct {
 	token: Token,
@@ -674,4 +697,296 @@ Checked_Class_Declaration :: struct {
 		name:    string,
 		type_id: Type_ID,
 	},
+}
+
+// Procedures
+
+new_checker :: proc() -> ^Checker {
+	c := new_clone(
+		Checker{
+			modules = make([dynamic]^Checked_Module),
+			builtin_symbols = {"number", "string", "bool", "untyped"},
+			builtin_types = {
+				{name = "untyped", type_id = UNTYPED_ID},
+				{name = "number", type_id = NUMBER_ID},
+				{name = "bool", type_id = BOOL_ID},
+				{name = "string", type_id = STRING_ID},
+			},
+		},
+	)
+	return c
+}
+
+new_module :: proc() -> ^Checked_Module {
+	return new_clone(
+		Checked_Module{
+			nodes = make([dynamic]Checked_Node),
+			functions = make([dynamic]Checked_Node),
+			classes = make([dynamic]Checked_Node),
+			types = make([dynamic]Type_Info),
+			type_lookup = make(map[string]^Type_Info),
+			scope = new_scope(),
+		},
+	)
+}
+
+new_scope :: proc() -> ^Semantic_Scope {
+	scope := new(Semantic_Scope)
+	scope.symbols = make([dynamic]string)
+	return scope
+}
+
+delete_scope :: proc(s: ^Semantic_Scope) {
+	delete(s.symbols)
+	free(s)
+}
+
+push_scope :: proc(m: ^Checked_Module) {
+	scope := new_scope()
+	scope.parent = m.scope
+	m.scope = scope
+	m.scope_depth += 1
+}
+
+pop_scope :: proc(m: ^Checked_Module) {
+	s := m.scope
+	m.scope = s.parent
+	delete_scope(s)
+	m.scope_depth -= 1
+}
+
+contain_symbol :: proc(c: ^Checker, m: ^Checked_Module, token: Token) -> bool {
+	builtins: for name in c.builtin_symbols {
+		if name == token.text {
+			return true
+		}
+	}
+
+	scope := m.scope
+	find: for scope != nil {
+		for name in scope.symbols {
+			if name == token.text {
+				return true
+			}
+		}
+		scope = scope.parent
+	}
+
+	return false
+}
+
+add_symbol :: proc(c: ^Checker, m: ^Checked_Module, token: Token) -> (err: Error) {
+	if contain_symbol(c, m, token) {
+		return Semantic_Error{
+			kind = .Redeclared_Symbol,
+			token = token,
+			details = fmt.tprintf("Redeclared symbol: %s", token.text),
+		}
+	}
+
+	append(&m.scope.symbols, token.text)
+	return
+}
+
+contain_type :: proc(c: ^Checker, m: ^Checked_Module, t: Type_Info) -> bool {
+	for type_info in c.builtin_types {
+		if t.type_id == type_info.type_id {
+			return true
+		}
+	}
+
+	if type_info, exist := m.type_lookup[t.name]; exist {
+		if t.type_id == type_info.type_id {
+			return true
+		}
+	}
+
+	return false
+}
+
+add_type :: proc(c: ^Checker, m: ^Checked_Module, t: Type_Info) -> (err: Error) {
+	append(&m.types, t)
+	m.type_lookup[t.name] = &m.types[len(m.types) - 1]
+	return
+}
+
+get_type :: proc(c: ^Checker, m: ^Checked_Module, name: string) -> Type_Info {
+	for type_info in c.builtin_types {
+		if type_info.name == name {
+			return type_info
+		}
+	}
+	return m.type_lookup[name]^
+}
+
+gen_type_id :: proc(c: ^Checker) -> Type_ID {
+	c.type_id_ptr += 1
+	return c.type_id_ptr - 1
+}
+
+check_module :: proc(c: ^Checker, m: ^Parsed_Module) -> (result: ^Checked_Module, err: Error) {
+	// Create a new module and add all the file level declaration symbols
+	module := new_module()
+	// The type symbols need to be added first
+	for node in m.nodes {
+		if n, ok := node.(^Type_Declaration); ok {
+			add_symbol(c, module, n.identifier) or_return
+		}
+	}
+
+	for node in m.nodes {
+		#partial switch n in node {
+		case ^Var_Declaration:
+			add_symbol(c, module, n.identifier) or_return
+		case ^Fn_Declaration:
+			add_symbol(c, module, n.identifier) or_return
+		}
+	}
+
+	// After all the declaration have been gathered, we resolve symbols
+	// in the inner expressions and scopes
+
+	for node in m.nodes {
+		check_node_symbols(c, module, node) or_return
+	}
+
+	// Resolve the types:
+	// Gather all the type declaration and generate type info for them
+	// Store those in the module type infos
+	// And then we can start to solve the types in each node and expression
+
+	for node in m.nodes {
+		#partial switch n in node {
+		case ^Type_Declaration:
+			add_type(c, module, Type_Info{name = n.identifier.text})
+		}
+	}
+	return
+}
+
+check_node_symbols :: proc(c: ^Checker, m: ^Checked_Module, node: Node) -> (err: Error) {
+	switch n in node {
+	case ^Expression_Statement:
+		check_expr_symbols(c, m, n.expr) or_return
+
+	case ^Block_Statement:
+		for block_node in n.nodes {
+			check_node_symbols(c, m, block_node) or_return
+		}
+
+	case ^Assignment_Statement:
+		check_expr_symbols(c, m, n.left) or_return
+		check_expr_symbols(c, m, n.right) or_return
+
+	case ^If_Statement:
+		check_expr_symbols(c, m, n.condition) or_return
+		check_node_symbols(c, m, n.body) or_return
+		if n.next_branch != nil {
+			check_node_symbols(c, m, n.next_branch) or_return
+		}
+
+	case ^Range_Statement:
+		if contain_symbol(c, m, n.iterator_name) {
+			err = Semantic_Error {
+				kind    = .Redeclared_Symbol,
+				token   = n.token,
+				details = fmt.tprintf("Redeclaration of '%s'", n.iterator_name.text),
+			}
+			return
+		}
+		check_expr_symbols(c, m, n.low) or_return
+		check_expr_symbols(c, m, n.high) or_return
+		check_node_symbols(c, m, n.body) or_return
+
+	case ^Var_Declaration:
+		if m.scope_depth > 0 {
+			if contain_symbol(c, m, n.identifier) {
+				err = Semantic_Error {
+					kind    = .Redeclared_Symbol,
+					token   = n.identifier,
+					details = fmt.tprintf("Redeclaration of '%s'", n.identifier.text),
+				}
+				return
+			}
+			add_symbol(c, m, n.identifier) or_return
+		}
+		check_expr_symbols(c, m, n.type_expr) or_return
+		check_expr_symbols(c, m, n.expr) or_return
+
+	case ^Fn_Declaration:
+		// No need to check for function symbol declaration since 
+		// functions can only be declared at the file scope
+		push_scope(m)
+		add_symbol(c, m, Token{text = "result"}) or_return
+		for param in n.parameters {
+			if contain_symbol(c, m, param.name) {
+				err = Semantic_Error {
+					kind    = .Redeclared_Symbol,
+					token   = param.name,
+					details = fmt.tprintf("Redeclaration of '%s'", param.name.text),
+				}
+				return
+			}
+			add_symbol(c, m, param.name) or_return
+			check_expr_symbols(c, m, param.type_expr) or_return
+		}
+		check_node_symbols(c, m, n.body) or_return
+		check_expr_symbols(c, m, n.return_type_expr) or_return
+
+	case ^Type_Declaration:
+		if n.is_alias {
+			check_expr_symbols(c, m, n.type_expr) or_return
+		} else {
+			// Branch for class declaration
+		}
+	}
+	return
+}
+
+check_expr_symbols :: proc(c: ^Checker, m: ^Checked_Module, expr: Expression) -> (err: Error) {
+	switch e in expr {
+	case ^Literal_Expression:
+	// No symbols to check
+
+	case ^String_Literal_Expression:
+	// No symbols to check
+
+	case ^Array_Literal_Expression:
+		// Check that the array specialization is of a known type
+		check_expr_symbols(c, m, e.type_expr) or_return
+		// Check all the inlined elements of the array
+		for value in e.values {
+			check_expr_symbols(c, m, value) or_return
+		}
+
+	case ^Unary_Expression:
+		check_expr_symbols(c, m, e.expr) or_return
+
+	case ^Binary_Expression:
+		check_expr_symbols(c, m, e.left) or_return
+		check_expr_symbols(c, m, e.right) or_return
+
+	case ^Identifier_Expression:
+		if !contain_symbol(c, m, e.name) {
+			err = Semantic_Error {
+				kind    = .Unknown_Symbol,
+				details = fmt.tprintf("Unknown symbol: %s", e.name),
+			}
+		}
+
+	case ^Index_Expression:
+		check_expr_symbols(c, m, e.left) or_return
+		check_expr_symbols(c, m, e.index) or_return
+
+	case ^Call_Expression:
+		check_expr_symbols(c, m, e.func) or_return
+		for i in 0 ..< e.arg_count {
+			check_expr_symbols(c, m, e.args[i]) or_return
+		}
+
+	case ^Array_Type:
+		check_expr_symbols(c, m, e.elem_type) or_return
+
+	}
+	return
 }

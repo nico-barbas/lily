@@ -19,6 +19,7 @@ Semantic_Error :: struct {
 		Invalid_Symbol,
 		Unknown_Symbol,
 		Redeclared_Symbol,
+		Redeclared_Type,
 		Mismatched_Types,
 		Invalid_Arg_Count,
 		Invalid_Type_Operation,

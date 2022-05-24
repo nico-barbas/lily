@@ -1,5 +1,10 @@
 package lily
 
+Typed_Identifier :: struct {
+	name:      Token,
+	type_expr: Expression,
+}
+
 Expression :: union {
 	// Value Expressions
 	^Literal_Expression,
@@ -46,10 +51,10 @@ Binary_Expression :: struct {
 }
 
 Identifier_Expression :: struct {
-	name: string,
+	name: Token,
 }
 unresolved_identifier := Identifier_Expression {
-	name = "untyped",
+	name = Token{text = "untyped"},
 }
 
 Index_Expression :: struct {
@@ -110,7 +115,7 @@ If_Statement :: struct {
 
 Range_Statement :: struct {
 	token:         Token, // the "for" token
-	iterator_name: string,
+	iterator_name: Token,
 	low:           Expression,
 	high:          Expression,
 	reverse:       bool,
@@ -120,19 +125,15 @@ Range_Statement :: struct {
 
 Var_Declaration :: struct {
 	token:       Token, // the "var" token
-	identifier:  string,
+	identifier:  Token,
 	type_expr:   Expression,
 	expr:        Expression,
 	initialized: bool,
 }
 
 Fn_Declaration :: struct {
-	identifier:       string,
-	parameters:       [5]struct {
-		name:      string,
-		type_expr: Expression,
-	},
-	param_count:      int,
+	identifier:       Token,
+	parameters:       [dynamic]Typed_Identifier,
 	body:             ^Block_Statement,
 	return_type_expr: Expression,
 }
@@ -140,12 +141,9 @@ Fn_Declaration :: struct {
 Type_Declaration :: struct {
 	token:      Token, // the "type" token
 	is_token:   Token,
-	identifier: string,
+	identifier: Token,
 	type_expr:  Expression,
 	is_alias:   bool,
-	fields:     [dynamic]struct {
-		name:      string,
-		type_expr: Expression,
-	},
+	fields:     [dynamic]Typed_Identifier,
 	// methods:    [dynamic]^Fn_Declaration,
 }
