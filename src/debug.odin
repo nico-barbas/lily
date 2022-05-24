@@ -9,7 +9,7 @@ AST_Printer :: struct {
 	indent_width: int,
 }
 
-print_ast :: proc(program: ^Program) {
+print_ast :: proc(program: ^Parsed_Module) {
 	printer := AST_Printer {
 		builder      = strings.make_builder(),
 		indent_width = 2,

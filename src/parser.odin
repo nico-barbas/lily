@@ -51,34 +51,31 @@ Precedence :: enum {
 	Highest,
 }
 
-Program :: struct {
-	source: [dynamic]string,
+Parsed_Module :: struct {
+	source: string,
 	nodes:  [dynamic]Node,
 }
 
-make_program :: proc() -> ^Program {
-	return new_clone(Program{source = make([dynamic]string), nodes = make([dynamic]Node)})
+make_module :: proc() -> ^Parsed_Module {
+	return new_clone(Parsed_Module{nodes = make([dynamic]Node)})
 }
 
-delete_program :: proc(p: ^Program) {
-	for s in p.source {
-		delete(s)
-	}
+delete_module :: proc(p: ^Parsed_Module) {
 	delete(p.source)
+	// FIXME: Free the rest of the ast
 	free(p)
 }
 
-append_to_program :: proc(i: string, program: ^Program) -> (err: Error) {
-	input := strings.clone(i)
-	append(&program.source, input)
+parse_module :: proc(i: string, mod: ^Parsed_Module) -> (err: Error) {
+	mod.source = strings.clone(i)
 	parser := Parser {
 		lexer = Lexer{},
 	}
-	set_lexer_input(&parser.lexer, input)
+	set_lexer_input(&parser.lexer, mod.source)
 	ast: for {
 		node := parse_node(&parser) or_return
 		if node != nil {
-			append(&program.nodes, node)
+			append(&mod.nodes, node)
 		} else if parser.current.kind == .EOF {
 			break ast
 		}
