@@ -575,7 +575,7 @@ BOOL_ID :: 2
 STRING_ID :: 3
 
 Type_Alias_Info :: struct {
-	underlying_type_id: Type_Info,
+	underlying_type_id: Type_ID,
 }
 
 Generic_Type_Info :: struct {
@@ -595,20 +595,6 @@ Type_Info :: struct {
 		Type_Alias_Info,
 		Generic_Type_Info,
 	},
-}
-
-
-// DESIGN NOTE: Creating a type alias T1 from T0 means:
-// - (x: T1) != (y: T0) even if the values are equal (aka creates a distinct type by default)
-// - Need a builtin "Untyped" type of native types
-is_type_equal :: proc(t0, t1: Type_Info) -> (eq: bool) {
-	switch {
-	// if t0 or/and t1 is a type alias, retrieve 
-	// the underlying Type_Info and compare them 
-	case t0.type_kind == .Type_Alias:
-	case t1.type_kind == .Type_Alias:
-	}
-	return
 }
 
 
@@ -760,15 +746,6 @@ new_checked_module :: proc() -> ^Checked_Module {
 	)
 }
 
-append_node_to_checked_module :: proc(m: ^Checked_Module, node: Checked_Node) {
-	#partial switch node {
-	case ^Checked_Fn_Declaration:
-	case ^Checked_Class_Declaration:
-	case:
-		append(&m.nodes, node)
-	}
-}
-
 new_scope :: proc() -> ^Semantic_Scope {
 	scope := new(Semantic_Scope)
 	scope.symbols = make([dynamic]string)
@@ -903,10 +880,6 @@ check_module :: proc(c: ^Checker, m: ^Parsed_Module) -> (result: ^Checked_Module
 			}
 		}
 	}
-
-	for node in m.nodes {
-		check_node_types(c, module, node) or_return	
-	}
 	return
 }
 
@@ -1035,52 +1008,4 @@ check_expr_symbols :: proc(c: ^Checker, m: ^Checked_Module, expr: Expression) ->
 
 	}
 	return
-}
-
-// TODO: Need a way to check type equality, especially for complex types
-// like generics, arrays and maps
-// FIXME: Need a way to extract the token from an expression, either at an
-// Parser level or at a Checker level
-// Checked nodes take ownership of the Parsed Expressions and produce a Checked_Node
-check_node_types :: proc(c: ^Checker, m: ^Checked_Module, node: Node) -> (result: Checked_Node, err: Error) {
-	switch n in node {
-		case ^Expression_Statement:
-			t := check_expr_types(c, m, n.expr) or_return
-			result := new_clone(Checked_Expression_Statement{
-				// token = n.
-				expr = Checked_Expression{
-					expr = n.expr,
-					type_id = t,
-				},
-			})
-	
-		case ^Block_Statement:
-			block_stmt := new_clone(Checked_Block_Statement{
-				nodes = make([dynamic]Checked_Node),
-			})
-			for block_node in n.nodes {
-				node := check_node_types(c, m, block_node) or_return
-				append(&block_stmt.nodes, node)
-			}
-	
-		case ^Assignment_Statement:
-			left := check_expr_types(c, m, n.left) or_return
-			right := check_expr_types(c, m, n.right) or_return
-
-
-	
-		case ^If_Statement:
-	
-		case ^Range_Statement:
-	
-		case ^Var_Declaration:
-	
-		case ^Fn_Declaration:
-		case ^Type_Declaration:
-		}
-		return
-}
-
-check_expr_types :: proc(c: ^Checker, m: Checked_Module, expr: Expression) -> (result: Type_Info, err: Error) {
-
 }
