@@ -574,16 +574,32 @@ NUMBER_ID :: 1
 BOOL_ID :: 2
 STRING_ID :: 3
 
+Type_Alias_Info :: struct {
+	underlying_type_id: Type_ID,
+}
+
+Generic_Type_Info :: struct {
+	spec_type_id: Type_ID,
+}
 
 Type_Info :: struct {
-	name:               string,
-	type_id:            Type_ID,
-	underlying_type_id: union {
-		Type_ID,
+	name:         string,
+	type_id:      Type_ID,
+	type_kind:    enum {
+		Builtin,
+		Simple_Type,
+		Type_Alias,
+		Generic_Type,
+	},
+	type_id_data: union {
+		Type_Alias_Info,
+		Generic_Type_Info,
 	},
 }
 
+
 // Here a scope is only used to gather symbol defintions 
+
 Semantic_Scope :: struct {
 	symbols: [dynamic]string,
 	parent:  ^Semantic_Scope,
@@ -707,17 +723,17 @@ new_checker :: proc() -> ^Checker {
 			modules = make([dynamic]^Checked_Module),
 			builtin_symbols = {"number", "string", "bool", "untyped"},
 			builtin_types = {
-				{name = "untyped", type_id = UNTYPED_ID},
-				{name = "number", type_id = NUMBER_ID},
-				{name = "bool", type_id = BOOL_ID},
-				{name = "string", type_id = STRING_ID},
+				{name = "untyped", type_id = UNTYPED_ID, type_kind = .Builtin},
+				{name = "number", type_id = NUMBER_ID, type_kind = .Builtin},
+				{name = "bool", type_id = BOOL_ID, type_kind = .Builtin},
+				{name = "string", type_id = STRING_ID, type_kind = .Builtin},
 			},
 		},
 	)
 	return c
 }
 
-new_module :: proc() -> ^Checked_Module {
+new_checked_module :: proc() -> ^Checked_Module {
 	return new_clone(
 		Checked_Module{
 			nodes = make([dynamic]Checked_Node),
@@ -826,7 +842,7 @@ gen_type_id :: proc(c: ^Checker) -> Type_ID {
 
 check_module :: proc(c: ^Checker, m: ^Parsed_Module) -> (result: ^Checked_Module, err: Error) {
 	// Create a new module and add all the file level declaration symbols
-	module := new_module()
+	module := new_checked_module()
 	// The type symbols need to be added first
 	for node in m.nodes {
 		if n, ok := node.(^Type_Declaration); ok {
@@ -843,22 +859,25 @@ check_module :: proc(c: ^Checker, m: ^Parsed_Module) -> (result: ^Checked_Module
 		}
 	}
 
-	// After all the declaration have been gathered, we resolve symbols
-	// in the inner expressions and scopes
-
+	// After all the declaration have been gathered, 
+	// we resolve the rest of the symbols in the inner expressions and scopes.
 	for node in m.nodes {
 		check_node_symbols(c, module, node) or_return
 	}
 
 	// Resolve the types:
-	// Gather all the type declaration and generate type info for them
-	// Store those in the module type infos
-	// And then we can start to solve the types in each node and expression
+	// Gather all the type declaration and generate type info for them.
+	// Store those in the module type infos.
+	// Then we can start to solve the types in each node and expression.
 
 	for node in m.nodes {
 		#partial switch n in node {
 		case ^Type_Declaration:
-			add_type(c, module, Type_Info{name = n.identifier.text})
+			if n.is_alias {
+				add_type(c, module, Type_Info{name = n.identifier.text})
+			} else {
+				assert(false, "Class not implemented yet")
+			}
 		}
 	}
 	return

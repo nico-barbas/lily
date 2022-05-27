@@ -3,11 +3,11 @@ package test
 import "core:fmt"
 import lily "../src"
 
-vm: ^lily.Vm
+// vm: ^lily.Vm
 
 main :: proc() {
-	vm = lily.new_vm()
-	defer lily.delete_vm(vm)
+	// vm = lily.new_vm()
+	// defer lily.delete_vm(vm)
 
 	playground()
 }
@@ -26,21 +26,21 @@ playground :: proc() {
 		type MyType is number
 		var bar: MyType = 4
 	`
-	program := make_program()
-	defer delete_program(program)
+	parsed_module := make_module()
+	defer delete_module(parsed_module)
 
-	err := append_to_program(input, program)
+	err := parse_module(input, parsed_module)
 
 	assert(err == nil, fmt.tprint("Failed, Error raised ->", err))
 	fmt.println(input)
-	print_ast(program)
+	print_ast(parsed_module)
 
 	checker := new_checker()
-	check_err := check_nodes(checker, program.nodes[:])
+	_, check_err := check_module(checker, parsed_module)
 	assert(check_err == nil, fmt.tprint("Failed, Error raised ->", check_err))
 
-	run_program(vm, program.nodes[:])
-	array := cast(^Array_Object)get_stack_value(vm, "foo").data.(^Object)
+	// run_program(vm, program.nodes[:])
+	// array := cast(^Array_Object)get_stack_value(vm, "foo").data.(^Object)
 
-	fmt.println(array.data)
+	// fmt.println(array.data)
 }

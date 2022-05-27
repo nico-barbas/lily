@@ -74,7 +74,7 @@ print_expr :: proc(p: ^AST_Printer, expr: Expression) {
 
 	case ^Identifier_Expression:
 		write(p, "Identifier Expression: ")
-		fmt.sbprint(&p.builder, e.name)
+		fmt.sbprint(&p.builder, e.name.text)
 
 	case ^Index_Expression:
 		write(p, "Index Expression: ")
@@ -188,7 +188,7 @@ print_node :: proc(p: ^AST_Printer, node: Node) {
 			increment(p)
 			for param in n.parameters {
 				write_line(p)
-				fmt.sbprintf(&p.builder, "Name: %s, Type: ", param.name)
+				fmt.sbprintf(&p.builder, "Name: %s, Type: ", param.name.text)
 				print_expr(p, param.type_expr)
 			}
 			decrement(p)
