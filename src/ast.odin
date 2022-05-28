@@ -32,6 +32,7 @@ String_Literal_Expression :: struct {
 }
 
 Array_Literal_Expression :: struct {
+	token:     Token, // the "array" token
 	// This is either a Identifier (for builtin types and user defined types) 
 	// or another composite type (array or map)
 	type_expr: Expression,
@@ -39,8 +40,9 @@ Array_Literal_Expression :: struct {
 }
 
 Unary_Expression :: struct {
-	expr: Expression,
-	op:   Operator,
+	token: Token,
+	expr:  Expression,
+	op:    Operator,
 }
 
 Binary_Expression :: struct {

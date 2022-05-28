@@ -570,9 +570,16 @@ import "core:fmt"
 
 Type_ID :: distinct int
 UNTYPED_ID :: 0
-NUMBER_ID :: 1
-BOOL_ID :: 2
-STRING_ID :: 3
+UNTYPED_NUMBER_ID :: 1
+UNTYPED_BOOL_ID :: 2
+UNTYPED_STRING_ID :: 3
+NUMBER_ID :: 4
+BOOL_ID :: 5
+STRING_ID :: 6
+ARRAY_ID :: 7
+
+Module_ID :: distinct int
+BUILTIN_MODULE_ID :: 0
 
 Type_Alias_Info :: struct {
 	underlying_type_id: Type_ID,
@@ -587,7 +594,7 @@ Type_Info :: struct {
 	type_id:      Type_ID,
 	type_kind:    enum {
 		Builtin,
-		Simple_Type,
+		Elementary_Type,
 		Type_Alias,
 		Generic_Type,
 	},
@@ -597,18 +604,104 @@ Type_Info :: struct {
 	},
 }
 
+is_untyped_id :: proc(t: Type_Info) -> bool {
+	return t.type_id == UNTYPED_NUMBER_ID || t.type_id == UNTYPED_NUMBER_ID || t.type_id == UNTYPED_STRING_ID
+}
+
+// In Lily, a truthy type can be of only 2 kind:
+// - of Boolean type (BOOL_ID)
+// - of a type alias with a parent of type Untyped Bool (UNTYPED_BOOL_ID)
+is_truthy_type :: proc(t: Type_Info) -> bool {
+	#partial switch t.type_kind {
+	case .Builtin:
+		if t.type_id == BOOL_ID || t.type_id == UNTYPED_BOOL_ID {
+			return true
+		}
+	case .Type_Alias:
+		parent := t.type_id_data.(Type_Alias_Info)
+		if parent.underlying_type_id == UNTYPED_BOOL_ID {
+			return true
+		}
+	}
+	return false
+}
+
+is_numerical_type :: proc(t: Type_Info) -> bool {
+	#partial switch t.type_kind {
+	case .Builtin:
+		if t.type_id == NUMBER_ID || t.type_id == UNTYPED_NUMBER_ID {
+			return true
+		}
+	case .Type_Alias:
+		parent := t.type_id_data.(Type_Alias_Info)
+		if parent.underlying_type_id == UNTYPED_NUMBER_ID {
+			return true
+		}
+	}
+	return false
+}
+
+// Rules of type aliasing:
+// - Type alias is incompatible with the parent type; a value from the parent type
+// cannot be assigned to a variable from the type alias
+// - Type alias inherits all the fields and methods of the parent
+// - Type alias conserve the same capabilities as their parent (only applicable for native types)
+// i.e: an alias of type bool can still be used for conditional (considered "truthy")  
+//
+// FIXME: Following type alias scenario should eval to true
+// type MyNumber is number
+// var foo: MyNumber = 10
+//
+// |- foo: MyNumber and |- 10: untyped number
+// Number Literal are of type "untyped number" 
+// and coherced to right type upon evaluation
+// This is the same for 
+type_equal :: proc(t0, t1: Type_Info) -> (result: bool) {
+	if t0.type_id == t1.type_id {
+		if t0.type_kind == t1.type_kind {
+			#partial switch t0.type_kind {
+			case .Generic_Type:
+				t0_generic_id := t0.type_id_data.(Generic_Type_Info)
+				t1_generic_id := t1.type_id_data.(Generic_Type_Info)
+				if t0_generic_id.spec_type_id == t1_generic_id.spec_type_id {
+					result = true
+				}
+			case:
+				result = true
+			}
+		} else {
+			assert(false, "Invalid type equality branch")
+		}
+	} else if t0.type_kind == .Type_Alias || t1.type_kind == .Type_Alias {
+		alias: Type_Alias_Info
+		other: Type_Info
+		if t0.type_kind == .Type_Alias {
+			alias = t0.type_id_data.(Type_Alias_Info)
+			other = t1
+		} else {
+			alias = t1.type_id_data.(Type_Alias_Info)
+			other = t0
+		}
+		if is_untyped_id(other) {
+			result = alias.underlying_type_id == other.type_id
+		}
+	}
+	return
+}
+
 
 // Here a scope is only used to gather symbol defintions 
 
 Semantic_Scope :: struct {
-	symbols: [dynamic]string,
-	parent:  ^Semantic_Scope,
+	symbols:        [dynamic]string,
+	variable_types: map[string]Type_Info,
+	parent:         ^Semantic_Scope,
 }
 
 Checker :: struct {
 	modules:         [dynamic]^Checked_Module,
-	builtin_symbols: [4]string,
-	builtin_types:   [4]Type_Info,
+	builtin_symbols: [7]string,
+	builtin_types:   [7]Type_Info,
 	type_id_ptr:     Type_ID,
 }
 
@@ -746,9 +839,19 @@ new_checked_module :: proc() -> ^Checked_Module {
 	)
 }
 
+append_node_to_checked_module :: proc(m: ^Checked_Module, node: Checked_Node) {
+	#partial switch n in node {
+	case ^Checked_Fn_Declaration:
+	case ^Checked_Class_Declaration:
+	case:
+		append(&m.nodes, n)
+	}
+}
+
 new_scope :: proc() -> ^Semantic_Scope {
 	scope := new(Semantic_Scope)
 	scope.symbols = make([dynamic]string)
+	scope.variable_types = make(map[string]Type_Info)
 	return scope
 }
 
@@ -1006,6 +1109,132 @@ check_expr_symbols :: proc(c: ^Checker, m: ^Checked_Module, expr: Expression) ->
 	case ^Array_Type:
 		check_expr_symbols(c, m, e.elem_type) or_return
 
+	}
+	return
+}
+
+
+// FIXME: Need a way to extract the token from an expression, either at an
+// Parser level or at a Checker level
+// Checked nodes take ownership of the Parsed Expressions and produce a Checked_Node
+check_node_types :: proc(c: ^Checker, m: ^Checked_Module, node: Node) -> (
+	result: Checked_Node,
+	err: Error,
+) {
+	switch n in node {
+	case ^Expression_Statement:
+		t := check_expr_types(c, m, n.expr) or_return
+		result := new_clone(Checked_Expression_Statement{})
+
+	case ^Block_Statement:
+		block_stmt := new_clone(Checked_Block_Statement{nodes = make([dynamic]Checked_Node)})
+		for block_node in n.nodes {
+			node := check_node_types(c, m, block_node) or_return
+			append(&block_stmt.nodes, node)
+		}
+
+	case ^Assignment_Statement:
+		left := check_expr_types(c, m, n.left) or_return
+		right := check_expr_types(c, m, n.right) or_return
+
+
+	case ^If_Statement:
+
+	case ^Range_Statement:
+
+	case ^Var_Declaration:
+
+	case ^Fn_Declaration:
+	case ^Type_Declaration:
+	}
+	return
+}
+
+check_expr_types :: proc(c: ^Checker, m: ^Checked_Module, expr: Expression) -> (
+	result: Type_Info,
+	err: Error,
+) {
+	switch e in expr {
+	case ^Literal_Expression:
+		#partial switch e.value.kind {
+		case .Number:
+			result = c.builtin_types[UNTYPED_NUMBER_ID]
+		case .Boolean:
+			result = c.builtin_types[UNTYPED_BOOL_ID]
+		case:
+			assert(false, "Probably erroneous path for Literal_Expression in  check_expr_types procedure")
+		}
+
+	case ^String_Literal_Expression:
+		result = c.builtin_types[UNTYPED_STRING_ID]
+
+	case ^Array_Literal_Expression:
+		inner_type := check_expr_types(c, m, e.type_expr) or_return
+		result = Type_Info {
+			name = "array",
+			type_id = ARRAY_ID,
+			type_kind = .Generic_Type,
+			type_id_data = Generic_Type_Info{spec_type_id = inner_type.type_id},
+		}
+		for element in e.values {
+			elem_type := check_expr_types(c, m, element) or_return
+			if !type_equal(inner_type, elem_type) {
+				err = Semantic_Error {
+					kind    = .Mismatched_Types,
+					token   = e.token,
+					details = fmt.tprintf("Expected %s, got %s", inner_type.name, elem_type.name),
+				}
+			}
+		}
+
+	case ^Unary_Expression:
+		result = check_expr_types(c, m, e.expr) or_return
+		#partial switch e.op {
+		// Expression must be of "truthy" type
+		case .Not_Op:
+			if !is_truthy_type(result) {
+				err = Semantic_Error {
+					kind    = .Mismatched_Types,
+					token   = e.token,
+					details = fmt.tprintf("Expected %s, got %s", c.builtin_types[BOOL_ID].name, result.name),
+				}
+			}
+
+		// Expression must be of numerical type
+		case .Minus_Op:
+			if !is_numerical_type(result) {
+				err = Semantic_Error {
+					kind    = .Mismatched_Types,
+					token   = e.token,
+					details = fmt.tprintf("Expected %s, got %s", c.builtin_types[NUMBER_ID].name, result.name),
+				}
+			}
+		case:
+			assert(false)
+		}
+
+	case ^Binary_Expression:
+		left := check_expr_types(c, m, e.left) or_return
+		right := check_expr_types(c, m, e.right) or_return
+		if !type_equal(left, right) {
+			err = Semantic_Error {
+				kind    = .Mismatched_Types,
+				token   = e.token,
+				details = fmt.tprintf(
+					"Left expression of type %s, right expression of type %s",
+					left.name,
+					right.name,
+				),
+			}
+		}
+
+	case ^Identifier_Expression:
+
+	case ^Index_Expression:
+
+	case ^Call_Expression:
+
+	case ^Array_Type:
 	}
 	return
 }
