@@ -2,6 +2,8 @@ package lily
 
 import "core:fmt"
 
+// TODO: Embed the module ID inside the Type_ID
+
 Type_ID :: distinct int
 UNTYPED_ID :: 0
 UNTYPED_NUMBER_ID :: 1
@@ -13,6 +15,52 @@ STRING_ID :: 6
 FN_ID :: 7
 ARRAY_ID :: 8
 BUILT_IN_ID_COUNT :: ARRAY_ID + 1
+
+UNTYPED_INFO :: Type_Info {
+	name      = "untyped",
+	type_id   = UNTYPED_ID,
+	type_kind = .Builtin,
+}
+UNTYPED_NUMBER_INFO :: Type_Info {
+	name      = "untyped number",
+	type_id   = UNTYPED_NUMBER_ID,
+	type_kind = .Builtin,
+}
+UNTYPED_BOOL_INFO :: Type_Info {
+	name      = "untyped bool",
+	type_id   = UNTYPED_BOOL_ID,
+	type_kind = .Builtin,
+}
+UNTYPED_STRING_INFO :: Type_Info {
+	name      = "untyped string",
+	type_id   = UNTYPED_STRING_ID,
+	type_kind = .Builtin,
+}
+NUMBER_INFO :: Type_Info {
+	name      = "number",
+	type_id   = NUMBER_ID,
+	type_kind = .Builtin,
+}
+BOOL_INFO :: Type_Info {
+	name      = "bool",
+	type_id   = BOOL_ID,
+	type_kind = .Builtin,
+}
+STRING_INFO :: Type_Info {
+	name      = "string",
+	type_id   = STRING_ID,
+	type_kind = .Builtin,
+}
+FN_INFO :: Type_Info {
+	name      = "fn",
+	type_id   = FN_ID,
+	type_kind = .Builtin,
+}
+ARRAY_INFO :: Type_Info {
+	name      = "array",
+	type_id   = ARRAY_ID,
+	type_kind = .Builtin,
+}
 
 Module_ID :: distinct int
 BUILTIN_MODULE_ID :: 0
@@ -48,7 +96,7 @@ Type_Info :: struct {
 }
 
 is_untyped_id :: proc(t: Type_Info) -> bool {
-	return t.type_id == UNTYPED_NUMBER_ID || t.type_id == UNTYPED_NUMBER_ID || t.type_id == UNTYPED_STRING_ID
+	return t.type_id == UNTYPED_NUMBER_ID || t.type_id == UNTYPED_BOOL_ID || t.type_id == UNTYPED_STRING_ID
 }
 
 // In Lily, a truthy type can be of only 2 kind:
@@ -91,15 +139,14 @@ is_numerical_type :: proc(t: Type_Info) -> bool {
 // - Type alias conserve the same capabilities as their parent (only applicable for native types)
 // i.e: an alias of type bool can still be used for conditional (considered "truthy")  
 //
-// FIXME: Following type alias scenario should eval to true
+// EXAMPLE: Following type alias scenario should eval to true
 // type MyNumber is number
 // var foo: MyNumber = 10
 //
 // |- foo: MyNumber and |- 10: untyped number
 // Number Literal are of type "untyped number" 
 // and coherced to right type upon evaluation
-// This is the same for 
-type_equal :: proc(t0, t1: Type_Info) -> (result: bool) {
+type_equal :: proc(c: ^Checker, t0, t1: Type_Info) -> (result: bool) {
 	if t0.type_id == t1.type_id {
 		if t0.type_kind == t1.type_kind {
 			#partial switch t0.type_kind {
@@ -125,9 +172,29 @@ type_equal :: proc(t0, t1: Type_Info) -> (result: bool) {
 			alias = t1.type_id_data.(Type_Alias_Info)
 			other = t0
 		}
-		if is_untyped_id(other) {
-			result = alias.underlying_type_id == other.type_id
+		parent_type := get_type_from_id(c, alias.underlying_type_id)
+		result = type_equal(c, parent_type, other)
+
+	} else if is_untyped_id(t0) || is_untyped_id(t1) {
+		untyped_t: Type_Info
+		typed_t: Type_Info
+		other: Type_Info
+		if is_untyped_id(t0) {
+			untyped_t = t0
+			other = t1
+		} else {
+			untyped_t = t1
+			other = t0
 		}
+		switch untyped_t.type_id {
+		case UNTYPED_NUMBER_ID:
+			typed_t = NUMBER_INFO
+		case UNTYPED_BOOL_ID:
+			typed_t = BOOL_INFO
+		case UNTYPED_STRING_ID:
+			typed_t = STRING_INFO
+		}
+		result = type_equal(c, typed_t, other)
 	}
 	return
 }
@@ -159,7 +226,7 @@ Checked_Module :: struct {
 	classes:     [dynamic]Checked_Node,
 	// types:       [dynamic]Type_Info,
 	type_lookup: map[string]Type_Info,
-	// type_count:  int,
+	type_count:  int,
 
 	// symbols
 	scope:       ^Semantic_Scope,
@@ -259,53 +326,18 @@ new_checker :: proc() -> ^Checker {
 		Checker{
 			modules = make([dynamic]^Checked_Module),
 			builtin_symbols = {"untyped", "number", "string", "bool", "array"},
+			type_id_ptr = BUILT_IN_ID_COUNT,
 		},
 	)
-	c.builtin_types[UNTYPED_ID] = {
-		name      = "untyped",
-		type_id   = UNTYPED_ID,
-		type_kind = .Builtin,
-	}
-	c.builtin_types[UNTYPED_NUMBER_ID] = {
-		name      = "untyped number",
-		type_id   = UNTYPED_NUMBER_ID,
-		type_kind = .Builtin,
-	}
-	c.builtin_types[UNTYPED_BOOL_ID] = {
-		name      = "untyped bool",
-		type_id   = UNTYPED_BOOL_ID,
-		type_kind = .Builtin,
-	}
-	c.builtin_types[UNTYPED_STRING_ID] = {
-		name      = "untyped string",
-		type_id   = UNTYPED_STRING_ID,
-		type_kind = .Builtin,
-	}
-	c.builtin_types[NUMBER_ID] = {
-		name      = "number",
-		type_id   = NUMBER_ID,
-		type_kind = .Builtin,
-	}
-	c.builtin_types[BOOL_ID] = {
-		name      = "bool",
-		type_id   = BOOL_ID,
-		type_kind = .Builtin,
-	}
-	c.builtin_types[STRING_ID] = {
-		name      = "string",
-		type_id   = STRING_ID,
-		type_kind = .Builtin,
-	}
-	c.builtin_types[FN_ID] = {
-		name      = "fn",
-		type_id   = FN_ID,
-		type_kind = .Builtin,
-	}
-	c.builtin_types[ARRAY_ID] = {
-		name      = "array",
-		type_id   = ARRAY_ID,
-		type_kind = .Builtin,
-	}
+	c.builtin_types[UNTYPED_ID] = UNTYPED_INFO
+	c.builtin_types[UNTYPED_NUMBER_ID] = UNTYPED_NUMBER_INFO
+	c.builtin_types[UNTYPED_BOOL_ID] = UNTYPED_BOOL_INFO
+	c.builtin_types[UNTYPED_STRING_ID] = STRING_INFO
+	c.builtin_types[NUMBER_ID] = NUMBER_INFO
+	c.builtin_types[BOOL_ID] = BOOL_INFO
+	c.builtin_types[STRING_ID] = STRING_INFO
+	c.builtin_types[FN_ID] = FN_INFO
+	c.builtin_types[ARRAY_ID] = ARRAY_INFO
 	return c
 }
 
@@ -398,25 +430,23 @@ set_variable_type :: proc(m: ^Checked_Module, name: string, t: Type_Info) {
 	m.scope.variable_types[name] = t
 }
 
-// contain_type :: proc(c: ^Checker, m: ^Checked_Module, t: Type_Info) -> bool {
-// 	for type_info in c.builtin_types {
-// 		if t.type_id == type_info.type_id {
-// 			return true
-// 		}
-// 	}
 
-// 	if type_info, exist := m.type_lookup[t.name]; exist {
-// 		if t.type_id == type_info.type_id {
-// 			return true
-// 		}
-// 	}
+add_type_alias :: proc(c: ^Checker, m: ^Checked_Module, name: Token, parent_type: Type_ID) {
+	m.type_lookup[name.text] = Type_Info {
+		name = name.text,
+		type_id = gen_type_id(c),
+		type_kind = .Type_Alias,
+		type_id_data = Type_Alias_Info{underlying_type_id = parent_type},
+	}
+	m.type_count += 1
+}
 
-// 	return false
-// }
-
-add_type :: proc(c: ^Checker, m: ^Checked_Module, t: Type_Info) -> (err: Error) {
-	m.type_lookup[t.name] = t
-	return
+update_type_alias :: proc(c: ^Checker, m: ^Checked_Module, name: Token, parent_type: Type_ID) {
+	t := m.type_lookup[name.text]
+	t.type_id_data = Type_Alias_Info {
+		underlying_type_id = parent_type,
+	}
+	m.type_lookup[name.text] = t
 }
 
 // FIXME: Needs a code review. Does not check all the available modules
@@ -424,9 +454,11 @@ get_type :: proc(c: ^Checker, m: ^Checked_Module, name: string) -> (
 	result: Type_Info,
 	exist: bool,
 ) {
-	for type_info in c.builtin_types {
-		if type_info.name == name {
-			return type_info, true
+	for info in c.builtin_types {
+		if info.name == name {
+			result = info
+			exist = true
+			return
 		}
 	}
 	result, exist = m.type_lookup[name]
@@ -434,12 +466,24 @@ get_type :: proc(c: ^Checker, m: ^Checked_Module, name: string) -> (
 }
 
 // FIXME: Doesn't support multiple modules
-get_type_from_id :: proc(c: ^Checker, m: ^Checked_Module, id: Type_ID) -> (result: Type_Info) {
+get_type_from_id :: proc(c: ^Checker, id: Type_ID) -> (result: Type_Info) {
 	switch {
 	case id < BUILT_IN_ID_COUNT:
 		result = c.builtin_types[id]
 	case:
-
+		ptr: int = BUILT_IN_ID_COUNT
+		for module in c.modules {
+			rel_id := int(id) - ptr
+			if rel_id <= module.type_count {
+				for _, info in module.type_lookup {
+					if info.type_id == id {
+						result = info
+						break
+					}
+				}
+				break
+			}
+		}
 	}
 	return
 }
@@ -463,6 +507,7 @@ get_variable_type :: proc(m: ^Checked_Module, name: string) -> (result: Type_Inf
 			contains = true
 			break
 		}
+		current = current.parent
 	}
 	return
 }
@@ -483,6 +528,7 @@ gen_type_id :: proc(c: ^Checker) -> Type_ID {
 check_module :: proc(c: ^Checker, m: ^Parsed_Module) -> (module: ^Checked_Module, err: Error) {
 	// Create a new module and add all the file level declaration symbols
 	module = new_checked_module()
+	append(&c.modules, module)
 	// The type symbols need to be added first
 	for node in m.nodes {
 		if n, ok := node.(^Type_Declaration); ok {
@@ -514,7 +560,19 @@ check_module :: proc(c: ^Checker, m: ^Parsed_Module) -> (module: ^Checked_Module
 		#partial switch n in node {
 		case ^Type_Declaration:
 			if n.is_alias {
-				add_type(c, module, Type_Info{name = n.identifier.text})
+				add_type_alias(c, module, n.identifier, UNTYPED_ID)
+			} else {
+				assert(false, "Class not implemented yet")
+			}
+		}
+	}
+
+	for node in m.nodes {
+		#partial switch n in node {
+		case ^Type_Declaration:
+			if n.is_alias {
+				parent_type := check_expr_types(c, module, n.type_expr) or_return
+				update_type_alias(c, module, n.identifier, parent_type.type_id)
 			} else {
 				assert(false, "Class not implemented yet")
 			}
@@ -688,7 +746,7 @@ check_node_types :: proc(c: ^Checker, m: ^Checked_Module, node: Node) -> (
 	case ^Assignment_Statement:
 		left := check_expr_types(c, m, n.left) or_return
 		right := check_expr_types(c, m, n.right) or_return
-		if !type_equal(left, right) {
+		if !type_equal(c, left, right) {
 			err = Semantic_Error {
 				kind    = .Mismatched_Types,
 				token   = n.token,
@@ -741,7 +799,7 @@ check_node_types :: proc(c: ^Checker, m: ^Checked_Module, node: Node) -> (
 		//push scope
 		low := check_expr_types(c, m, n.low) or_return
 		high := check_expr_types(c, m, n.high) or_return
-		if !type_equal(low, high) {
+		if !type_equal(c, low, high) {
 			err = Semantic_Error {
 				kind  = .Mismatched_Types,
 				token = n.token,
@@ -767,22 +825,21 @@ check_node_types :: proc(c: ^Checker, m: ^Checked_Module, node: Node) -> (
 		value_type := check_expr_types(c, m, n.expr) or_return
 
 		// we check if the type needs to be infered
-		if type_equal(var_type, c.builtin_types[UNTYPED_ID]) {
+		if type_equal(c, var_type, c.builtin_types[UNTYPED_ID]) {
 			// add the var to the environment's scope
-			infered_type: Type_Info
 			switch {
-			case type_equal(value_type, c.builtin_types[UNTYPED_NUMBER_ID]):
-				infered_type = c.builtin_types[NUMBER_ID]
-			case type_equal(value_type, c.builtin_types[UNTYPED_BOOL_ID]):
-				infered_type = c.builtin_types[BOOL_ID]
-			case type_equal(value_type, c.builtin_types[UNTYPED_STRING_ID]):
-				infered_type = c.builtin_types[STRING_ID]
+			case type_equal(c, value_type, c.builtin_types[UNTYPED_NUMBER_ID]):
+				var_type = c.builtin_types[NUMBER_ID]
+			case type_equal(c, value_type, c.builtin_types[UNTYPED_BOOL_ID]):
+				var_type = c.builtin_types[BOOL_ID]
+			case type_equal(c, value_type, c.builtin_types[UNTYPED_STRING_ID]):
+				var_type = c.builtin_types[STRING_ID]
 			case:
-				infered_type = value_type
+				var_type = value_type
 			}
-			set_variable_type(m, n.identifier.text, infered_type)
+			set_variable_type(m, n.identifier.text, var_type)
 		} else {
-			if !type_equal(var_type, value_type) {
+			if !type_equal(c, var_type, value_type) {
 				err = Semantic_Error {
 					kind    = .Mismatched_Types,
 					token   = n.token,
@@ -790,11 +847,12 @@ check_node_types :: proc(c: ^Checker, m: ^Checked_Module, node: Node) -> (
 				}
 			}
 		}
+		set_variable_type(m, n.identifier.text, var_type)
 		result = new_clone(
 			Checked_Var_Declaration{
 				token = n.token,
 				identifier = n.identifier,
-				type_info = value_type,
+				type_info = var_type,
 				expr = checked_expresssion(n.expr, value_type),
 				initialized = n.initialized,
 			},
@@ -826,16 +884,14 @@ check_expr_types :: proc(c: ^Checker, m: ^Checked_Module, expr: Expression) -> (
 		result = c.builtin_types[UNTYPED_STRING_ID]
 
 	case ^Array_Literal_Expression:
-		inner_type := check_expr_types(c, m, e.type_expr) or_return
-		result = Type_Info {
-			name = "array",
-			type_id = ARRAY_ID,
-			type_kind = .Generic_Type,
-			type_id_data = Generic_Type_Info{spec_type_id = inner_type.type_id},
-		}
+		lit_type := check_expr_types(c, m, e.type_expr) or_return
+		generic_id := lit_type.type_id_data.(Generic_Type_Info)
+		inner_type := get_type_from_id(c, generic_id.spec_type_id)
+		fmt.println(inner_type)
+		result = lit_type
 		for element in e.values {
 			elem_type := check_expr_types(c, m, element) or_return
-			if !type_equal(inner_type, elem_type) {
+			if !type_equal(c, inner_type, elem_type) {
 				err = Semantic_Error {
 					kind    = .Mismatched_Types,
 					token   = e.token,
@@ -873,7 +929,7 @@ check_expr_types :: proc(c: ^Checker, m: ^Checked_Module, expr: Expression) -> (
 	case ^Binary_Expression:
 		left := check_expr_types(c, m, e.left) or_return
 		right := check_expr_types(c, m, e.right) or_return
-		if !type_equal(left, right) {
+		if !type_equal(c, left, right) {
 			err = Semantic_Error {
 				kind    = .Mismatched_Types,
 				token   = e.token,
@@ -886,7 +942,7 @@ check_expr_types :: proc(c: ^Checker, m: ^Checked_Module, expr: Expression) -> (
 		}
 
 	case ^Identifier_Expression:
-		result := get_type_from_identifier(c, m, e.name)
+		result = get_type_from_identifier(c, m, e.name)
 
 	case ^Index_Expression:
 		left := check_expr_types(c, m, e.left) or_return
@@ -902,7 +958,7 @@ check_expr_types :: proc(c: ^Checker, m: ^Checked_Module, expr: Expression) -> (
 			}
 			elem_type := left.type_id_data.(Generic_Type_Info)
 			// Retrieve the Type_Info from the the element Type_ID
-			result = get_type_from_id(c, m, elem_type.spec_type_id)
+			result = get_type_from_id(c, elem_type.spec_type_id)
 		} else {
 			identifier := e.left.(^Identifier_Expression)
 			err = Semantic_Error {
@@ -925,12 +981,12 @@ check_expr_types :: proc(c: ^Checker, m: ^Checked_Module, expr: Expression) -> (
 			}
 			for arg, i in e.args {
 				arg_type := check_expr_types(c, m, arg) or_return
-				if !type_equal(arg_type, signature_info.parameters[i]) {
+				if !type_equal(c, arg_type, signature_info.parameters[i]) {
 					// FIXME: return an error
 					break
 				}
 			}
-			result = get_type_from_id(c, m, signature_info.return_type_id)
+			result = get_type_from_id(c, signature_info.return_type_id)
 		} else {
 			// FIXME: return an error
 		}

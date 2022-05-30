@@ -3,6 +3,11 @@ package lily
 import "core:fmt"
 import "core:strings"
 
+// TODO: (debug.odin)
+/*
+	- Fix Array Priting
+*/
+
 AST_Printer :: struct {
 	builder:      strings.Builder,
 	indent_level: int,
@@ -215,15 +220,15 @@ print_parsed_node :: proc(p: ^AST_Printer, node: Node) {
 ///////////////
 // Checked AST debugging
 
-print_checked_ast :: proc(program: ^Checked_Module) {
+print_checked_ast :: proc(module: ^Checked_Module, checker: ^Checker) {
 	printer := AST_Printer {
 		builder      = strings.make_builder(),
 		indent_width = 2,
 	}
 	defer strings.destroy_builder(&printer.builder)
 
-	for node in program.nodes {
-		print_checked_node(&printer, node)
+	for node in module.nodes {
+		print_checked_node(&printer, checker, node)
 	}
 	fmt.println(strings.to_string(printer.builder))
 }
@@ -232,7 +237,7 @@ print_checked_expr :: proc(p: ^AST_Printer, checked_expr: Checked_Expression) {
 	print_parsed_expr(p, checked_expr.expr)
 }
 
-print_checked_node :: proc(p: ^AST_Printer, node: Checked_Node) {
+print_checked_node :: proc(p: ^AST_Printer, c: ^Checker, node: Checked_Node) {
 	switch n in node {
 	case ^Checked_Expression_Statement:
 		write_line(p, "Expression Statement: ")
@@ -242,7 +247,7 @@ print_checked_node :: proc(p: ^AST_Printer, node: Checked_Node) {
 		write_line(p, "Block Statement: ")
 		increment(p)
 		for inner in n.nodes {
-			print_checked_node(p, inner)
+			print_checked_node(p, c, inner)
 		}
 		decrement(p)
 
@@ -263,10 +268,10 @@ print_checked_node :: proc(p: ^AST_Printer, node: Checked_Node) {
 		{
 			write_line(p, "Condition: ")
 			print_checked_expr(p, n.condition)
-			print_checked_node(p, n.body)
+			print_checked_node(p, c, n.body)
 			if n.next_branch != nil {
 				write_line(p, "Else: ")
-				print_checked_node(p, n.next_branch)
+				print_checked_node(p, c, n.next_branch)
 			}
 		}
 		decrement(p)
@@ -283,7 +288,7 @@ print_checked_node :: proc(p: ^AST_Printer, node: Checked_Node) {
 			print_checked_expr(p, n.low)
 			write_line(p, "High: ")
 			print_checked_expr(p, n.high)
-			print_checked_node(p, n.body)
+			print_checked_node(p, c, n.body)
 		}
 		decrement(p)
 
@@ -294,7 +299,7 @@ print_checked_node :: proc(p: ^AST_Printer, node: Checked_Node) {
 			write_line(p, "Identifier name: ")
 			write(p, n.identifier.text)
 			write_line(p, "Type: ")
-			print_type_info(p, n.type_info)
+			print_type_info(p, c, n.type_info)
 			write_line(p, "Expression: ")
 			print_checked_expr(p, n.expr)
 		}
@@ -311,13 +316,13 @@ print_checked_node :: proc(p: ^AST_Printer, node: Checked_Node) {
 			for param in n.parameters {
 				write_line(p)
 				fmt.sbprintf(&p.builder, "Name: %s, Type: ", param.name.text)
-				print_type_info(p, param.type_info)
+				print_type_info(p, c, param.type_info)
 			}
 			decrement(p)
 			write_line(p, "Return type: ")
-			print_type_info(p, n.return_type_info)
+			print_type_info(p, c, n.return_type_info)
 
-			print_checked_node(p, n.body)
+			print_checked_node(p, c, n.body)
 		}
 		decrement(p)
 
@@ -328,7 +333,7 @@ print_checked_node :: proc(p: ^AST_Printer, node: Checked_Node) {
 			write_line(p, "Identifier name: ")
 			write(p, n.identifier.text)
 			write_line(p, "Type name: ")
-			print_type_info(p, n.type_info)
+			print_type_info(p, c, n.type_info)
 		}
 		decrement(p)
 
@@ -337,8 +342,17 @@ print_checked_node :: proc(p: ^AST_Printer, node: Checked_Node) {
 	}
 }
 
-print_type_info :: proc(p: ^AST_Printer, t: Type_Info) {
-	write(p, t.name)
+print_type_info :: proc(p: ^AST_Printer, checker: ^Checker, t: Type_Info) {
+	switch t.type_kind {
+	case .Builtin, .Elementary_Type, .Type_Alias:
+		write(p, t.name)
+	case .Generic_Type:
+		generic_id := t.type_id_data.(Generic_Type_Info)
+		generic_info := get_type_from_id(checker, generic_id.spec_type_id)
+		fmt.sbprintf(&p.builder, "%s of %s", t.name, generic_info.name)
+	case .Fn_Type:
+		assert(false, "Fn Signature Type printing not implemented yet")
+	}
 }
 
 // Utility procedures

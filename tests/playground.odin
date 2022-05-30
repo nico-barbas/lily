@@ -15,9 +15,10 @@ main :: proc() {
 playground :: proc() {
 	using lily
 	input: string = `
-		var foo = 10
-
-		--var foo = array of number[2, 3]
+		type MyNumber is number
+		type MySecondNumber is MyNumber
+		var bar: MyNumber = 1
+		var foo: MySecondNumber = bar
 		--foo[0] = 10
 		--foo[1] = add(4, 9)
 		--foo[0] = add(foo[0], foo[1])
@@ -39,7 +40,7 @@ playground :: proc() {
 	checker := new_checker()
 	checked_module, check_err := check_module(checker, parsed_module)
 	assert(check_err == nil, fmt.tprint("Failed, Error raised ->", check_err))
-	print_checked_ast(checked_module)
+	print_checked_ast(checked_module, checker)
 
 	// run_program(vm, program.nodes[:])
 	// array := cast(^Array_Object)get_stack_value(vm, "foo").data.(^Object)
