@@ -39,7 +39,7 @@ playground :: proc() {
 	checker := new_checker()
 	checked_module, check_err := check_module(checker, parsed_module)
 	assert(check_err == nil, fmt.tprint("Failed, Error raised ->", check_err))
-	fmt.println(checked_module)
+	print_checked_ast(checked_module)
 
 	// run_program(vm, program.nodes[:])
 	// array := cast(^Array_Object)get_stack_value(vm, "foo").data.(^Object)

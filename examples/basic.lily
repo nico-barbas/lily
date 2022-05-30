@@ -1,7 +1,7 @@
 -- 64bits floats are the only supported number type 
 var a: number = 2.4
 
--- The type here is inferred at compile time
+-- The type here is infered at compile time
 var b = 10 
 
 -- More builtin types

@@ -791,22 +791,21 @@ Checked_Var_Declaration :: struct {
 }
 
 Checked_Fn_Declaration :: struct {
-	token:          Token,
-	identifier:     string,
-	parameters:     [dynamic]struct {
-		name:    string,
-		type_id: Type_ID,
+	token:            Token,
+	identifier:       Token,
+	parameters:       [dynamic]struct {
+		name:      Token,
+		type_info: Type_Info,
 	},
-	body:           ^Checked_Block_Statement,
-	return_type_id: Type_ID,
+	body:             Checked_Node,
+	return_type_info: Type_Info,
 }
 
 Checked_Type_Declaration :: struct {
-	token:              Token,
-	is_token:           Token,
-	identifier:         string,
-	type_id:            Type_ID,
-	underlying_type_id: Type_ID,
+	token:      Token,
+	is_token:   Token,
+	identifier: Token,
+	type_info:  Type_Info,
 }
 
 Checked_Class_Declaration :: struct {
@@ -1333,10 +1332,21 @@ check_node_types :: proc(c: ^Checker, m: ^Checked_Module, node: Node) -> (
 		var_type := check_expr_types(c, m, n.type_expr) or_return
 		value_type := check_expr_types(c, m, n.expr) or_return
 
-		// we check if the type needs to be inferred
-		if var_type.type_id == c.builtin_types[UNTYPED_ID].type_id {
+		// we check if the type needs to be infered
+		if type_equal(var_type, c.builtin_types[UNTYPED_ID]) {
 			// add the var to the environment's scope
-			set_variable_type(m, n.identifier.text, value_type)
+			infered_type: Type_Info
+			switch {
+			case type_equal(value_type, c.builtin_types[UNTYPED_NUMBER_ID]):
+				infered_type = c.builtin_types[NUMBER_ID]
+			case type_equal(value_type, c.builtin_types[UNTYPED_BOOL_ID]):
+				infered_type = c.builtin_types[BOOL_ID]
+			case type_equal(value_type, c.builtin_types[UNTYPED_STRING_ID]):
+				infered_type = c.builtin_types[STRING_ID]
+			case:
+				infered_type = value_type
+			}
+			set_variable_type(m, n.identifier.text, infered_type)
 		} else {
 			if !type_equal(var_type, value_type) {
 				err = Semantic_Error {
