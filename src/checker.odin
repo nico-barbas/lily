@@ -705,6 +705,7 @@ Semantic_Scope :: struct {
 	symbols:        [dynamic]string,
 	variable_types: map[string]Type_Info,
 	parent:         ^Semantic_Scope,
+	children:       [dynamic]^Semantic_Scope,
 }
 
 Checker :: struct {
@@ -722,9 +723,9 @@ Checked_Module :: struct {
 	nodes:       [dynamic]Checked_Node,
 	functions:   [dynamic]Checked_Node,
 	classes:     [dynamic]Checked_Node,
-	types:       [dynamic]Type_Info,
-	type_lookup: map[string]^Type_Info,
-	type_count:  int,
+	// types:       [dynamic]Type_Info,
+	type_lookup: map[string]Type_Info,
+	// type_count:  int,
 
 	// symbols
 	scope:       ^Semantic_Scope,
@@ -732,8 +733,8 @@ Checked_Module :: struct {
 }
 
 Checked_Expression :: struct {
-	expr:    Expression,
-	type_id: Type_ID,
+	expr:      Expression,
+	type_info: Type_Info,
 }
 
 Checked_Node :: union {
@@ -766,25 +767,25 @@ Checked_Assigment_Statement :: struct {
 Checked_If_Statement :: struct {
 	token:       Token,
 	condition:   Checked_Expression,
-	body:        ^Checked_Block_Statement,
-	next_branch: ^Checked_If_Statement,
+	body:        Checked_Node,
+	next_branch: Checked_Node,
 }
 
 Checked_Range_Statement :: struct {
-	token:            Token,
-	iterator_name:    string,
-	iterator_type_id: Type_ID,
-	low:              Checked_Expression,
-	hight:            Checked_Expression,
-	reverse:          bool,
-	op:               Range_Operator,
-	body:             ^Checked_Block_Statement,
+	token:              Token,
+	iterator_name:      Token,
+	iterator_type_info: Type_Info,
+	low:                Checked_Expression,
+	high:               Checked_Expression,
+	reverse:            bool,
+	op:                 Range_Operator,
+	body:               Checked_Node,
 }
 
 Checked_Var_Declaration :: struct {
 	token:       Token,
-	identifier:  string,
-	type_id:     Type_ID,
+	identifier:  Token,
+	type_info:   Type_Info,
 	expr:        Checked_Expression,
 	initialized: bool,
 }
@@ -875,14 +876,17 @@ new_checker :: proc() -> ^Checker {
 	return c
 }
 
+checked_expresssion :: proc(expr: Expression, info: Type_Info) -> Checked_Expression {
+	return {expr = expr, type_info = info}
+}
+
 new_checked_module :: proc() -> ^Checked_Module {
 	return new_clone(
 		Checked_Module{
 			nodes = make([dynamic]Checked_Node),
 			functions = make([dynamic]Checked_Node),
 			classes = make([dynamic]Checked_Node),
-			types = make([dynamic]Type_Info),
-			type_lookup = make(map[string]^Type_Info),
+			type_lookup = make(map[string]Type_Info),
 			scope = new_scope(),
 		},
 	)
@@ -901,6 +905,7 @@ new_scope :: proc() -> ^Semantic_Scope {
 	scope := new(Semantic_Scope)
 	scope.symbols = make([dynamic]string)
 	scope.variable_types = make(map[string]Type_Info)
+	scope.children = make([dynamic]^Semantic_Scope)
 	return scope
 }
 
@@ -911,6 +916,7 @@ delete_scope :: proc(s: ^Semantic_Scope) {
 
 push_scope :: proc(m: ^Checked_Module) {
 	scope := new_scope()
+	append(&m.scope.children, scope)
 	scope.parent = m.scope
 	m.scope = scope
 	m.scope_depth += 1
@@ -919,7 +925,6 @@ push_scope :: proc(m: ^Checked_Module) {
 pop_scope :: proc(m: ^Checked_Module) {
 	s := m.scope
 	m.scope = s.parent
-	delete_scope(s)
 	m.scope_depth -= 1
 }
 
@@ -956,25 +961,28 @@ add_symbol :: proc(c: ^Checker, m: ^Checked_Module, token: Token) -> (err: Error
 	return
 }
 
-contain_type :: proc(c: ^Checker, m: ^Checked_Module, t: Type_Info) -> bool {
-	for type_info in c.builtin_types {
-		if t.type_id == type_info.type_id {
-			return true
-		}
-	}
-
-	if type_info, exist := m.type_lookup[t.name]; exist {
-		if t.type_id == type_info.type_id {
-			return true
-		}
-	}
-
-	return false
+set_variable_type :: proc(m: ^Checked_Module, name: string, t: Type_Info) {
+	m.scope.variable_types[name] = t
 }
 
+// contain_type :: proc(c: ^Checker, m: ^Checked_Module, t: Type_Info) -> bool {
+// 	for type_info in c.builtin_types {
+// 		if t.type_id == type_info.type_id {
+// 			return true
+// 		}
+// 	}
+
+// 	if type_info, exist := m.type_lookup[t.name]; exist {
+// 		if t.type_id == type_info.type_id {
+// 			return true
+// 		}
+// 	}
+
+// 	return false
+// }
+
 add_type :: proc(c: ^Checker, m: ^Checked_Module, t: Type_Info) -> (err: Error) {
-	append(&m.types, t)
-	m.type_lookup[t.name] = &m.types[len(m.types) - 1]
+	m.type_lookup[t.name] = t
 	return
 }
 
@@ -988,30 +996,28 @@ get_type :: proc(c: ^Checker, m: ^Checked_Module, name: string) -> (
 			return type_info, true
 		}
 	}
-
-	// Super sus code...
-	t: ^Type_Info
-	t, exist = m.type_lookup[name]
-	if t != nil {
-		result = t^
-	}
+	result, exist = m.type_lookup[name]
 	return
 }
 
-get_type_from_id :: proc(c: ^Checker, id: Type_ID) -> (result: Type_Info) {
+// FIXME: Doesn't support multiple modules
+get_type_from_id :: proc(c: ^Checker, m: ^Checked_Module, id: Type_ID) -> (result: Type_Info) {
 	switch {
 	case id < BUILT_IN_ID_COUNT:
 		result = c.builtin_types[id]
 	case:
-		accumulator: int = BUILT_IN_ID_COUNT
-		for module in c.modules {
-			if int(id) < BUILT_IN_ID_COUNT + module.type_count {
-				rel_id := id - Type_ID(accumulator)
-				result = module.types[rel_id]
-				return
-			}
-			accumulator += module.type_count
-		}
+
+	}
+	return
+}
+
+get_type_from_identifier :: proc(c: ^Checker, m: ^Checked_Module, i: Token) -> (result: Type_Info) {
+	if t, t_exist := get_type(c, m, i.text); t_exist {
+		result = t
+	} else if fn_type, fn_exist := get_fn_type(c, m, i.text); fn_exist {
+		result = fn_type
+	} else {
+		result, _ = get_variable_type(m, i.text)
 	}
 	return
 }
@@ -1041,9 +1047,9 @@ gen_type_id :: proc(c: ^Checker) -> Type_ID {
 	return c.type_id_ptr - 1
 }
 
-check_module :: proc(c: ^Checker, m: ^Parsed_Module) -> (result: ^Checked_Module, err: Error) {
+check_module :: proc(c: ^Checker, m: ^Parsed_Module) -> (module: ^Checked_Module, err: Error) {
 	// Create a new module and add all the file level declaration symbols
-	module := new_checked_module()
+	module = new_checked_module()
 	// The type symbols need to be added first
 	for node in m.nodes {
 		if n, ok := node.(^Type_Declaration); ok {
@@ -1083,7 +1089,12 @@ check_module :: proc(c: ^Checker, m: ^Parsed_Module) -> (result: ^Checked_Module
 	}
 
 	for node in m.nodes {
-		check_node_types(c, module, node) or_return
+		checked_node := check_node_types(c, module, node) or_return
+		#partial switch node in checked_node {
+		case ^Checked_Fn_Declaration:
+		case:
+			append(&module.nodes, checked_node)
+		}
 	}
 	return
 }
@@ -1231,7 +1242,7 @@ check_node_types :: proc(c: ^Checker, m: ^Checked_Module, node: Node) -> (
 	switch n in node {
 	case ^Expression_Statement:
 		t := check_expr_types(c, m, n.expr) or_return
-		result := new_clone(Checked_Expression_Statement{})
+		result := new_clone(Checked_Expression_Statement{expr = checked_expresssion(n.expr, t)})
 
 	case ^Block_Statement:
 		block_stmt := new_clone(Checked_Block_Statement{nodes = make([dynamic]Checked_Node)})
@@ -1239,10 +1250,30 @@ check_node_types :: proc(c: ^Checker, m: ^Checked_Module, node: Node) -> (
 			node := check_node_types(c, m, block_node) or_return
 			append(&block_stmt.nodes, node)
 		}
+		result = block_stmt
 
 	case ^Assignment_Statement:
 		left := check_expr_types(c, m, n.left) or_return
 		right := check_expr_types(c, m, n.right) or_return
+		if !type_equal(left, right) {
+			err = Semantic_Error {
+				kind    = .Mismatched_Types,
+				token   = n.token,
+				details = fmt.tprintf(
+					"Left expression of type %s, right expression of type %s",
+					left.name,
+					right.name,
+				),
+			}
+		}
+
+		result = new_clone(
+			Checked_Assigment_Statement{
+				token = n.token,
+				left = checked_expresssion(n.left, left),
+				right = checked_expresssion(n.right, right),
+			},
+		)
 
 
 	case ^If_Statement:
@@ -1259,10 +1290,19 @@ check_node_types :: proc(c: ^Checker, m: ^Checked_Module, node: Node) -> (
 			}
 		}
 		// push a new scope here
-		check_node_types(c, m, n.body) or_return
+		body_node := check_node_types(c, m, n.body) or_return
+		if_stmt := new_clone(
+			Checked_If_Statement{
+				token = n.token,
+				condition = checked_expresssion(n.condition, condition_type),
+				body = body_node,
+			},
+		)
 		if n.next_branch != nil {
-			check_node_types(c, m, n.next_branch) or_return
+			next_node := check_node_types(c, m, n.next_branch) or_return
+			if_stmt.next_branch = next_node
 		}
+		result = if_stmt
 
 	case ^Range_Statement:
 		//push scope
@@ -1270,25 +1310,33 @@ check_node_types :: proc(c: ^Checker, m: ^Checked_Module, node: Node) -> (
 		high := check_expr_types(c, m, n.high) or_return
 		if !type_equal(low, high) {
 			err = Semantic_Error {
-				kind    = .Mismatched_Types,
-				token   = n.token,
-				details = fmt.tprintf(
-					"Low expression of type %s, high expression of type %s",
-					low.name,
-					high.name,
-				),
+				kind  = .Mismatched_Types,
+				token = n.token,
 			}
 		}
 		// add the newly created iterator to the scope
-		check_node_types(c, m, n.body) or_return
+		body_node := check_node_types(c, m, n.body) or_return
+		result = new_clone(
+			Checked_Range_Statement{
+				token = n.token,
+				iterator_name = n.iterator_name,
+				iterator_type_info = low,
+				low = checked_expresssion(n.low, low),
+				high = checked_expresssion(n.high, high),
+				reverse = n.reverse,
+				op = n.op,
+				body = body_node,
+			},
+		)
 
 	case ^Var_Declaration:
 		var_type := check_expr_types(c, m, n.type_expr) or_return
 		value_type := check_expr_types(c, m, n.expr) or_return
 
-		// Need to determine if need to be type inferred
+		// we check if the type needs to be inferred
 		if var_type.type_id == c.builtin_types[UNTYPED_ID].type_id {
 			// add the var to the environment's scope
+			set_variable_type(m, n.identifier.text, value_type)
 		} else {
 			if !type_equal(var_type, value_type) {
 				err = Semantic_Error {
@@ -1298,6 +1346,16 @@ check_node_types :: proc(c: ^Checker, m: ^Checked_Module, node: Node) -> (
 				}
 			}
 		}
+		result = new_clone(
+			Checked_Var_Declaration{
+				token = n.token,
+				identifier = n.identifier,
+				type_info = value_type,
+				expr = checked_expresssion(n.expr, value_type),
+				initialized = n.initialized,
+			},
+		)
+
 
 	case ^Fn_Declaration:
 	case ^Type_Declaration:
@@ -1384,7 +1442,7 @@ check_expr_types :: proc(c: ^Checker, m: ^Checked_Module, expr: Expression) -> (
 		}
 
 	case ^Identifier_Expression:
-		result := get_type_from_identifier(c, m, e.name.text)
+		result := get_type_from_identifier(c, m, e.name)
 
 	case ^Index_Expression:
 		left := check_expr_types(c, m, e.left) or_return
@@ -1400,7 +1458,7 @@ check_expr_types :: proc(c: ^Checker, m: ^Checked_Module, expr: Expression) -> (
 			}
 			elem_type := left.type_id_data.(Generic_Type_Info)
 			// Retrieve the Type_Info from the the element Type_ID
-			result = get_type_from_id(c, elem_type.spec_type_id)
+			result = get_type_from_id(c, m, elem_type.spec_type_id)
 		} else {
 			identifier := e.left.(^Identifier_Expression)
 			err = Semantic_Error {
@@ -1428,7 +1486,7 @@ check_expr_types :: proc(c: ^Checker, m: ^Checked_Module, expr: Expression) -> (
 					break
 				}
 			}
-			result = get_type_from_id(c, signature_info.return_type_id)
+			result = get_type_from_id(c, m, signature_info.return_type_id)
 		} else {
 			// FIXME: return an error
 		}

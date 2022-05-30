@@ -3,26 +3,26 @@ package lily
 import "core:fmt"
 import "core:strings"
 
-AST_Printer :: struct {
+Parsed_AST_Printer :: struct {
 	builder:      strings.Builder,
 	indent_level: int,
 	indent_width: int,
 }
 
-print_ast :: proc(program: ^Parsed_Module) {
-	printer := AST_Printer {
+print_parsed_ast :: proc(program: ^Parsed_Module) {
+	printer := Parsed_AST_Printer {
 		builder      = strings.make_builder(),
 		indent_width = 2,
 	}
 	defer strings.destroy_builder(&printer.builder)
 
 	for node in program.nodes {
-		print_node(&printer, node)
+		print_parsed_node(&printer, node)
 	}
 	fmt.println(strings.to_string(printer.builder))
 }
 
-print_expr :: proc(p: ^AST_Printer, expr: Expression) {
+print_parsed_expr :: proc(p: ^Parsed_AST_Printer, expr: Expression) {
 	switch e in expr {
 	case ^Literal_Expression:
 		write(p, "Literal Expression: ")
@@ -37,10 +37,10 @@ print_expr :: proc(p: ^AST_Printer, expr: Expression) {
 		increment(p)
 		{
 			write_line(p, "Type: ")
-			print_expr(p, e.type_expr)
+			print_parsed_expr(p, e.type_expr)
 			write_line(p, "Elements: ")
 			for element in e.values {
-				print_expr(p, element)
+				print_parsed_expr(p, element)
 			}
 
 		}
@@ -54,7 +54,7 @@ print_expr :: proc(p: ^AST_Printer, expr: Expression) {
 			write_line(p, "Operator: ")
 			fmt.sbprint(&p.builder, e.op)
 			write_line(p, "Expression: ")
-			print_expr(p, e.expr)
+			print_parsed_expr(p, e.expr)
 
 		}
 		decrement(p)
@@ -66,9 +66,9 @@ print_expr :: proc(p: ^AST_Printer, expr: Expression) {
 			write_line(p, "Operator: ")
 			fmt.sbprint(&p.builder, e.op)
 			write_line(p, "Left Expression: ")
-			print_expr(p, e.left)
+			print_parsed_expr(p, e.left)
 			write_line(p, "Right Expression: ")
-			print_expr(p, e.right)
+			print_parsed_expr(p, e.right)
 		}
 		decrement(p)
 
@@ -81,9 +81,9 @@ print_expr :: proc(p: ^AST_Printer, expr: Expression) {
 		increment(p)
 		{
 			write_line(p, "Left: ")
-			print_expr(p, e.left)
+			print_parsed_expr(p, e.left)
 			write_line(p, "Index: ")
-			print_expr(p, e.index)
+			print_parsed_expr(p, e.index)
 		}
 		decrement(p)
 
@@ -92,12 +92,12 @@ print_expr :: proc(p: ^AST_Printer, expr: Expression) {
 		increment(p)
 		{
 			write_line(p, "Func: ")
-			print_expr(p, e.func)
+			print_parsed_expr(p, e.func)
 			write_line(p, "Arguments: ")
 			increment(p)
 			for arg in e.args {
 				write_line(p)
-				print_expr(p, arg)
+				print_parsed_expr(p, arg)
 			}
 			decrement(p)
 		}
@@ -105,22 +105,22 @@ print_expr :: proc(p: ^AST_Printer, expr: Expression) {
 
 	case ^Array_Type_Expression:
 		write(p, "Array of ")
-		print_expr(p, e.elem_type)
+		print_parsed_expr(p, e.elem_type)
 	}
 
 }
 
-print_node :: proc(p: ^AST_Printer, node: Node) {
+print_parsed_node :: proc(p: ^Parsed_AST_Printer, node: Node) {
 	switch n in node {
 	case ^Expression_Statement:
 		write_line(p, "Expression Statement: ")
-		print_expr(p, n.expr)
+		print_parsed_expr(p, n.expr)
 
 	case ^Block_Statement:
 		write_line(p, "Block Statement: ")
 		increment(p)
 		for inner in n.nodes {
-			print_node(p, inner)
+			print_parsed_node(p, inner)
 		}
 		decrement(p)
 
@@ -129,9 +129,9 @@ print_node :: proc(p: ^AST_Printer, node: Node) {
 		increment(p)
 		{
 			write_line(p, "Left: ")
-			print_expr(p, n.left)
+			print_parsed_expr(p, n.left)
 			write_line(p, "Right: ")
-			print_expr(p, n.right)
+			print_parsed_expr(p, n.right)
 		}
 		decrement(p)
 
@@ -140,11 +140,11 @@ print_node :: proc(p: ^AST_Printer, node: Node) {
 		increment(p)
 		{
 			write_line(p, "Condition: ")
-			print_expr(p, n.condition)
-			print_node(p, n.body)
+			print_parsed_expr(p, n.condition)
+			print_parsed_node(p, n.body)
 			if n.next_branch != nil {
 				write_line(p, "Else: ")
-				print_node(p, n.next_branch)
+				print_parsed_node(p, n.next_branch)
 			}
 		}
 		decrement(p)
@@ -158,10 +158,10 @@ print_node :: proc(p: ^AST_Printer, node: Node) {
 			write_line(p, "Operator: ")
 			fmt.sbprint(&p.builder, n.op)
 			write_line(p, "Low: ")
-			print_expr(p, n.low)
+			print_parsed_expr(p, n.low)
 			write_line(p, "High: ")
-			print_expr(p, n.high)
-			print_node(p, n.body)
+			print_parsed_expr(p, n.high)
+			print_parsed_node(p, n.body)
 		}
 		decrement(p)
 
@@ -172,9 +172,9 @@ print_node :: proc(p: ^AST_Printer, node: Node) {
 			write_line(p, "Identifier name: ")
 			write(p, n.identifier.text)
 			write_line(p, "Type: ")
-			print_expr(p, n.type_expr)
+			print_parsed_expr(p, n.type_expr)
 			write_line(p, "Expression: ")
-			print_expr(p, n.expr)
+			print_parsed_expr(p, n.expr)
 		}
 		decrement(p)
 
@@ -189,13 +189,13 @@ print_node :: proc(p: ^AST_Printer, node: Node) {
 			for param in n.parameters {
 				write_line(p)
 				fmt.sbprintf(&p.builder, "Name: %s, Type: ", param.name.text)
-				print_expr(p, param.type_expr)
+				print_parsed_expr(p, param.type_expr)
 			}
 			decrement(p)
 			write_line(p, "Return type: ")
-			print_expr(p, n.return_type_expr)
+			print_parsed_expr(p, n.return_type_expr)
 
-			print_node(p, n.body)
+			print_parsed_node(p, n.body)
 		}
 		decrement(p)
 
@@ -206,33 +206,53 @@ print_node :: proc(p: ^AST_Printer, node: Node) {
 			write_line(p, "Identifier name: ")
 			write(p, n.identifier.text)
 			write_line(p, "Type name: ")
-			print_expr(p, n.type_expr)
+			print_parsed_expr(p, n.type_expr)
 		}
 		decrement(p)
 	}
 }
 
-write :: proc(p: ^AST_Printer, s: string = "") {
+write :: proc {
+	write_to_parsed_ast_printer,
+}
+
+write_to_parsed_ast_printer :: proc(p: ^Parsed_AST_Printer, s: string = "") {
 	strings.write_string_builder(&p.builder, s)
 }
 
-write_line :: proc(p: ^AST_Printer, s: string = "") {
+write_line :: proc {
+	write_line_to_parsed_ast_printer,
+}
+
+write_line_to_parsed_ast_printer :: proc(p: ^Parsed_AST_Printer, s: string = "") {
 	strings.write_byte(&p.builder, '\n')
 	indent(p)
 	strings.write_string_builder(&p.builder, s)
 }
 
-indent :: proc(p: ^AST_Printer) {
+indent :: proc {
+	indent_parsed_ast_printer,
+}
+
+indent_parsed_ast_printer :: proc(p: ^Parsed_AST_Printer) {
 	whitespace := p.indent_level * p.indent_width
 	for _ in 0 ..< whitespace {
 		strings.write_rune_builder(&p.builder, ' ')
 	}
 }
 
-increment :: proc(p: ^AST_Printer) {
+increment :: proc {
+	increment_parsed_ast_printer,
+}
+
+increment_parsed_ast_printer :: proc(p: ^Parsed_AST_Printer) {
 	p.indent_level += 1
 }
 
-decrement :: proc(p: ^AST_Printer) {
+decrement :: proc {
+	decrement_parsed_ast_printer,
+}
+
+decrement_parsed_ast_printer :: proc(p: ^Parsed_AST_Printer) {
 	p.indent_level -= 1
 }
