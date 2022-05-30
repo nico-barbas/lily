@@ -17,7 +17,7 @@ Expression :: union {
 	^Call_Expression,
 
 	// Type Expressions
-	^Array_Type,
+	^Array_Type_Expression,
 }
 
 Literal_Expression :: struct {
@@ -61,18 +61,17 @@ unresolved_identifier := Identifier_Expression {
 
 Index_Expression :: struct {
 	token: Token, // the '[' token
-	left:  Expression,
-	index: Expression,
+	left:  Expression, // The identifier most likely
+	index: Expression, // The expression inside the brackets
 }
 
 Call_Expression :: struct {
-	token:     Token, // the '(' token
-	func:      Expression,
-	args:      [5]Expression,
-	arg_count: int,
+	token: Token, // the '(' token
+	func:  Expression,
+	args:  [dynamic]Expression,
 }
 
-Array_Type :: struct {
+Array_Type_Expression :: struct {
 	token:     Token, // The "array" token
 	of_token:  Token, //The "of" token
 	elem_type: Expression, // Either Identifier or another Type Expression. Allows for multi-arrays

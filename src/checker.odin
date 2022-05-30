@@ -437,7 +437,7 @@ import "core:fmt"
 // 			check_expr_symbols(c, e.args[i]) or_return
 // 		}
 
-// 	case ^Array_Type:
+// 	case ^Array_Type_Expression:
 // 		check_expr_symbols(c, e.elem_type) or_return
 
 // 	}
@@ -472,7 +472,7 @@ import "core:fmt"
 // 			if result.type_id != symbol.type_id {
 // 				err = Semantic_Error {
 // 					kind    = .Mismatched_Types,
-// 					token   = e.type_expr.(^Array_Type).token,
+// 					token   = e.type_expr.(^Array_Type_Expression).token,
 // 					details = fmt.tprintf(
 // 						"Invalid array element type. Expected %i, got %i",
 // 						result.type_id,
@@ -558,7 +558,7 @@ import "core:fmt"
 // 			assert(false)
 // 		}
 
-// 	case ^Array_Type:
+// 	case ^Array_Type_Expression:
 // 		result = check_expr_type(c, e.elem_type) or_return
 
 // 	}
@@ -576,7 +576,9 @@ UNTYPED_STRING_ID :: 3
 NUMBER_ID :: 4
 BOOL_ID :: 5
 STRING_ID :: 6
-ARRAY_ID :: 7
+FN_ID :: 7
+ARRAY_ID :: 8
+BUILT_IN_ID_COUNT :: ARRAY_ID + 1
 
 Module_ID :: distinct int
 BUILTIN_MODULE_ID :: 0
@@ -589,6 +591,11 @@ Generic_Type_Info :: struct {
 	spec_type_id: Type_ID,
 }
 
+Fn_Signature_Info :: struct {
+	parameters:     []Type_Info,
+	return_type_id: Type_ID,
+}
+
 Type_Info :: struct {
 	name:         string,
 	type_id:      Type_ID,
@@ -596,11 +603,13 @@ Type_Info :: struct {
 		Builtin,
 		Elementary_Type,
 		Type_Alias,
+		Fn_Type,
 		Generic_Type,
 	},
 	type_id_data: union {
 		Type_Alias_Info,
 		Generic_Type_Info,
+		Fn_Signature_Info,
 	},
 }
 
@@ -700,8 +709,8 @@ Semantic_Scope :: struct {
 
 Checker :: struct {
 	modules:         [dynamic]^Checked_Module,
-	builtin_symbols: [7]string,
-	builtin_types:   [7]Type_Info,
+	builtin_symbols: [5]string,
+	builtin_types:   [BUILT_IN_ID_COUNT]Type_Info,
 	type_id_ptr:     Type_ID,
 }
 
@@ -715,6 +724,7 @@ Checked_Module :: struct {
 	classes:     [dynamic]Checked_Node,
 	types:       [dynamic]Type_Info,
 	type_lookup: map[string]^Type_Info,
+	type_count:  int,
 
 	// symbols
 	scope:       ^Semantic_Scope,
@@ -814,15 +824,54 @@ new_checker :: proc() -> ^Checker {
 	c := new_clone(
 		Checker{
 			modules = make([dynamic]^Checked_Module),
-			builtin_symbols = {"number", "string", "bool", "untyped"},
-			builtin_types = {
-				{name = "untyped", type_id = UNTYPED_ID, type_kind = .Builtin},
-				{name = "number", type_id = NUMBER_ID, type_kind = .Builtin},
-				{name = "bool", type_id = BOOL_ID, type_kind = .Builtin},
-				{name = "string", type_id = STRING_ID, type_kind = .Builtin},
-			},
+			builtin_symbols = {"untyped", "number", "string", "bool", "array"},
 		},
 	)
+	c.builtin_types[UNTYPED_ID] = {
+		name      = "untyped",
+		type_id   = UNTYPED_ID,
+		type_kind = .Builtin,
+	}
+	c.builtin_types[UNTYPED_NUMBER_ID] = {
+		name      = "untyped number",
+		type_id   = UNTYPED_NUMBER_ID,
+		type_kind = .Builtin,
+	}
+	c.builtin_types[UNTYPED_BOOL_ID] = {
+		name      = "untyped bool",
+		type_id   = UNTYPED_BOOL_ID,
+		type_kind = .Builtin,
+	}
+	c.builtin_types[UNTYPED_STRING_ID] = {
+		name      = "untyped string",
+		type_id   = UNTYPED_STRING_ID,
+		type_kind = .Builtin,
+	}
+	c.builtin_types[NUMBER_ID] = {
+		name      = "number",
+		type_id   = NUMBER_ID,
+		type_kind = .Builtin,
+	}
+	c.builtin_types[BOOL_ID] = {
+		name      = "bool",
+		type_id   = BOOL_ID,
+		type_kind = .Builtin,
+	}
+	c.builtin_types[STRING_ID] = {
+		name      = "string",
+		type_id   = STRING_ID,
+		type_kind = .Builtin,
+	}
+	c.builtin_types[FN_ID] = {
+		name      = "fn",
+		type_id   = FN_ID,
+		type_kind = .Builtin,
+	}
+	c.builtin_types[ARRAY_ID] = {
+		name      = "array",
+		type_id   = ARRAY_ID,
+		type_kind = .Builtin,
+	}
 	return c
 }
 
@@ -929,13 +978,62 @@ add_type :: proc(c: ^Checker, m: ^Checked_Module, t: Type_Info) -> (err: Error) 
 	return
 }
 
-get_type :: proc(c: ^Checker, m: ^Checked_Module, name: string) -> Type_Info {
+// FIXME: Needs a code review. Does not check all the available modules
+get_type :: proc(c: ^Checker, m: ^Checked_Module, name: string) -> (
+	result: Type_Info,
+	exist: bool,
+) {
 	for type_info in c.builtin_types {
 		if type_info.name == name {
-			return type_info
+			return type_info, true
 		}
 	}
-	return m.type_lookup[name]^
+
+	// Super sus code...
+	t: ^Type_Info
+	t, exist = m.type_lookup[name]
+	if t != nil {
+		result = t^
+	}
+	return
+}
+
+get_type_from_id :: proc(c: ^Checker, id: Type_ID) -> (result: Type_Info) {
+	switch {
+	case id < BUILT_IN_ID_COUNT:
+		result = c.builtin_types[id]
+	case:
+		accumulator: int = BUILT_IN_ID_COUNT
+		for module in c.modules {
+			if int(id) < BUILT_IN_ID_COUNT + module.type_count {
+				rel_id := id - Type_ID(accumulator)
+				result = module.types[rel_id]
+				return
+			}
+			accumulator += module.type_count
+		}
+	}
+	return
+}
+
+get_variable_type :: proc(m: ^Checked_Module, name: string) -> (result: Type_Info, exist: bool) {
+	current := m.scope
+	for current != nil {
+		if info, contains := current.variable_types[name]; contains {
+			result = info
+			contains = true
+			break
+		}
+	}
+	return
+}
+
+// TODO: Request a ptr to the checker to see if the identifier is a builtin variable or function
+get_fn_type :: proc(c: ^Checker, m: ^Checked_Module, name: string) -> (
+	result: Type_Info,
+	exist: bool,
+) {
+	return
 }
 
 gen_type_id :: proc(c: ^Checker) -> Type_ID {
@@ -983,6 +1081,10 @@ check_module :: proc(c: ^Checker, m: ^Parsed_Module) -> (result: ^Checked_Module
 			}
 		}
 	}
+
+	for node in m.nodes {
+		check_node_types(c, module, node) or_return
+	}
 	return
 }
 
@@ -1002,7 +1104,9 @@ check_node_symbols :: proc(c: ^Checker, m: ^Checked_Module, node: Node) -> (err:
 
 	case ^If_Statement:
 		check_expr_symbols(c, m, n.condition) or_return
+		push_scope(m)
 		check_node_symbols(c, m, n.body) or_return
+		pop_scope(m)
 		if n.next_branch != nil {
 			check_node_symbols(c, m, n.next_branch) or_return
 		}
@@ -1018,6 +1122,8 @@ check_node_symbols :: proc(c: ^Checker, m: ^Checked_Module, node: Node) -> (err:
 		}
 		check_expr_symbols(c, m, n.low) or_return
 		check_expr_symbols(c, m, n.high) or_return
+		push_scope(m)
+		defer pop_scope(m)
 		check_node_symbols(c, m, n.body) or_return
 
 	case ^Var_Declaration:
@@ -1039,6 +1145,7 @@ check_node_symbols :: proc(c: ^Checker, m: ^Checked_Module, node: Node) -> (err:
 		// No need to check for function symbol declaration since 
 		// functions can only be declared at the file scope
 		push_scope(m)
+		defer pop_scope(m)
 		add_symbol(c, m, Token{text = "result"}) or_return
 		for param in n.parameters {
 			if contain_symbol(c, m, param.name) {
@@ -1052,8 +1159,8 @@ check_node_symbols :: proc(c: ^Checker, m: ^Checked_Module, node: Node) -> (err:
 			add_symbol(c, m, param.name) or_return
 			check_expr_symbols(c, m, param.type_expr) or_return
 		}
-		check_node_symbols(c, m, n.body) or_return
 		check_expr_symbols(c, m, n.return_type_expr) or_return
+		check_node_symbols(c, m, n.body) or_return
 
 	case ^Type_Declaration:
 		if n.is_alias {
@@ -1102,11 +1209,11 @@ check_expr_symbols :: proc(c: ^Checker, m: ^Checked_Module, expr: Expression) ->
 
 	case ^Call_Expression:
 		check_expr_symbols(c, m, e.func) or_return
-		for i in 0 ..< e.arg_count {
-			check_expr_symbols(c, m, e.args[i]) or_return
+		for arg in e.args {
+			check_expr_symbols(c, m, arg) or_return
 		}
 
-	case ^Array_Type:
+	case ^Array_Type_Expression:
 		check_expr_symbols(c, m, e.elem_type) or_return
 
 	}
@@ -1139,10 +1246,58 @@ check_node_types :: proc(c: ^Checker, m: ^Checked_Module, node: Node) -> (
 
 
 	case ^If_Statement:
+		condition_type := check_expr_types(c, m, n.condition) or_return
+		if !is_truthy_type(condition_type) {
+			err = Semantic_Error {
+				kind    = .Mismatched_Types,
+				token   = n.token,
+				details = fmt.tprintf(
+					"Expected %s, got %s",
+					c.builtin_types[BOOL_ID].name,
+					condition_type.name,
+				),
+			}
+		}
+		// push a new scope here
+		check_node_types(c, m, n.body) or_return
+		if n.next_branch != nil {
+			check_node_types(c, m, n.next_branch) or_return
+		}
 
 	case ^Range_Statement:
+		//push scope
+		low := check_expr_types(c, m, n.low) or_return
+		high := check_expr_types(c, m, n.high) or_return
+		if !type_equal(low, high) {
+			err = Semantic_Error {
+				kind    = .Mismatched_Types,
+				token   = n.token,
+				details = fmt.tprintf(
+					"Low expression of type %s, high expression of type %s",
+					low.name,
+					high.name,
+				),
+			}
+		}
+		// add the newly created iterator to the scope
+		check_node_types(c, m, n.body) or_return
 
 	case ^Var_Declaration:
+		var_type := check_expr_types(c, m, n.type_expr) or_return
+		value_type := check_expr_types(c, m, n.expr) or_return
+
+		// Need to determine if need to be type inferred
+		if var_type.type_id == c.builtin_types[UNTYPED_ID].type_id {
+			// add the var to the environment's scope
+		} else {
+			if !type_equal(var_type, value_type) {
+				err = Semantic_Error {
+					kind    = .Mismatched_Types,
+					token   = n.token,
+					details = fmt.tprintf("Expected %s, got %s", var_type.name, value_type.name),
+				}
+			}
+		}
 
 	case ^Fn_Declaration:
 	case ^Type_Declaration:
@@ -1229,12 +1384,63 @@ check_expr_types :: proc(c: ^Checker, m: ^Checked_Module, expr: Expression) -> (
 		}
 
 	case ^Identifier_Expression:
+		result := get_type_from_identifier(c, m, e.name.text)
 
 	case ^Index_Expression:
+		left := check_expr_types(c, m, e.left) or_return
+		if left.type_id == ARRAY_ID {
+			index := check_expr_types(c, m, e.index) or_return
+			if !is_numerical_type(index) {
+				err = Semantic_Error {
+					kind    = .Mismatched_Types,
+					token   = e.token,
+					details = fmt.tprintf("Expected %s, got %s", c.builtin_types[NUMBER_ID].name, result.name),
+				}
+				return
+			}
+			elem_type := left.type_id_data.(Generic_Type_Info)
+			// Retrieve the Type_Info from the the element Type_ID
+			result = get_type_from_id(c, elem_type.spec_type_id)
+		} else {
+			identifier := e.left.(^Identifier_Expression)
+			err = Semantic_Error {
+				kind    = .Mismatched_Types,
+				token   = e.token,
+				details = fmt.tprintf("Cannot index %s of type %s", identifier.name.text, left.name),
+			}
+		}
 
 	case ^Call_Expression:
+		// Get the signature from the environment
+		fn_signature := check_expr_types(c, m, e.func) or_return
+		if fn_signature.type_id == FN_ID && fn_signature.type_kind == .Fn_Type {
+			signature_info := fn_signature.type_id_data.(Fn_Signature_Info)
+			// Check that the call expression has the exact same amount of arguments
+			// as the fn signature
+			if len(signature_info.parameters) != len(e.args) {
+				// FIXME: return an error
+				return
+			}
+			for arg, i in e.args {
+				arg_type := check_expr_types(c, m, arg) or_return
+				if !type_equal(arg_type, signature_info.parameters[i]) {
+					// FIXME: return an error
+					break
+				}
+			}
+			result = get_type_from_id(c, signature_info.return_type_id)
+		} else {
+			// FIXME: return an error
+		}
 
-	case ^Array_Type:
+	case ^Array_Type_Expression:
+		inner_type := check_expr_types(c, m, e.elem_type) or_return
+		result = Type_Info {
+			name = "array",
+			type_id = ARRAY_ID,
+			type_kind = .Generic_Type,
+			type_id_data = Generic_Type_Info{spec_type_id = inner_type.type_id},
+		}
 	}
 	return
 }

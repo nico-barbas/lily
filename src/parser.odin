@@ -570,13 +570,12 @@ parse_group :: proc(p: ^Parser) -> (result: Expression, err: Error) {
 
 
 parse_call :: proc(p: ^Parser, left: Expression) -> (result: Expression, err: Error) {
-	call := new(Call_Expression)
-	call.func = left
+	call := new_clone(Call_Expression{func = left, args = make([dynamic]Expression)})
 
 	// FIXME: Account for parameterless functions
 	args: for {
-		call.args[call.arg_count] = parse_expr(p, .Lowest) or_return
-		call.arg_count += 1
+		arg := parse_expr(p, .Lowest) or_return
+		append(&call.args, arg)
 		consume_token(p)
 		#partial switch p.previous.kind {
 		case .Close_Paren:
@@ -605,7 +604,7 @@ parse_call :: proc(p: ^Parser, left: Expression) -> (result: Expression, err: Er
 
 parse_infix_open_bracket :: proc(p: ^Parser, left: Expression) -> (result: Expression, err: Error) {
 	#partial switch l in left {
-	case ^Array_Type:
+	case ^Array_Type_Expression:
 		result = parse_array(p, left) or_return
 	case ^Identifier_Expression:
 		result = parse_index(p, left) or_return
@@ -643,7 +642,7 @@ parse_array :: proc(p: ^Parser, left: Expression) -> (result: Expression, err: E
 }
 
 parse_array_type :: proc(p: ^Parser) -> (result: Expression, err: Error) {
-	array_type := new(Array_Type)
+	array_type := new(Array_Type_Expression)
 	array_type.token = p.previous
 	match_token_kind(p, .Of) or_return
 	array_type.of_token = p.current

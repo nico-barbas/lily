@@ -49,7 +49,7 @@ package lily
 // 					}
 // 				}
 
-// 			case ^Array_Type:
+// 			case ^Array_Type_Expression:
 // 				assert(false, "Array not implemented yet")
 // 			}
 // 			push_stack_value(vm, n.identifier)
@@ -198,7 +198,7 @@ package lily
 // 		result = array.data[int(index_value.data.(f64))]
 // 	// e.
 
-// 	case ^Array_Type:
+// 	case ^Array_Type_Expression:
 // 		assert(false, "Invalid branch")
 
 // 	case ^Call_Expression:

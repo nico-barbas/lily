@@ -95,15 +95,15 @@ print_expr :: proc(p: ^AST_Printer, expr: Expression) {
 			print_expr(p, e.func)
 			write_line(p, "Arguments: ")
 			increment(p)
-			for i in 0 ..< e.arg_count {
+			for arg in e.args {
 				write_line(p)
-				print_expr(p, e.args[i])
+				print_expr(p, arg)
 			}
 			decrement(p)
 		}
 		decrement(p)
 
-	case ^Array_Type:
+	case ^Array_Type_Expression:
 		write(p, "Array of ")
 		print_expr(p, e.elem_type)
 	}
