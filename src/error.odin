@@ -3,6 +3,7 @@ package lily
 Error :: union {
 	Parsing_Error,
 	Semantic_Error,
+	Internal_Error,
 }
 
 Parsing_Error :: struct {
@@ -25,5 +26,12 @@ Semantic_Error :: struct {
 		Invalid_Type_Operation,
 	},
 	token:   Token,
+	details: string,
+}
+
+Internal_Error :: struct {
+	kind:    enum {
+		Unknown_Scope_Name,
+	},
 	details: string,
 }

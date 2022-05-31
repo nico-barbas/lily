@@ -13,6 +13,7 @@ parser_rules := map[Token_Kind]struct {
 	.Identifier =      {prec = .Lowest,  prefix_fn = parse_identifier, infix_fn = nil},
 	.Number =          {prec = .Lowest,  prefix_fn = parse_identifier, infix_fn = nil},
 	.Boolean =         {prec = .Lowest,  prefix_fn = parse_identifier, infix_fn = nil},
+	.String =          {prec = .Lowest,  prefix_fn = parse_identifier, infix_fn = nil},
 	.Array =           {prec = .Lowest,  prefix_fn = parse_array_type, infix_fn = nil},
 	.Number_Literal =  {prec = .Lowest,  prefix_fn = parse_number    , infix_fn = nil},
     .String_Literal =  {prec = .Lowest,  prefix_fn = parse_string    , infix_fn = nil},
@@ -156,6 +157,7 @@ parse_expression_stmt :: proc(p: ^Parser) -> (result: ^Expression_Statement, err
 
 parse_assign_stmt :: proc(p: ^Parser) -> (result: ^Assignment_Statement, err: Error) {
 	result = new(Assignment_Statement)
+	result.token = p.current
 	result.left = parse_expr(p, .Lowest) or_return
 	consume_token(p)
 	result.right = parse_expr(p, .Lowest) or_return

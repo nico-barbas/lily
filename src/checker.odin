@@ -1,6 +1,8 @@
 package lily
 
 import "core:fmt"
+import "core:hash"
+import "core:strings"
 
 // TODO: Embed the module ID inside the Type_ID
 
@@ -65,6 +67,8 @@ ARRAY_INFO :: Type_Info {
 
 Module_ID :: distinct int
 BUILTIN_MODULE_ID :: 0
+
+Scope_ID :: distinct int
 
 Type_Alias_Info :: struct {
 	underlying_type_id: Type_ID,
@@ -207,6 +211,7 @@ type_equal :: proc(c: ^Checker, t0, t1: Type_Info) -> (result: bool) {
 // Here a scope is only used to gather symbol defintions 
 
 Semantic_Scope :: struct {
+	id:             Scope_ID,
 	symbols:        [dynamic]string,
 	variable_types: map[string]Type_Info,
 	parent:         ^Semantic_Scope,
@@ -224,6 +229,7 @@ Checker :: struct {
 // allowed at the file scope. This means that all the
 // type infos can be kept at one place,
 Checked_Module :: struct {
+	name:        string,
 	// This is all the nodes at the file level
 	nodes:       [dynamic]Checked_Node,
 	functions:   [dynamic]Checked_Node,
@@ -379,12 +385,40 @@ delete_scope :: proc(s: ^Semantic_Scope) {
 	free(s)
 }
 
-push_scope :: proc(m: ^Checked_Module) {
+format_scope_name :: proc(m: ^Checked_Module, name: Token) -> (result: string) {
+	result = strings.concatenate(
+		{m.name, name.text, fmt.tprint(name.line, name.start)},
+		context.temp_allocator,
+	)
+	return
+}
+
+push_scope :: proc(m: ^Checked_Module, name: Token) {
 	scope := new_scope()
+	scope_name := format_scope_name(m, name)
+	defer delete(scope_name)
+	scope.id = Scope_ID(hash.fnv32(transmute([]u8)scope_name))
 	append(&m.scope.children, scope)
 	scope.parent = m.scope
 	m.scope = scope
 	m.scope_depth += 1
+}
+
+enter_scope :: proc(m: ^Checked_Module, name: Token) -> (err: Error) {
+	scope_name := format_scope_name(m, name)
+	defer delete(scope_name)
+	scope_id := Scope_ID(hash.fnv32(transmute([]u8)scope_name))
+	for scope in m.scope.children {
+		if scope.id == scope_id {
+			m.scope = scope
+			return
+		}
+	}
+	err = Internal_Error {
+		kind    = .Unknown_Scope_Name,
+		details = fmt.tprintf("%i scope not known", scope_id),
+	}
+	return
 }
 
 pop_scope :: proc(m: ^Checked_Module) {
@@ -517,6 +551,14 @@ get_fn_type :: proc(c: ^Checker, m: ^Checked_Module, name: string) -> (
 	result: Type_Info,
 	exist: bool,
 ) {
+	for fn in m.functions {
+		function := fn.(^Checked_Fn_Declaration)
+		if function.identifier.text == name {
+			result = function.type_info
+			exist = true
+			break
+		}
+	}
 	return
 }
 
@@ -580,10 +622,41 @@ check_module :: proc(c: ^Checker, m: ^Parsed_Module) -> (module: ^Checked_Module
 	}
 
 	for node in m.nodes {
+		#partial switch n in node {
+		case ^Fn_Declaration:
+			fn_decl := new_clone(
+				Checked_Fn_Declaration{
+					token = n.token,
+					identifier = n.identifier,
+					type_info = Type_Info{name = "fn", type_id = FN_ID, type_kind = .Fn_Type},
+				},
+			)
+			fn_signature := Fn_Signature_Info {
+				parameters = make([]Type_Info, len(n.parameters)),
+			}
+
+			enter_scope(module, n.identifier) or_return
+			defer pop_scope(module)
+
+			return_type := check_expr_types(c, module, n.return_type_expr) or_return
+			set_variable_type(module, "result", return_type)
+			for param, i in n.parameters {
+				param_type := check_expr_types(c, module, param.type_expr) or_return
+				fn_signature.parameters[i] = param_type
+				set_variable_type(module, param.name.text, param_type)
+			}
+			fn_decl.body = check_node_types(c, module, n.body) or_return
+			fn_signature.return_type_id = return_type.type_id
+			fn_decl.type_info.type_id_data = fn_signature
+
+			append(&module.functions, fn_decl)
+		}
+	}
+
+	for node in m.nodes {
 		checked_node := check_node_types(c, module, node) or_return
 		#partial switch node in checked_node {
 		case ^Checked_Fn_Declaration:
-			append(&module.functions, checked_node)
 		case:
 			append(&module.nodes, checked_node)
 		}
@@ -607,7 +680,7 @@ check_node_symbols :: proc(c: ^Checker, m: ^Checked_Module, node: Node) -> (err:
 
 	case ^If_Statement:
 		check_expr_symbols(c, m, n.condition) or_return
-		push_scope(m)
+		push_scope(m, n.token)
 		check_node_symbols(c, m, n.body) or_return
 		pop_scope(m)
 		if n.next_branch != nil {
@@ -625,7 +698,7 @@ check_node_symbols :: proc(c: ^Checker, m: ^Checked_Module, node: Node) -> (err:
 		}
 		check_expr_symbols(c, m, n.low) or_return
 		check_expr_symbols(c, m, n.high) or_return
-		push_scope(m)
+		push_scope(m, n.token)
 		defer pop_scope(m)
 		check_node_symbols(c, m, n.body) or_return
 
@@ -647,7 +720,7 @@ check_node_symbols :: proc(c: ^Checker, m: ^Checked_Module, node: Node) -> (err:
 	case ^Fn_Declaration:
 		// No need to check for function symbol declaration since 
 		// functions can only be declared at the file scope
-		push_scope(m)
+		push_scope(m, n.identifier)
 		defer pop_scope(m)
 		add_symbol(c, m, Token{text = "result"}) or_return
 		for param in n.parameters {
@@ -758,6 +831,19 @@ check_node_types :: proc(c: ^Checker, m: ^Checked_Module, node: Node) -> (
 				),
 			}
 		}
+		// The type info should always exist at this point,
+		// but we will keep this as a sanity check for now
+		// var_type, var_exist := get_variable_type(m, n.token.text)
+		// if !var_exist {
+		// 	assert(false, "Variable does not exist in Assignment type check, FIXME")
+		// }
+		// if !type_equal(c, var_type, left) {
+		// 	err = Semantic_Error {
+		// 		kind    = .Mismatched_Types,
+		// 		token   = n.token,
+		// 		details = fmt.tprintf("Expected %s, got %s", var_type.name, left.name),
+		// 	}
+		// }
 
 		result = new_clone(
 			Checked_Assigment_Statement{
@@ -861,25 +947,6 @@ check_node_types :: proc(c: ^Checker, m: ^Checked_Module, node: Node) -> (
 
 
 	case ^Fn_Declaration:
-		fn_decl := new_clone(
-			Checked_Fn_Declaration{
-				token = n.token,
-				identifier = n.identifier,
-				type_info = Type_Info{name = "fn", type_id = FN_ID, type_kind = .Fn_Type},
-			},
-		)
-		fn_signature := Fn_Signature_Info {
-			parameters = make([]Type_Info, len(n.parameters)),
-		}
-		for param, i in n.parameters {
-			param_type := check_expr_types(c, m, param.type_expr) or_return
-			fn_signature.parameters[i] = param_type
-		}
-		fn_decl.body = check_node_types(c, m, n.body) or_return
-		return_type := check_expr_types(c, m, n.return_type_expr) or_return
-		fn_signature.return_type_id = return_type.type_id
-		fn_decl.type_info.type_id_data = fn_signature
-		result = fn_decl
 
 	case ^Type_Declaration:
 	}
@@ -961,6 +1028,7 @@ check_expr_types :: proc(c: ^Checker, m: ^Checked_Module, expr: Expression) -> (
 				),
 			}
 		}
+		result = left
 
 	case ^Identifier_Expression:
 		result = get_type_from_identifier(c, m, e.name)
@@ -997,14 +1065,30 @@ check_expr_types :: proc(c: ^Checker, m: ^Checked_Module, expr: Expression) -> (
 			// Check that the call expression has the exact same amount of arguments
 			// as the fn signature
 			if len(signature_info.parameters) != len(e.args) {
-				// FIXME: return an error
+				err = Semantic_Error {
+					kind    = .Invalid_Arg_Count,
+					token   = e.token,
+					details = fmt.tprintf(
+						"Invalid Argument count, expected %i, got %i",
+						len(signature_info.parameters),
+						len(e.args),
+					),
+				}
 				return
 			}
 			for arg, i in e.args {
 				arg_type := check_expr_types(c, m, arg) or_return
 				if !type_equal(c, arg_type, signature_info.parameters[i]) {
-					// FIXME: return an error
-					break
+					err = Semantic_Error {
+						kind    = .Mismatched_Types,
+						token   = e.token,
+						details = fmt.tprintf(
+							"Expected %s, got %s",
+							arg_type.name,
+							signature_info.parameters[i].name,
+						),
+					}
+					return
 				}
 			}
 			result = get_type_from_id(c, signature_info.return_type_id)

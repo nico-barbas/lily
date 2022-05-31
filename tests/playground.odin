@@ -15,9 +15,12 @@ main :: proc() {
 playground :: proc() {
 	using lily
 	input: string = `
-		fn add(a: number, b: number): number
+		var foo = add(10, 3)
+		fn add(a: number, b: number): string
 			result = a + b
 		end
+
+		
 	`
 	parsed_module := make_module()
 	defer delete_module(parsed_module)
