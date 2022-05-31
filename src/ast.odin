@@ -133,6 +133,7 @@ Var_Declaration :: struct {
 }
 
 Fn_Declaration :: struct {
+	token:            Token,
 	identifier:       Token,
 	parameters:       [dynamic]Typed_Identifier,
 	body:             ^Block_Statement,

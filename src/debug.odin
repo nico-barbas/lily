@@ -227,6 +227,10 @@ print_checked_ast :: proc(module: ^Checked_Module, checker: ^Checker) {
 	}
 	defer strings.destroy_builder(&printer.builder)
 
+	for function in module.functions {
+		print_checked_node(&printer, checker, function)
+	}
+
 	for node in module.nodes {
 		print_checked_node(&printer, checker, node)
 	}
@@ -311,17 +315,8 @@ print_checked_node :: proc(p: ^AST_Printer, c: ^Checker, node: Checked_Node) {
 		{
 			write_line(p, "Identifier name: ")
 			write(p, n.identifier.text)
-			write_line(p, "Parameters: ")
-			increment(p)
-			for param in n.parameters {
-				write_line(p)
-				fmt.sbprintf(&p.builder, "Name: %s, Type: ", param.name.text)
-				print_type_info(p, c, param.type_info)
-			}
-			decrement(p)
-			write_line(p, "Return type: ")
-			print_type_info(p, c, n.return_type_info)
-
+			write_line(p, "Signature: ")
+			print_type_info(p, c, n.type_info)
 			print_checked_node(p, c, n.body)
 		}
 		decrement(p)
@@ -342,16 +337,26 @@ print_checked_node :: proc(p: ^AST_Printer, c: ^Checker, node: Checked_Node) {
 	}
 }
 
-print_type_info :: proc(p: ^AST_Printer, checker: ^Checker, t: Type_Info) {
+print_type_info :: proc(p: ^AST_Printer, c: ^Checker, t: Type_Info) {
 	switch t.type_kind {
 	case .Builtin, .Elementary_Type, .Type_Alias:
 		write(p, t.name)
 	case .Generic_Type:
 		generic_id := t.type_id_data.(Generic_Type_Info)
-		generic_info := get_type_from_id(checker, generic_id.spec_type_id)
+		generic_info := get_type_from_id(c, generic_id.spec_type_id)
 		fmt.sbprintf(&p.builder, "%s of %s", t.name, generic_info.name)
 	case .Fn_Type:
-		assert(false, "Fn Signature Type printing not implemented yet")
+		fn_signature := t.type_id_data.(Fn_Signature_Info)
+		increment(p)
+		write_line(p, "Parameters: ")
+		for param in fn_signature.parameters {
+			print_type_info(p, c, param)
+			write(p, ", ")
+		}
+		write_line(p, "Returns: ")
+		return_type := get_type_from_id(c, fn_signature.return_type_id)
+		print_type_info(p, c, return_type)
+		decrement(p)
 	}
 }
 

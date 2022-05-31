@@ -494,8 +494,8 @@ parse_type_decl :: proc(p: ^Parser) -> (result: ^Type_Declaration, err: Error) {
 			if !is_type_token(p.previous.kind) {
 				err = Parsing_Error {
 					kind    = .Invalid_Syntax,
-					token   = p.current,
-					details = fmt.tprintf("Expected type, got %s", p.current.kind),
+					token   = p.previous,
+					details = fmt.tprintf("Expected type, got %s", p.previous.kind),
 				}
 			}
 		}

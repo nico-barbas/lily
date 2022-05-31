@@ -51,6 +51,7 @@ STRING_INFO :: Type_Info {
 	type_id   = STRING_ID,
 	type_kind = .Builtin,
 }
+// FIXME: ?? Why do we need this
 FN_INFO :: Type_Info {
 	name      = "fn",
 	type_id   = FN_ID,
@@ -146,6 +147,7 @@ is_numerical_type :: proc(t: Type_Info) -> bool {
 // |- foo: MyNumber and |- 10: untyped number
 // Number Literal are of type "untyped number" 
 // and coherced to right type upon evaluation
+// FIXME: Probably needs a rewrite at some point
 type_equal :: proc(c: ^Checker, t0, t1: Type_Info) -> (result: bool) {
 	if t0.type_id == t1.type_id {
 		if t0.type_kind == t1.type_kind {
@@ -172,8 +174,10 @@ type_equal :: proc(c: ^Checker, t0, t1: Type_Info) -> (result: bool) {
 			alias = t1.type_id_data.(Type_Alias_Info)
 			other = t0
 		}
-		parent_type := get_type_from_id(c, alias.underlying_type_id)
-		result = type_equal(c, parent_type, other)
+		if is_untyped_id(other) {
+			parent_type := get_type_from_id(c, alias.underlying_type_id)
+			result = type_equal(c, parent_type, other)
+		}
 
 	} else if is_untyped_id(t0) || is_untyped_id(t1) {
 		untyped_t: Type_Info
@@ -292,14 +296,10 @@ Checked_Var_Declaration :: struct {
 }
 
 Checked_Fn_Declaration :: struct {
-	token:            Token,
-	identifier:       Token,
-	parameters:       [dynamic]struct {
-		name:      Token,
-		type_info: Type_Info,
-	},
-	body:             Checked_Node,
-	return_type_info: Type_Info,
+	token:      Token,
+	identifier: Token,
+	body:       Checked_Node,
+	type_info:  Type_Info,
 }
 
 Checked_Type_Declaration :: struct {
@@ -583,6 +583,7 @@ check_module :: proc(c: ^Checker, m: ^Parsed_Module) -> (module: ^Checked_Module
 		checked_node := check_node_types(c, module, node) or_return
 		#partial switch node in checked_node {
 		case ^Checked_Fn_Declaration:
+			append(&module.functions, checked_node)
 		case:
 			append(&module.nodes, checked_node)
 		}
@@ -860,6 +861,26 @@ check_node_types :: proc(c: ^Checker, m: ^Checked_Module, node: Node) -> (
 
 
 	case ^Fn_Declaration:
+		fn_decl := new_clone(
+			Checked_Fn_Declaration{
+				token = n.token,
+				identifier = n.identifier,
+				type_info = Type_Info{name = "fn", type_id = FN_ID, type_kind = .Fn_Type},
+			},
+		)
+		fn_signature := Fn_Signature_Info {
+			parameters = make([]Type_Info, len(n.parameters)),
+		}
+		for param, i in n.parameters {
+			param_type := check_expr_types(c, m, param.type_expr) or_return
+			fn_signature.parameters[i] = param_type
+		}
+		fn_decl.body = check_node_types(c, m, n.body) or_return
+		return_type := check_expr_types(c, m, n.return_type_expr) or_return
+		fn_signature.return_type_id = return_type.type_id
+		fn_decl.type_info.type_id_data = fn_signature
+		result = fn_decl
+
 	case ^Type_Declaration:
 	}
 	return

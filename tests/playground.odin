@@ -15,18 +15,9 @@ main :: proc() {
 playground :: proc() {
 	using lily
 	input: string = `
-		type MyNumber is number
-		type MySecondNumber is MyNumber
-		var bar: MyNumber = 1
-		var foo: MySecondNumber = bar
-		--foo[0] = 10
-		--foo[1] = add(4, 9)
-		--foo[0] = add(foo[0], foo[1])
-		--fn add(a: number, b: number): number
-		--	result = a + b
-		--end
-		--type MyType is number
-		--var bar: MyType = 4
+		fn add(a: number, b: number): number
+			result = a + b
+		end
 	`
 	parsed_module := make_module()
 	defer delete_module(parsed_module)
