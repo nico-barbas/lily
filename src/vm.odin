@@ -1,5 +1,69 @@
 package lily
 
+VM_STACK_SIZE :: 255
+VM_STACK_GROWTH :: 2
+
+Vm :: struct {
+	stack:     []Value,
+	stack_ptr: int,
+	current:   Chunk,
+	ip:        int,
+}
+
+push_stack_value :: proc(vm: ^Vm, val: Value) {
+	vm.stack[vm.stack_ptr] = val
+	vm.stack_ptr += 1
+}
+
+pop_stack_value :: proc(vm: ^Vm) -> (result: Value) {
+	result = vm.stack[vm.stack_ptr - 1]
+	vm.stack_ptr -= 1
+	return
+}
+
+get_byte :: proc(vm: ^Vm) -> byte {
+	vm.ip += 1
+	return vm.current.bytecode[vm.ip - 1]
+}
+
+get_op_code :: proc(vm: ^Vm) -> Op_Code {
+	return Op_Code(get_byte(vm))
+}
+
+get_i16 :: proc(vm: ^Vm) -> i16 {
+	lower := get_byte(vm)
+	upper := get_byte(vm)
+	return i16(upper) << 8 | i16(lower)
+}
+
+run_bytecode :: proc(vm: ^Vm, chunk: Chunk) {
+	vm.stack = make([]Value, VM_STACK_SIZE)
+	vm.stack_ptr = 0
+	vm.current = chunk
+	vm.ip = 0
+
+	for {
+		op := get_op_code(vm)
+		switch op {
+		case .Op_Const:
+			const_addr := get_i16(vm)
+			const_val := vm.current.constants[const_addr]
+			push_stack_value(vm, const_val)
+		case .Op_Pop:
+		case .Op_Neg:
+		case .Op_Add:
+			right := pop_stack_value(vm)
+			left := pop_stack_value(vm)
+			result := left.data.(f64) + right.data.(f64)
+			push_stack_value(vm, Value{kind = .Number, data = result})
+		}
+		if vm.ip >= len(vm.current.bytecode) {
+			break
+		}
+	}
+}
+
+
 // import "core:strings"
 
 // VM_STACK_SIZE :: 255

@@ -386,3 +386,14 @@ increment :: proc(p: ^AST_Printer) {
 decrement :: proc(p: ^AST_Printer) {
 	p.indent_level -= 1
 }
+
+
+///////////////
+// Chunk Decompiling
+
+print_chunk :: proc(c: ^Chunk) {
+	// counter := 0
+	for {
+
+	}
+}

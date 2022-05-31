@@ -100,7 +100,7 @@ Type_Info :: struct {
 	},
 }
 
-is_untyped_id :: proc(t: Type_Info) -> bool {
+is_untyped_type :: proc(t: Type_Info) -> bool {
 	return t.type_id == UNTYPED_NUMBER_ID || t.type_id == UNTYPED_BOOL_ID || t.type_id == UNTYPED_STRING_ID
 }
 
@@ -178,16 +178,16 @@ type_equal :: proc(c: ^Checker, t0, t1: Type_Info) -> (result: bool) {
 			alias = t1.type_id_data.(Type_Alias_Info)
 			other = t0
 		}
-		if is_untyped_id(other) {
+		if is_untyped_type(other) {
 			parent_type := get_type_from_id(c, alias.underlying_type_id)
 			result = type_equal(c, parent_type, other)
 		}
 
-	} else if is_untyped_id(t0) || is_untyped_id(t1) {
+	} else if is_untyped_type(t0) || is_untyped_type(t1) {
 		untyped_t: Type_Info
 		typed_t: Type_Info
 		other: Type_Info
-		if is_untyped_id(t0) {
+		if is_untyped_type(t0) {
 			untyped_t = t0
 			other = t1
 		} else {
@@ -546,7 +546,6 @@ get_variable_type :: proc(m: ^Checked_Module, name: string) -> (result: Type_Inf
 	return
 }
 
-// TODO: Request a ptr to the checker to see if the identifier is a builtin variable or function
 get_fn_type :: proc(c: ^Checker, m: ^Checked_Module, name: string) -> (
 	result: Type_Info,
 	exist: bool,
@@ -807,7 +806,7 @@ check_node_types :: proc(c: ^Checker, m: ^Checked_Module, node: Node) -> (
 	switch n in node {
 	case ^Expression_Statement:
 		t := check_expr_types(c, m, n.expr) or_return
-		result := new_clone(Checked_Expression_Statement{expr = checked_expresssion(n.expr, t)})
+		result = new_clone(Checked_Expression_Statement{expr = checked_expresssion(n.expr, t)})
 
 	case ^Block_Statement:
 		block_stmt := new_clone(Checked_Block_Statement{nodes = make([dynamic]Checked_Node)})
@@ -833,17 +832,6 @@ check_node_types :: proc(c: ^Checker, m: ^Checked_Module, node: Node) -> (
 		}
 		// The type info should always exist at this point,
 		// but we will keep this as a sanity check for now
-		// var_type, var_exist := get_variable_type(m, n.token.text)
-		// if !var_exist {
-		// 	assert(false, "Variable does not exist in Assignment type check, FIXME")
-		// }
-		// if !type_equal(c, var_type, left) {
-		// 	err = Semantic_Error {
-		// 		kind    = .Mismatched_Types,
-		// 		token   = n.token,
-		// 		details = fmt.tprintf("Expected %s, got %s", var_type.name, left.name),
-		// 	}
-		// }
 
 		result = new_clone(
 			Checked_Assigment_Statement{
