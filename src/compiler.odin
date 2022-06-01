@@ -2,22 +2,34 @@ package lily
 
 //odinfmt: disable
 Op_Code :: enum byte {
+	Op_Begin, // Mark the begining of a stack scope, used for book keeping in the Vm
+	Op_End,   // Mark the end of a stack scope, used for book keeping in the Vm
+	Op_Pop,   // Get the last element from the stack and decrement its counter
 	Op_Const, // Take the constant from the associated constant pool and load it on to stack
 	Op_Set,   // Bind the variable name to a stack ID
 	Op_Get,   // Get the variable value from the the variable pool and load it on the stack
-	Op_Pop,   // Get the last element from the stack and decrement its counter
 	Op_Neg,   // Get the last element, negate it and push it back on the stack
+	Op_Not,
 	Op_Add,   // Get the last 2 elements, add them and push the result back on the stack
 	Op_Mul,   // Get the last 2 elements, multiply them and push the result back on the stack
+	Op_Div,
+	Op_Rem,
+	Op_And,
+	Op_Or,
+	Op_Jump,
+	Op_Jump_False,
 }
 //odinfmt: enable
 
 Compiler :: struct {
-	bytecode:    [dynamic]byte,
-	constants:   [dynamic]Value,
-	variables:   [dynamic]Variable,
-	const_count: i16,
-	var_count:   i16,
+	cursor:          int,
+	write_at_cursor: bool,
+	bytecode:        [dynamic]byte,
+	constants:       [dynamic]Value,
+	variables:       [dynamic]Variable,
+	const_count:     i16,
+	var_count:       i16,
+	scope_depth:     int,
 }
 
 Chunk :: struct {
@@ -40,7 +52,7 @@ add_constant :: proc(c: ^Compiler, constant: Value) -> (ptr: i16) {
 
 add_variable :: proc(c: ^Compiler, name: string) -> (ptr: i16) {
 	// TODO: keep track of the scope depth
-	append(&c.variables, Variable{name = name, scope_depth = -1})
+	append(&c.variables, Variable{name = name, scope_depth = c.scope_depth, stack_id = -1})
 	c.var_count += 1
 	return c.var_count - 1
 }
@@ -54,8 +66,30 @@ get_variable_addr :: proc(c: ^Compiler, name: string) -> (ptr: i16) {
 	return -1
 }
 
+set_cursor :: proc(c: ^Compiler) {
+	c.cursor = len(c.bytecode)
+}
+
+write_at_cursor :: proc(c: ^Compiler) {
+	c.write_at_cursor = true
+}
+
+remove_cursor :: proc(c: ^Compiler) {
+	c.write_at_cursor = false
+	c.cursor = -1
+}
+
+current_byte_offset :: proc(c: ^Compiler) -> int {
+	return len(c.bytecode)
+}
+
 push_byte :: proc(c: ^Compiler, b: byte) {
-	append(&c.bytecode, b)
+	if c.write_at_cursor {
+		c.bytecode[c.cursor] = b
+		c.cursor += 1
+	} else {
+		append(&c.bytecode, b)
+	}
 }
 
 push_op_code :: #force_inline proc(c: ^Compiler, op: Op_Code) {
@@ -86,8 +120,19 @@ push_op_get_code :: proc(c: ^Compiler, addr: i16) {
 	push_byte(c, upper_addr)
 }
 
+push_op_jump_code :: proc(c: ^Compiler, to: i16, on_condition := false) {
+	op := Op_Code.Op_Jump if !on_condition else Op_Code.Op_Jump_False
+	push_byte(c, byte(op))
+	lower_to := byte(to)
+	upper_to := byte(to >> 8)
+	push_byte(c, lower_to)
+	push_byte(c, upper_to)
+}
+
 new_compiler :: proc() -> ^Compiler {
-	return new_clone(Compiler{bytecode = make([dynamic]byte), constants = make([dynamic]Value)})
+	return new_clone(
+		Compiler{cursor = -1, bytecode = make([dynamic]byte), constants = make([dynamic]Value)},
+	)
 }
 
 compile_module :: proc(c: ^Compiler, module: ^Checked_Module) -> (result: Chunk) {
@@ -112,6 +157,10 @@ compile_node :: proc(c: ^Compiler, node: Checked_Node) {
 		compile_expr(c, n.expr.expr)
 
 	case ^Checked_Block_Statement:
+		for inner in n.nodes {
+			compile_node(c, inner)
+		}
+
 	case ^Checked_Assigment_Statement:
 		compile_expr(c, n.right.expr)
 		#partial switch e in n.left.expr {
@@ -121,7 +170,26 @@ compile_node :: proc(c: ^Compiler, node: Checked_Node) {
 		}
 
 	case ^Checked_If_Statement:
+		push_op_code(c, .Op_Begin)
+		compile_expr(c, n.condition.expr)
+		set_cursor(c)
+		push_op_jump_code(c, -1, true)
+		compile_node(c, n.body)
+		push_op_code(c, .Op_End)
+
+		write_at_cursor(c)
+		push_op_jump_code(c, i16(current_byte_offset(c)), true)
+		remove_cursor(c)
+
+		if n.next_branch != nil {
+			compile_node(c, n.next_branch)
+		}
+
+
 	case ^Checked_Range_Statement:
+		push_op_code(c, .Op_Begin)
+		defer push_op_code(c, .Op_End)
+
 	case ^Checked_Var_Declaration:
 		// Handle the case of uninitialized variables
 		var_addr := add_variable(c, n.identifier.text)
@@ -143,6 +211,14 @@ compile_expr :: proc(c: ^Compiler, expr: Expression) {
 	case ^String_Literal_Expression:
 	case ^Array_Literal_Expression:
 	case ^Unary_Expression:
+		compile_expr(c, e.expr)
+		#partial switch e.op {
+		case .Minus_Op:
+			push_op_code(c, .Op_Neg)
+		case .Not_Op:
+			push_op_code(c, .Op_Not)
+		}
+
 	case ^Binary_Expression:
 		compile_expr(c, e.left)
 		compile_expr(c, e.right)
@@ -154,6 +230,14 @@ compile_expr :: proc(c: ^Compiler, expr: Expression) {
 			push_op_code(c, .Op_Add)
 		case .Mult_Op:
 			push_op_code(c, .Op_Mul)
+		case .Div_Op:
+			push_op_code(c, .Op_Div)
+		case .Rem_Op:
+			push_op_code(c, .Op_Rem)
+		case .Or_Op:
+			push_op_code(c, .Op_Or)
+		case .And_Op:
+			push_op_code(c, .Op_And)
 		}
 
 	case ^Identifier_Expression:

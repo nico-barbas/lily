@@ -122,7 +122,7 @@ match_token_kind_next :: proc(p: ^Parser, kind: Token_Kind) -> (err: Error) {
 parse_node :: proc(p: ^Parser) -> (result: Node, err: Error) {
 	token := consume_token(p)
 	#partial switch token.kind {
-	case .EOF, .Newline:
+	case .EOF, .Newline, .End, .Else:
 		result = nil
 	case .Var:
 		result, err = parse_var_decl(p)

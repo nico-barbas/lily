@@ -16,8 +16,11 @@ playground :: proc() {
 	using lily
 	input: string = `
 		var a = 5 * 2
-		var b = a + 8
-		a = 13
+		if true:
+			a = a + 3
+		else:
+			a = -1
+		end
 	`
 	parsed_module := make_module()
 	defer delete_module(parsed_module)
@@ -35,6 +38,8 @@ playground :: proc() {
 
 	compiler := new_compiler()
 	chunk := compile_module(compiler, checked_module)
+	print_chunk(chunk)
+	fmt.println()
 	vm := Vm{}
 	run_bytecode(&vm, chunk)
 	fmt.println(vm.stack[:vm.stack_ptr])

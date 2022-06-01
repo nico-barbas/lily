@@ -4,10 +4,27 @@ VM_STACK_SIZE :: 255
 VM_STACK_GROWTH :: 2
 
 Vm :: struct {
-	stack:     []Value,
-	stack_ptr: int,
-	chunk:     Chunk,
-	ip:        int,
+	stack:       []Value,
+	header_ptr:  int,
+	stack_ptr:   int,
+	stack_depth: int,
+	chunk:       Chunk,
+	ip:          int,
+}
+
+push_stack :: proc(vm: ^Vm) {
+	vm.stack[vm.stack_ptr] = Value {
+		data = f64(vm.header_ptr),
+	}
+	vm.header_ptr = vm.stack_ptr
+	vm.stack_ptr += 1
+	vm.stack_depth += 1
+}
+
+pop_stack :: proc(vm: ^Vm) {
+	vm.stack_ptr = vm.header_ptr
+	vm.header_ptr = int(vm.stack[vm.header_ptr].data.(f64))
+	vm.stack_depth -= 1
 }
 
 push_stack_value :: proc(vm: ^Vm, val: Value) {
@@ -26,16 +43,27 @@ get_stack_value :: proc(vm: ^Vm, stack_id: int) -> (result: Value) {
 	return
 }
 
+set_stack_value :: proc(vm: ^Vm, stack_id: int, value: Value) {
+	vm.stack[stack_id] = value
+}
+
 get_current_stack_id :: proc(vm: ^Vm) -> int {
 	return vm.stack_ptr - 1 if vm.stack_ptr > 0 else 0
 }
 
-bind_variable_to_stack_id :: proc(vm: ^Vm, var_addr: i16, stack_id: int) {
+bind_variable_to_stack :: proc(vm: ^Vm, var_addr: i16) -> (stack_id: int) {
+	stack_id = vm.stack_ptr
 	vm.chunk.variables[var_addr].stack_id = stack_id
+	push_stack_value(vm, {})
+	return
 }
 
 get_variable_stack_id :: proc(vm: ^Vm, var_addr: i16) -> int {
 	return vm.chunk.variables[var_addr].stack_id
+}
+
+jump_to_instruction :: proc(vm: ^Vm, ip: int) {
+	vm.ip = ip
 }
 
 get_byte :: proc(vm: ^Vm) -> byte {
@@ -62,14 +90,32 @@ run_bytecode :: proc(vm: ^Vm, chunk: Chunk) {
 	for {
 		op := get_op_code(vm)
 		switch op {
+		case .Op_Begin:
+			push_stack(vm)
+
+		case .Op_End:
+			pop_stack(vm)
+
 		case .Op_Const:
 			const_addr := get_i16(vm)
 			const_val := vm.chunk.constants[const_addr]
 			push_stack_value(vm, const_val)
 
 		case .Op_Set:
+			// We pop the new value off the stack
+			// Then check if the variable has already been binded to the environment
+			// Else
+			value := pop_stack_value(vm)
 			var_addr := get_i16(vm)
-			bind_variable_to_stack_id(vm, var_addr, get_current_stack_id(vm))
+			var := vm.chunk.variables[var_addr]
+			var_stack_id: int
+			if var.stack_id == -1 {
+				var_stack_id = bind_variable_to_stack(vm, var_addr)
+			} else {
+				var_stack_id = get_variable_stack_id(vm, var_addr)
+			}
+
+			set_stack_value(vm, var_stack_id, value)
 
 		case .Op_Get:
 			var_addr := get_i16(vm)
@@ -77,10 +123,17 @@ run_bytecode :: proc(vm: ^Vm, chunk: Chunk) {
 			push_stack_value(vm, get_stack_value(vm, var_stack_id))
 
 		case .Op_Pop:
+			pop_stack_value(vm)
+
 		case .Op_Neg:
 			operand := pop_stack_value(vm)
 			result := -(operand.data.(f64))
 			push_stack_value(vm, Value{kind = .Number, data = result})
+
+		case .Op_Not:
+			operand := pop_stack_value(vm)
+			result := !(operand.data.(bool))
+			push_stack_value(vm, Value{kind = .Boolean, data = result})
 
 		case .Op_Add:
 			right := pop_stack_value(vm)
@@ -93,6 +146,44 @@ run_bytecode :: proc(vm: ^Vm, chunk: Chunk) {
 			left := pop_stack_value(vm)
 			result := left.data.(f64) * right.data.(f64)
 			push_stack_value(vm, Value{kind = .Number, data = result})
+
+		case .Op_Div:
+			right := pop_stack_value(vm)
+			left := pop_stack_value(vm)
+			result := left.data.(f64) / right.data.(f64)
+			push_stack_value(vm, Value{kind = .Number, data = result})
+
+		case .Op_Rem:
+			right := pop_stack_value(vm)
+			left := pop_stack_value(vm)
+			result := int(left.data.(f64)) % int(right.data.(f64))
+			push_stack_value(vm, Value{kind = .Number, data = f64(result)})
+
+		case .Op_And:
+			right := pop_stack_value(vm)
+			left := pop_stack_value(vm)
+			result := left.data.(bool) && right.data.(bool)
+			push_stack_value(vm, Value{kind = .Boolean, data = result})
+
+		case .Op_Or:
+			right := pop_stack_value(vm)
+			left := pop_stack_value(vm)
+			result := left.data.(bool) || right.data.(bool)
+			push_stack_value(vm, Value{kind = .Boolean, data = result})
+
+		case .Op_Jump:
+			jump_ip := get_i16(vm)
+			jump_to_instruction(vm, int(jump_ip))
+
+		case .Op_Jump_False:
+			// 1. pop value on stack
+			// 2. eval the value
+			// 3. branch
+			conditional := pop_stack_value(vm)
+			jump_ip := get_i16(vm)
+			if !conditional.data.(bool) {
+				jump_to_instruction(vm, int(jump_ip))
+			}
 		}
 		if vm.ip >= len(vm.chunk.bytecode) {
 			break

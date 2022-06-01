@@ -21,6 +21,8 @@ print_parsed_ast :: proc(program: ^Parsed_Module) {
 	}
 	defer strings.destroy_builder(&printer.builder)
 
+	write_line(&printer, "================ \n")
+	write(&printer, "== PARSED AST == \n")
 	for node in program.nodes {
 		print_parsed_node(&printer, node)
 	}
@@ -227,6 +229,8 @@ print_checked_ast :: proc(module: ^Checked_Module, checker: ^Checker) {
 	}
 	defer strings.destroy_builder(&printer.builder)
 
+	write_line(&printer, "================= \n")
+	write(&printer, "== CHECKED AST == \n")
 	for function in module.functions {
 		print_checked_node(&printer, checker, function)
 	}
@@ -391,9 +395,146 @@ decrement :: proc(p: ^AST_Printer) {
 ///////////////
 // Chunk Decompiling
 
-print_chunk :: proc(c: ^Chunk) {
-	// counter := 0
-	for {
-
+print_chunk :: proc(c: Chunk) {
+	printer := AST_Printer {
+		builder      = strings.make_builder(),
+		indent_width = 2,
 	}
+	defer strings.destroy_builder(&printer.builder)
+
+	write_line(&printer, "======================= \n")
+	write(&printer, "== CHUNK DISASSEMBLY == \n")
+	op_code_str := map[Op_Code]string {
+		.Op_Begin      = "Op_Begin",
+		.Op_End        = "Op_End",
+		.Op_Pop        = "Op_Pop",
+		.Op_Const      = "Op_Const",
+		.Op_Set        = "Op_Set",
+		.Op_Get        = "Op_Get",
+		.Op_Neg        = "Op_Neg",
+		.Op_Not        = "Op_Not",
+		.Op_Add        = "Op_Add",
+		.Op_Mul        = "Op_Mul",
+		.Op_Div        = "Op_Div",
+		.Op_Rem        = "Op_Rem",
+		.Op_And        = "Op_And",
+		.Op_Or         = "Op_Or",
+		.Op_Jump       = "Op_Jump",
+		.Op_Jump_False = "Op_Jump_False",
+	}
+	max_str := -1
+	for k, v in op_code_str {
+		if len(v) > max_str {
+			max_str = len(v)
+		}
+	}
+
+	print_ip :: proc(p: ^AST_Printer, ip: int) {
+		fmt.sbprintf(&p.builder, "%04d    ", ip)
+	}
+
+	format :: proc(p: ^AST_Printer, word: string, max_len: int) {
+		diff := max_len - len(word)
+		for _ in 0 ..< diff {
+			write(p, " ")
+		}
+	}
+
+	vm := Vm{}
+	// vm.stack = make([]Value, VM_STACK_SIZE)
+	// vm.stack_ptr = 0
+	vm.chunk = c
+	vm.ip = 0
+	for {
+		print_ip(&printer, vm.ip)
+		op := get_op_code(&vm)
+		switch op {
+		case .Op_Begin:
+			write(&printer, op_code_str[op])
+			format(&printer, op_code_str[op], max_str)
+			fmt.sbprintf(&printer.builder, " ||")
+
+		case .Op_End:
+			write(&printer, op_code_str[op])
+			format(&printer, op_code_str[op], max_str)
+			fmt.sbprintf(&printer.builder, " ||")
+
+
+		case .Op_Const:
+			write(&printer, op_code_str[op])
+			format(&printer, op_code_str[op], max_str)
+			fmt.sbprintf(&printer.builder, " || const addr: %d", get_i16(&vm))
+
+		case .Op_Set:
+			write(&printer, op_code_str[op])
+			format(&printer, op_code_str[op], max_str)
+			fmt.sbprintf(&printer.builder, " || var addr: %d", get_i16(&vm))
+
+		case .Op_Get:
+			write(&printer, op_code_str[op])
+			format(&printer, op_code_str[op], max_str)
+			fmt.sbprintf(&printer.builder, " || var addr: %d", get_i16(&vm))
+
+		case .Op_Pop:
+			write(&printer, op_code_str[op])
+			format(&printer, op_code_str[op], max_str)
+			fmt.sbprintf(&printer.builder, " ||")
+
+		case .Op_Neg:
+			write(&printer, op_code_str[op])
+			format(&printer, op_code_str[op], max_str)
+			fmt.sbprintf(&printer.builder, " ||")
+
+		case .Op_Not:
+			write(&printer, op_code_str[op])
+			format(&printer, op_code_str[op], max_str)
+			fmt.sbprintf(&printer.builder, " ||")
+
+		case .Op_Add:
+			write(&printer, op_code_str[op])
+			format(&printer, op_code_str[op], max_str)
+			fmt.sbprintf(&printer.builder, " ||")
+
+		case .Op_Mul:
+			write(&printer, op_code_str[op])
+			format(&printer, op_code_str[op], max_str)
+			fmt.sbprintf(&printer.builder, " ||")
+
+		case .Op_Div:
+			write(&printer, op_code_str[op])
+			format(&printer, op_code_str[op], max_str)
+			fmt.sbprintf(&printer.builder, " ||")
+
+		case .Op_Rem:
+			write(&printer, op_code_str[op])
+			format(&printer, op_code_str[op], max_str)
+			fmt.sbprintf(&printer.builder, " ||")
+
+		case .Op_And:
+			write(&printer, op_code_str[op])
+			format(&printer, op_code_str[op], max_str)
+			fmt.sbprintf(&printer.builder, " ||")
+
+		case .Op_Or:
+			write(&printer, op_code_str[op])
+			format(&printer, op_code_str[op], max_str)
+			fmt.sbprintf(&printer.builder, " ||")
+
+		case .Op_Jump:
+			write(&printer, op_code_str[op])
+			format(&printer, op_code_str[op], max_str)
+
+		case .Op_Jump_False:
+			write(&printer, "Op_Jump_False")
+			format(&printer, op_code_str[op], max_str)
+			fmt.sbprintf(&printer.builder, " || jump IP: %04d", get_i16(&vm))
+
+		}
+		if vm.ip >= len(vm.chunk.bytecode) {
+			break
+		}
+
+		write_line(&printer)
+	}
+	fmt.println(strings.to_string(printer.builder))
 }
