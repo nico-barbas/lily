@@ -15,7 +15,9 @@ main :: proc() {
 playground :: proc() {
 	using lily
 	input: string = `
-		1 + 2
+		var a = 5 * 2
+		var b = a + 8
+		a = 13
 	`
 	parsed_module := make_module()
 	defer delete_module(parsed_module)
@@ -35,7 +37,8 @@ playground :: proc() {
 	chunk := compile_module(compiler, checked_module)
 	vm := Vm{}
 	run_bytecode(&vm, chunk)
-	fmt.println(vm.stack)
+	fmt.println(vm.stack[:vm.stack_ptr])
+	fmt.println(vm.chunk.variables)
 	// run_program(vm, program.nodes[:])
 	// array := cast(^Array_Object)get_stack_value(vm, "foo").data.(^Object)
 

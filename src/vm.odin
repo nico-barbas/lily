@@ -6,7 +6,7 @@ VM_STACK_GROWTH :: 2
 Vm :: struct {
 	stack:     []Value,
 	stack_ptr: int,
-	current:   Chunk,
+	chunk:     Chunk,
 	ip:        int,
 }
 
@@ -21,9 +21,26 @@ pop_stack_value :: proc(vm: ^Vm) -> (result: Value) {
 	return
 }
 
+get_stack_value :: proc(vm: ^Vm, stack_id: int) -> (result: Value) {
+	result = vm.stack[stack_id]
+	return
+}
+
+get_current_stack_id :: proc(vm: ^Vm) -> int {
+	return vm.stack_ptr - 1 if vm.stack_ptr > 0 else 0
+}
+
+bind_variable_to_stack_id :: proc(vm: ^Vm, var_addr: i16, stack_id: int) {
+	vm.chunk.variables[var_addr].stack_id = stack_id
+}
+
+get_variable_stack_id :: proc(vm: ^Vm, var_addr: i16) -> int {
+	return vm.chunk.variables[var_addr].stack_id
+}
+
 get_byte :: proc(vm: ^Vm) -> byte {
 	vm.ip += 1
-	return vm.current.bytecode[vm.ip - 1]
+	return vm.chunk.bytecode[vm.ip - 1]
 }
 
 get_op_code :: proc(vm: ^Vm) -> Op_Code {
@@ -39,7 +56,7 @@ get_i16 :: proc(vm: ^Vm) -> i16 {
 run_bytecode :: proc(vm: ^Vm, chunk: Chunk) {
 	vm.stack = make([]Value, VM_STACK_SIZE)
 	vm.stack_ptr = 0
-	vm.current = chunk
+	vm.chunk = chunk
 	vm.ip = 0
 
 	for {
@@ -47,17 +64,37 @@ run_bytecode :: proc(vm: ^Vm, chunk: Chunk) {
 		switch op {
 		case .Op_Const:
 			const_addr := get_i16(vm)
-			const_val := vm.current.constants[const_addr]
+			const_val := vm.chunk.constants[const_addr]
 			push_stack_value(vm, const_val)
+
+		case .Op_Set:
+			var_addr := get_i16(vm)
+			bind_variable_to_stack_id(vm, var_addr, get_current_stack_id(vm))
+
+		case .Op_Get:
+			var_addr := get_i16(vm)
+			var_stack_id := get_variable_stack_id(vm, var_addr)
+			push_stack_value(vm, get_stack_value(vm, var_stack_id))
+
 		case .Op_Pop:
 		case .Op_Neg:
+			operand := pop_stack_value(vm)
+			result := -(operand.data.(f64))
+			push_stack_value(vm, Value{kind = .Number, data = result})
+
 		case .Op_Add:
 			right := pop_stack_value(vm)
 			left := pop_stack_value(vm)
 			result := left.data.(f64) + right.data.(f64)
 			push_stack_value(vm, Value{kind = .Number, data = result})
+
+		case .Op_Mul:
+			right := pop_stack_value(vm)
+			left := pop_stack_value(vm)
+			result := left.data.(f64) * right.data.(f64)
+			push_stack_value(vm, Value{kind = .Number, data = result})
 		}
-		if vm.ip >= len(vm.current.bytecode) {
+		if vm.ip >= len(vm.chunk.bytecode) {
 			break
 		}
 	}
