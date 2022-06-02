@@ -6,6 +6,8 @@ Op_Code :: enum byte {
 	Op_End,   // Mark the end of a stack scope, used for book keeping in the Vm
 	Op_Pop,   // Get the last element from the stack and decrement its counter
 	Op_Const, // Take the constant from the associated constant pool and load it on to stack
+	// Op_Reserve, 
+	Op_Bind,
 	Op_Set,   // Bind the variable name to a stack ID
 	Op_Set_Scoped,
 	Op_Get,   // Get the variable value from the the variable pool and load it on the stack
@@ -27,6 +29,8 @@ Op_Code :: enum byte {
     Op_Lesser_Eq,
 	Op_Jump,
 	Op_Jump_False,
+	Op_Call,
+	Op_Return,
 }
 //odinfmt: enable
 
@@ -35,7 +39,8 @@ instruction_lengths := map[Op_Code]int {
 	.Op_End        = 1,
 	.Op_Pop        = 1,
 	.Op_Const      = 3,
-	.Op_Set        = 3,
+	.Op_Set        = 4,
+	.Op_Bind       = 5,
 	.Op_Set_Scoped = 3,
 	.Op_Get        = 3,
 	.Op_Get_Scoped = 3,
@@ -56,6 +61,8 @@ instruction_lengths := map[Op_Code]int {
 	.Op_Lesser_Eq  = 1,
 	.Op_Jump       = 3,
 	.Op_Jump_False = 3,
+	.Op_Call       = 3,
+	.Op_Return     = 3,
 }
 
 RANGE_HIGH_SLOT :: 1
@@ -63,6 +70,7 @@ RANGE_HIGH_SLOT :: 1
 Compiler :: struct {
 	cursor:          int,
 	write_at_cursor: bool,
+	fn_names:        [dynamic]string,
 	bytecode:        [dynamic]byte,
 	constants:       [dynamic]Value,
 	variables:       [dynamic]Variable,
@@ -83,9 +91,10 @@ Chunk :: struct {
 }
 
 Variable :: struct {
-	name:        string,
-	scope_depth: int,
-	stack_id:    int,
+	name:              string,
+	scope_depth:       int,
+	stack_id:          int,
+	relative_stack_id: int,
 }
 
 add_constant :: proc(c: ^Compiler, constant: Value) -> (ptr: i16) {
@@ -104,6 +113,15 @@ add_variable :: proc(c: ^Compiler, name: string) -> (ptr: i16) {
 get_variable_addr :: proc(c: ^Compiler, name: string) -> (ptr: i16) {
 	for var, i in c.variables {
 		if var.name == name {
+			return i16(i)
+		}
+	}
+	return -1
+}
+
+get_fn_addr :: proc(c: ^Compiler, name: string) -> (ptr: i16) {
+	for fn_name, i in c.fn_names {
+		if fn_name == name {
 			return i16(i)
 		}
 	}
@@ -151,10 +169,24 @@ push_op_const_code :: proc(c: ^Compiler, addr: i16) {
 	push_byte(c, upper_addr)
 }
 
-push_op_set_code :: proc(c: ^Compiler, addr: i16) {
+push_op_set_code :: proc(c: ^Compiler, addr: i16, pop_last: bool) {
 	push_byte(c, byte(Op_Code.Op_Set))
+	push_byte(c, byte(pop_last))
 	lower_addr := byte(addr)
 	upper_addr := byte(addr >> 8)
+	push_byte(c, lower_addr)
+	push_byte(c, upper_addr)
+}
+
+push_op_bind_code :: proc(c: ^Compiler, var_addr: i16, rel_addr: i16) {
+	push_byte(c, byte(Op_Code.Op_Bind))
+	lower_addr := byte(var_addr)
+	upper_addr := byte(var_addr >> 8)
+	push_byte(c, lower_addr)
+	push_byte(c, upper_addr)
+
+	lower_addr = byte(rel_addr)
+	upper_addr = byte(rel_addr >> 8)
 	push_byte(c, lower_addr)
 	push_byte(c, upper_addr)
 }
@@ -192,18 +224,47 @@ push_op_jump_code :: proc(c: ^Compiler, to: i16, on_condition := false) {
 	push_byte(c, upper_to)
 }
 
+push_op_call_code :: proc(c: ^Compiler, fn_addr: i16) {
+	push_byte(c, byte(Op_Code.Op_Call))
+	lower_addr := byte(fn_addr)
+	upper_addr := byte(fn_addr >> 8)
+	push_byte(c, lower_addr)
+	push_byte(c, upper_addr)
+}
+
+push_op_return_code :: proc(c: ^Compiler, result_addr: i16) {
+	push_byte(c, byte(Op_Code.Op_Return))
+	lower_addr := byte(result_addr)
+	upper_addr := byte(result_addr >> 8)
+	push_byte(c, lower_addr)
+	push_byte(c, upper_addr)
+}
+
 new_compiler :: proc() -> ^Compiler {
 	return new_clone(
 		Compiler{cursor = -1, bytecode = make([dynamic]byte), constants = make([dynamic]Value)},
 	)
 }
 
+reset_compiler :: proc(c: ^Compiler) {
+	clear(&c.bytecode)
+	clear(&c.constants)
+	clear(&c.variables)
+	c.const_count = 0
+	c.var_count = 0
+	c.cursor = -1
+	c.write_at_cursor = false
+}
+
 compile_module :: proc(c: ^Compiler, module: ^Checked_Module) -> ^Compiled_Module {
 	m := new_clone(Compiled_Module{functions = make([dynamic]Fn_Object)})
 
-	for _, i in module.functions {
-		fn_chunk := compile_chunk(c, module.functions[i:i])
+	for fn_decl, i in module.functions {
+		fn := fn_decl.(^Checked_Fn_Declaration)
+		fn_chunk := compile_chunk(c, module.functions[i:i + 1])
 		append(&m.functions, Fn_Object{base = Object{kind = .Fn}, chunk = fn_chunk})
+		append(&c.fn_names, fn.identifier.text)
+		reset_compiler(c)
 	}
 
 	m.main = compile_chunk(c, module.nodes[:])
@@ -241,7 +302,7 @@ compile_node :: proc(c: ^Compiler, node: Checked_Node) {
 		#partial switch e in n.left.expr {
 		case ^Identifier_Expression:
 			var_addr := get_variable_addr(c, e.name.text)
-			push_op_set_code(c, var_addr)
+			push_op_set_code(c, var_addr, true)
 		}
 
 	case ^Checked_If_Statement:
@@ -294,7 +355,7 @@ compile_node :: proc(c: ^Compiler, node: Checked_Node) {
 		defer push_op_code(c, .Op_End)
 		iterator_addr := add_variable(c, n.iterator_name.text)
 		compile_expr(c, n.low.expr)
-		push_op_set_code(c, iterator_addr)
+		push_op_set_code(c, iterator_addr, true)
 		// FIXME: incorrect name for max value (risk of name collision if nested loops)
 		// max_addr := add_variable(c, "iterator_max")
 		compile_expr(c, n.high.expr)
@@ -317,7 +378,7 @@ compile_node :: proc(c: ^Compiler, node: Checked_Node) {
 		compile_node(c, n.body)
 		push_op_get_code(c, iterator_addr)
 		push_op_code(c, .Op_Inc)
-		push_op_set_code(c, iterator_addr)
+		push_op_set_code(c, iterator_addr, true)
 		push_op_jump_code(c, i16(loop_start_cursor), false)
 
 		set_cursor_at_and_write(c, loop_break_cursor)
@@ -329,9 +390,20 @@ compile_node :: proc(c: ^Compiler, node: Checked_Node) {
 		// Handle the case of uninitialized variables
 		var_addr := add_variable(c, n.identifier.text)
 		compile_expr(c, n.expr.expr)
-		push_op_set_code(c, var_addr)
+		push_op_set_code(c, var_addr, true)
 
 	case ^Checked_Fn_Declaration:
+		// Bind all the variable to stack slot
+		for name, i in n.param_names {
+			param_addr := add_variable(c, name.text)
+			push_op_bind_code(c, param_addr, i16(i))
+		}
+		result_addr := add_variable(c, "result")
+		push_op_set_code(c, result_addr, false)
+
+		compile_node(c, n.body)
+		push_op_return_code(c, result_addr)
+
 	case ^Checked_Type_Declaration:
 	case ^Checked_Class_Declaration:
 	}
@@ -381,6 +453,14 @@ compile_expr :: proc(c: ^Compiler, expr: Expression) {
 
 	case ^Index_Expression:
 	case ^Call_Expression:
+		push_op_code(c, .Op_Begin)
+		for arg_expr in e.args {
+			compile_expr(c, arg_expr)
+		}
+		fn_identifier := e.func.(^Identifier_Expression)
+		fn_addr := get_fn_addr(c, fn_identifier.name.text)
+		push_op_call_code(c, fn_addr)
+
 	case ^Array_Type_Expression:
 	}
 }

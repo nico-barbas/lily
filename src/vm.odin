@@ -5,6 +5,7 @@ VM_STACK_GROWTH :: 2
 VM_DEBUG_VIEW :: true
 
 Vm :: struct {
+	module:      ^Compiled_Module,
 	chunk:       Chunk,
 	ip:          int,
 	stack:       []Value,
@@ -17,7 +18,28 @@ Vm :: struct {
 	call_count:  int,
 }
 
-Call_Frame :: struct {}
+Call_Frame :: struct {
+	fn: ^Fn_Object,
+	ip: int,
+}
+
+push_call :: proc(vm: ^Vm, fn: ^Fn_Object) {
+	vm.call_stack[vm.call_count - 1].ip = vm.ip
+	vm.call_stack[vm.call_count] = Call_Frame {
+		fn = fn,
+		ip = 0,
+	}
+	vm.ip = 0
+	vm.chunk = fn.chunk
+	vm.call_count += 1
+}
+
+pop_call :: proc(vm: ^Vm) {
+	vm.call_count -= 1
+	call_frame := &vm.call_stack[vm.call_count - 1]
+	vm.ip = call_frame.ip
+	vm.chunk = call_frame.fn.chunk if call_frame.fn != nil else vm.module.main
+}
 
 push_stack :: proc(vm: ^Vm) {
 	vm.stack[vm.stack_ptr] = Value {
@@ -96,12 +118,18 @@ get_i16 :: proc(vm: ^Vm) -> i16 {
 	return i16(upper) << 8 | i16(lower)
 }
 
-run_bytecode :: proc(vm: ^Vm, chunk: Chunk) {
+run_module :: proc(vm: ^Vm, c: ^Compiled_Module) {
+	vm.module = c
+	vm.chunk = c.main
 	vm.stack = make([]Value, VM_STACK_SIZE)
 	vm.stack_ptr = 0
-	vm.chunk = chunk
 	vm.ip = 0
+	vm.call_count = 1
 
+	run_bytecode(vm)
+}
+
+run_bytecode :: proc(vm: ^Vm) {
 	for {
 		op := get_op_code(vm)
 		switch op {
@@ -120,10 +148,16 @@ run_bytecode :: proc(vm: ^Vm, chunk: Chunk) {
 			// We pop the new value off the stack
 			// Then check if the variable has already been binded to the environment
 			// Else
-			value := pop_stack_value(vm)
+			should_pop := bool(get_byte(vm))
 			var_addr := get_i16(vm)
 			var := vm.chunk.variables[var_addr]
 			var_stack_id: int
+			value: Value
+			switch should_pop {
+			case true:
+				value = pop_stack_value(vm)
+			case false:
+			}
 			if var.stack_id == -1 {
 				var_stack_id = bind_variable_to_stack(vm, var_addr)
 			} else {
@@ -131,6 +165,12 @@ run_bytecode :: proc(vm: ^Vm, chunk: Chunk) {
 			}
 
 			set_stack_value(vm, var_stack_id, value)
+
+		case .Op_Bind:
+			var_addr := get_i16(vm)
+			rel_stack_id := get_i16(vm)
+			stack_id := get_scope_start_id(vm) + int(rel_stack_id)
+			vm.chunk.variables[var_addr].stack_id = stack_id
 
 		case .Op_Set_Scoped:
 			rel_stack_id := get_i16(vm)
@@ -250,6 +290,21 @@ run_bytecode :: proc(vm: ^Vm, chunk: Chunk) {
 			if !conditional.data.(bool) {
 				jump_to_instruction(vm, int(jump_ip))
 			}
+
+
+		case .Op_Call:
+			fn_addr := get_i16(vm)
+			fn := &vm.module.functions[fn_addr]
+			// fn.chunk.variables
+			push_call(vm, fn)
+
+		case .Op_Return:
+			result_addr := get_i16(vm)
+			result_stack_id := get_variable_stack_id(vm, result_addr)
+			result_value := get_stack_value(vm, result_stack_id)
+			pop_call(vm)
+			pop_stack(vm)
+			push_stack_value(vm, result_value)
 		}
 		when VM_DEBUG_VIEW {
 			print_stack(vm)

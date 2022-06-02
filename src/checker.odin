@@ -302,10 +302,11 @@ Checked_Var_Declaration :: struct {
 }
 
 Checked_Fn_Declaration :: struct {
-	token:      Token,
-	identifier: Token,
-	body:       Checked_Node,
-	type_info:  Type_Info,
+	token:       Token,
+	identifier:  Token,
+	body:        Checked_Node,
+	type_info:   Type_Info,
+	param_names: []Token,
 }
 
 Checked_Type_Declaration :: struct {
@@ -628,6 +629,7 @@ check_module :: proc(c: ^Checker, m: ^Parsed_Module) -> (module: ^Checked_Module
 					token = n.token,
 					identifier = n.identifier,
 					type_info = Type_Info{name = "fn", type_id = FN_ID, type_kind = .Fn_Type},
+					param_names = make([]Token, len(n.parameters)),
 				},
 			)
 			fn_signature := Fn_Signature_Info {
@@ -640,6 +642,7 @@ check_module :: proc(c: ^Checker, m: ^Parsed_Module) -> (module: ^Checked_Module
 			return_type := check_expr_types(c, module, n.return_type_expr) or_return
 			set_variable_type(module, "result", return_type)
 			for param, i in n.parameters {
+				fn_decl.param_names[i] = param.name
 				param_type := check_expr_types(c, module, param.type_expr) or_return
 				fn_signature.parameters[i] = param_type
 				set_variable_type(module, param.name.text, param_type)

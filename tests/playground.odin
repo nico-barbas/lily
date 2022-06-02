@@ -15,10 +15,11 @@ main :: proc() {
 playground :: proc() {
 	using lily
 	input: string = `
-		var a = 1
-        for i in 0..10:
-            a = a + 1
-        end
+		fn add(a: number, b: number): number
+			result = a + b
+		end
+
+		var foo = add(1, 2)
 	`
 	parsed_module := make_module()
 	defer delete_module(parsed_module)
@@ -36,10 +37,13 @@ playground :: proc() {
 
 	compiler := new_compiler()
 	compiled_module := compile_module(compiler, checked_module)
+	for fn in compiled_module.functions {
+		print_chunk(fn.chunk)
+	}
 	print_chunk(compiled_module.main)
 	fmt.println()
 	vm := Vm{}
-	run_bytecode(&vm, compiled_module.main)
+	run_module(&vm, compiled_module)
 	fmt.println(vm.stack[:vm.stack_ptr])
 	fmt.println(vm.chunk.variables)
 	// run_program(vm, program.nodes[:])

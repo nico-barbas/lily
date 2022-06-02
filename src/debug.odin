@@ -409,6 +409,7 @@ print_chunk :: proc(c: Chunk) {
 		.Op_End        = "Op_End",
 		.Op_Pop        = "Op_Pop",
 		.Op_Const      = "Op_Const",
+		.Op_Bind       = "Op_Bind",
 		.Op_Set        = "Op_Set",
 		.Op_Set_Scoped = "Op_Set_Scoped",
 		.Op_Get        = "Op_Get",
@@ -430,6 +431,8 @@ print_chunk :: proc(c: Chunk) {
 		.Op_Lesser_Eq  = "Op_Lesser_Eq",
 		.Op_Jump       = "Op_Jump",
 		.Op_Jump_False = "Op_Jump_False",
+		.Op_Return     = "Op_Return",
+		.Op_Call       = "Op_Call",
 	}
 	max_str := -1
 	for k, v in op_code_str {
@@ -458,23 +461,33 @@ print_chunk :: proc(c: Chunk) {
 		print_ip(&printer, vm.ip)
 		op := get_op_code(&vm)
 		switch op {
-		case .Op_Begin:
+		case .Op_Begin, .Op_End:
 			write(&printer, op_code_str[op])
 			format(&printer, op_code_str[op], max_str)
 			fmt.sbprintf(&printer.builder, " ||")
-
-		case .Op_End:
-			write(&printer, op_code_str[op])
-			format(&printer, op_code_str[op], max_str)
-			fmt.sbprintf(&printer.builder, " ||")
-
 
 		case .Op_Const:
 			write(&printer, op_code_str[op])
 			format(&printer, op_code_str[op], max_str)
 			fmt.sbprintf(&printer.builder, " || const addr: %d", get_i16(&vm))
 
-		case .Op_Set, .Op_Set_Scoped:
+		case .Op_Bind:
+			write(&printer, op_code_str[op])
+			format(&printer, op_code_str[op], max_str)
+			fmt.sbprintf(
+				&printer.builder,
+				" || var addr: %d  ==  relative stack id: %d",
+				get_i16(&vm),
+				get_i16(&vm),
+			)
+
+		case .Op_Set:
+			write(&printer, op_code_str[op])
+			format(&printer, op_code_str[op], max_str)
+			get_byte(&vm)
+			fmt.sbprintf(&printer.builder, " || var addr: %d", get_i16(&vm))
+
+		case .Op_Set_Scoped:
 			write(&printer, op_code_str[op])
 			format(&printer, op_code_str[op], max_str)
 			fmt.sbprintf(&printer.builder, " || var addr: %d", get_i16(&vm))
@@ -484,52 +497,12 @@ print_chunk :: proc(c: Chunk) {
 			format(&printer, op_code_str[op], max_str)
 			fmt.sbprintf(&printer.builder, " || var addr: %d", get_i16(&vm))
 
-		case .Op_Pop:
+		case .Op_Pop, .Op_Neg, .Op_Inc, .Op_Dec, .Op_Not:
 			write(&printer, op_code_str[op])
 			format(&printer, op_code_str[op], max_str)
 			fmt.sbprintf(&printer.builder, " ||")
 
-		case .Op_Neg, .Op_Inc, .Op_Dec:
-			write(&printer, op_code_str[op])
-			format(&printer, op_code_str[op], max_str)
-			fmt.sbprintf(&printer.builder, " ||")
-
-		case .Op_Not:
-			write(&printer, op_code_str[op])
-			format(&printer, op_code_str[op], max_str)
-			fmt.sbprintf(&printer.builder, " ||")
-
-		case .Op_Add:
-			write(&printer, op_code_str[op])
-			format(&printer, op_code_str[op], max_str)
-			fmt.sbprintf(&printer.builder, " ||")
-
-		case .Op_Mul:
-			write(&printer, op_code_str[op])
-			format(&printer, op_code_str[op], max_str)
-			fmt.sbprintf(&printer.builder, " ||")
-
-		case .Op_Div:
-			write(&printer, op_code_str[op])
-			format(&printer, op_code_str[op], max_str)
-			fmt.sbprintf(&printer.builder, " ||")
-
-		case .Op_Rem:
-			write(&printer, op_code_str[op])
-			format(&printer, op_code_str[op], max_str)
-			fmt.sbprintf(&printer.builder, " ||")
-
-		case .Op_And:
-			write(&printer, op_code_str[op])
-			format(&printer, op_code_str[op], max_str)
-			fmt.sbprintf(&printer.builder, " ||")
-
-		case .Op_Or:
-			write(&printer, op_code_str[op])
-			format(&printer, op_code_str[op], max_str)
-			fmt.sbprintf(&printer.builder, " ||")
-
-		case .Op_Eq, .Op_Greater, .Op_Greater_Eq, .Op_Lesser, .Op_Lesser_Eq:
+		case .Op_Add, .Op_Mul, .Op_Div, .Op_Rem, .Op_And, .Op_Or, .Op_Eq, .Op_Greater, .Op_Greater_Eq, .Op_Lesser, .Op_Lesser_Eq, .Op_Return:
 			write(&printer, op_code_str[op])
 			format(&printer, op_code_str[op], max_str)
 			fmt.sbprintf(&printer.builder, " ||")
@@ -544,6 +517,10 @@ print_chunk :: proc(c: Chunk) {
 			format(&printer, op_code_str[op], max_str)
 			fmt.sbprintf(&printer.builder, " || jump IP: %04d", get_i16(&vm))
 
+		case .Op_Call:
+			write(&printer, op_code_str[op])
+			format(&printer, op_code_str[op], max_str)
+			fmt.sbprintf(&printer.builder, " || fn addr: %04d", get_i16(&vm))
 		}
 		if vm.ip >= len(vm.chunk.bytecode) {
 			break
