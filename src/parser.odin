@@ -33,6 +33,7 @@ parser_rules := map[Token_Kind]struct {
 	.Lesser_Equal =    {prec = .Factor,  prefix_fn = nil             , infix_fn = parse_binary},
 	.Open_Paren =      {prec = .Call, prefix_fn = parse_group     , infix_fn = parse_call},
 	.Open_Bracket =    {prec = .Call, prefix_fn = nil             , infix_fn = parse_infix_open_bracket},
+	.Dot =             {prec = .Call, prefix_fn = nil             , infix_fn = parse_dot},
 }
 //odinfmt: enable
 
@@ -137,7 +138,7 @@ parse_node :: proc(p: ^Parser) -> (result: Node, err: Error) {
 	case .Identifier:
 		next := peek_next_token(p)
 		#partial switch next.kind {
-		case .Assign, .Open_Bracket:
+		case .Assign, .Open_Bracket, .Dot:
 			result, err = parse_assign_stmt(p)
 		case:
 			result, err = parse_expression_stmt(p)
@@ -687,12 +688,17 @@ parse_array_type :: proc(p: ^Parser) -> (result: Expression, err: Error) {
 }
 
 parse_index :: proc(p: ^Parser, left: Expression) -> (result: Expression, err: Error) {
-	index_expr := new(Index_Expression)
-	index_expr.left = left
-	// consume_token(p)
+	index_expr := new_clone(Index_Expression{token = p.previous, left = left})
 	index_expr.index = parse_expr(p, .Lowest) or_return
 	match_token_kind(p, .Close_Bracket) or_return
 	consume_token(p)
 	result = index_expr
+	return
+}
+
+parse_dot :: proc(p: ^Parser, left: Expression) -> (result: Expression, err: Error) {
+	dot_expr := new_clone(Dot_Expression{token = p.previous, left = left})
+	dot_expr.accessor = parse_expr(p, .Lowest) or_return
+	result = dot_expr
 	return
 }

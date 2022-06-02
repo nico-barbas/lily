@@ -94,6 +94,17 @@ print_parsed_expr :: proc(p: ^AST_Printer, expr: Expression) {
 		}
 		decrement(p)
 
+	case ^Dot_Expression:
+		write(p, "Dot Expression: ")
+		increment(p)
+		{
+			write_line(p, "Left: ")
+			print_parsed_expr(p, e.left)
+			write_line(p, "Accessor: ")
+			print_parsed_expr(p, e.accessor)
+		}
+		decrement(p)
+
 	case ^Call_Expression:
 		write(p, "Call Expression: ")
 		increment(p)
@@ -373,6 +384,7 @@ print_type_info :: proc(p: ^AST_Printer, c: ^Checker, t: Type_Info) {
 		return_type := get_type_from_id(c, fn_signature.return_type_id)
 		print_type_info(p, c, return_type)
 		decrement(p)
+	case .Class_Type:
 	}
 }
 

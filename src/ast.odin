@@ -14,6 +14,7 @@ Expression :: union {
 	^Binary_Expression,
 	^Identifier_Expression,
 	^Index_Expression,
+	^Dot_Expression,
 	^Call_Expression,
 
 	// Type Expressions
@@ -65,11 +66,18 @@ Index_Expression :: struct {
 	index: Expression, // The expression inside the brackets
 }
 
+Dot_Expression :: struct {
+	token:    Token, // the '.' token
+	left:     Expression,
+	accessor: Expression,
+}
+
 Call_Expression :: struct {
 	token: Token, // the '(' token
 	func:  Expression,
 	args:  [dynamic]Expression,
 }
+
 
 Array_Type_Expression :: struct {
 	token:     Token, // The "array" token

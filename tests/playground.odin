@@ -23,10 +23,7 @@ playground :: proc() {
 	// `
 
 	input: string = `
-		type Foo is class
-			a: number
-			b: bool
-		end
+		a.foo = 10
 	`
 	parsed_module := make_module()
 	defer delete_module(parsed_module)

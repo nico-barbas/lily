@@ -83,6 +83,11 @@ Fn_Signature_Info :: struct {
 	return_type_id: Type_ID,
 }
 
+Class_Definition_Info :: struct {
+	fields:  []Type_Info,
+	methods: []Type_Info,
+}
+
 Type_Info :: struct {
 	name:         string,
 	type_id:      Type_ID,
@@ -91,12 +96,14 @@ Type_Info :: struct {
 		Elementary_Type,
 		Type_Alias,
 		Fn_Type,
+		Class_Type,
 		Generic_Type,
 	},
 	type_id_data: union {
 		Type_Alias_Info,
 		Generic_Type_Info,
 		Fn_Signature_Info,
+		Class_Definition_Info,
 	},
 }
 
@@ -601,11 +608,7 @@ check_module :: proc(c: ^Checker, m: ^Parsed_Module) -> (module: ^Checked_Module
 	for node in m.nodes {
 		#partial switch n in node {
 		case ^Type_Declaration:
-			if n.type_kind == .Alias {
-				add_type_alias(c, module, n.identifier, UNTYPED_ID)
-			} else {
-				assert(false, "Class not implemented yet")
-			}
+			add_type_alias(c, module, n.identifier, UNTYPED_ID)
 		}
 	}
 
@@ -617,6 +620,8 @@ check_module :: proc(c: ^Checker, m: ^Parsed_Module) -> (module: ^Checked_Module
 				update_type_alias(c, module, n.identifier, parent_type.type_id)
 			} else {
 				assert(false, "Class not implemented yet")
+				// Check all the expression of the class's field
+				// Check all the methods
 			}
 		}
 	}
@@ -784,6 +789,9 @@ check_expr_symbols :: proc(c: ^Checker, m: ^Checked_Module, expr: Expression) ->
 	case ^Index_Expression:
 		check_expr_symbols(c, m, e.left) or_return
 		check_expr_symbols(c, m, e.index) or_return
+
+	case ^Dot_Expression:
+		assert(false, "Dot expression not implemented yet")
 
 	case ^Call_Expression:
 		check_expr_symbols(c, m, e.func) or_return
@@ -1079,6 +1087,9 @@ check_expr_types :: proc(c: ^Checker, m: ^Checked_Module, expr: Expression) -> (
 				details = fmt.tprintf("Cannot index %s of type %s", identifier.name.text, left.name),
 			}
 		}
+
+	case ^Dot_Expression:
+		assert(false, "Dot expression not implemented yet")
 
 	case ^Call_Expression:
 		// Get the signature from the environment

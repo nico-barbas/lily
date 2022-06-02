@@ -460,6 +460,10 @@ compile_expr :: proc(c: ^Compiler, expr: Expression) {
 		push_op_get_code(c, var_addr)
 
 	case ^Index_Expression:
+
+	case ^Dot_Expression:
+
+
 	case ^Call_Expression:
 		push_op_code(c, .Op_Begin)
 		for arg_expr in e.args {
