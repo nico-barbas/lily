@@ -444,11 +444,13 @@ compile_expr :: proc(c: ^Compiler, expr: Expression) {
 
 	case ^Array_Literal_Expression:
 		array_addr: i16 = 0
-		push_op_code(c, .Op_Make_Array)
-		push_op_set_scoped_code(c, array_addr)
-		for value_expr in e.values {
+		for i := len(e.values) - 1; i >= 0; i -= 1 {
+			value_expr := e.values[i]
 			compile_expr(c, value_expr)
-			push_op_get_scoped_code(c, array_addr)
+		}
+		push_op_code(c, .Op_Make_Array)
+
+		for i in 0 ..< len(e.values) {
 			push_op_code(c, .Op_Append_Array)
 		}
 

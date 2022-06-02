@@ -335,6 +335,7 @@ run_bytecode :: proc(vm: ^Vm) {
 			element := pop_stack_value(vm)
 			array_object := cast(^Array_Object)obj.data.(^Object)
 			append(&array_object.data, element)
+			push_stack_value(vm, obj)
 		}
 		when VM_DEBUG_VIEW {
 			print_stack(vm)
