@@ -14,12 +14,16 @@ main :: proc() {
 
 playground :: proc() {
 	using lily
-	input: string = `
-		fn add(a: number, b: number): number
-			result = a + b
-		end
+	// fn_input: string = `
+	// 	fn add(a: number, b: number): number
+	// 		result = a + b
+	// 	end
 
-		var foo = add(1, 2)
+	// 	var foo = add(1, 2)
+	// `
+
+	input: string = `
+		var a = 10 > 2
 	`
 	parsed_module := make_module()
 	defer delete_module(parsed_module)
@@ -28,7 +32,7 @@ playground :: proc() {
 
 	assert(err == nil, fmt.tprint("Failed, Error raised ->", err))
 	fmt.println(input)
-	//print_parsed_ast(parsed_module)
+	// print_parsed_ast(parsed_module)
 
 	checker := new_checker()
 	checked_module, check_err := check_module(checker, parsed_module)
@@ -46,8 +50,6 @@ playground :: proc() {
 	run_module(&vm, compiled_module)
 	fmt.println(vm.stack[:vm.stack_ptr])
 	fmt.println(vm.chunk.variables)
-	// run_program(vm, program.nodes[:])
-	// array := cast(^Array_Object)get_stack_value(vm, "foo").data.(^Object)
 
 	// fmt.println(array.data)
 }

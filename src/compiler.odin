@@ -445,6 +445,14 @@ compile_expr :: proc(c: ^Compiler, expr: Expression) {
 			push_op_code(c, .Op_Or)
 		case .And_Op:
 			push_op_code(c, .Op_And)
+		case .Greater_Op:
+			push_op_code(c, .Op_Greater)
+		case .Greater_Eq_Op:
+			push_op_code(c, .Op_Greater_Eq)
+		case .Lesser_Op:
+			push_op_code(c, .Op_Lesser)
+		case .Lesser_Eq_Op:
+			push_op_code(c, .Op_Lesser_Eq)
 		}
 
 	case ^Identifier_Expression:

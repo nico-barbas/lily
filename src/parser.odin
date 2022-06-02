@@ -27,6 +27,10 @@ parser_rules := map[Token_Kind]struct {
 	.Percent =         {prec = .Factor,  prefix_fn = nil             , infix_fn = parse_binary},
 	.And =             {prec = .Factor,  prefix_fn = nil             , infix_fn = parse_binary},
 	.Or =              {prec = .Factor,  prefix_fn = nil             , infix_fn = parse_binary},
+	.Greater =         {prec = .Factor,  prefix_fn = nil             , infix_fn = parse_binary},
+	.Greater_Equal =   {prec = .Factor,  prefix_fn = nil             , infix_fn = parse_binary},
+	.Lesser =          {prec = .Factor,  prefix_fn = nil             , infix_fn = parse_binary},
+	.Lesser_Equal =    {prec = .Factor,  prefix_fn = nil             , infix_fn = parse_binary},
 	.Open_Paren =      {prec = .Call, prefix_fn = parse_group     , infix_fn = parse_call},
 	.Open_Bracket =    {prec = .Call, prefix_fn = nil             , infix_fn = parse_infix_open_bracket},
 }

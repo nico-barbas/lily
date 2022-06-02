@@ -74,6 +74,14 @@ token_to_operator :: proc(kind: Token_Kind) -> Operator {
 		return .And_Op
 	case .Or:
 		return .Or_Op
+	case .Greater:
+		return .Greater_Op
+	case .Greater_Equal:
+		return .Greater_Eq_Op
+	case .Lesser:
+		return .Lesser_Op
+	case .Lesser_Equal:
+		return .Lesser_Eq_Op
 	case:
 		// This is a bit dodgy, but the operator has already been checked
 		// by the parse_expr() and there is no way it is an invalid Token_Kind
@@ -90,6 +98,10 @@ Operator :: enum {
 	Rem_Op,
 	Or_Op,
 	And_Op,
+	Greater_Op,
+	Greater_Eq_Op,
+	Lesser_Op,
+	Lesser_Eq_Op,
 }
 
 Range_Operator :: enum {

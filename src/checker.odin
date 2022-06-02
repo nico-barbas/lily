@@ -1018,8 +1018,40 @@ check_expr_types :: proc(c: ^Checker, m: ^Checked_Module, expr: Expression) -> (
 					right.name,
 				),
 			}
+			return
 		}
-		result = left
+
+		#partial switch e.op {
+		case .Minus_Op, .Plus_Op, .Mult_Op, .Div_Op, .Rem_Op:
+			if !is_numerical_type(left) {
+				err = Semantic_Error {
+					kind    = .Mismatched_Types,
+					token   = e.token,
+					details = fmt.tprintf("Expected %s, got %s", c.builtin_types[NUMBER_ID].name, result.name),
+				}
+			}
+			result = left
+
+		case .Greater_Op, .Greater_Eq_Op, .Lesser_Op, .Lesser_Eq_Op:
+			if !is_numerical_type(left) {
+				err = Semantic_Error {
+					kind    = .Mismatched_Types,
+					token   = e.token,
+					details = fmt.tprintf("Expected %s, got %s", c.builtin_types[NUMBER_ID].name, result.name),
+				}
+			}
+			result = c.builtin_types[BOOL_ID]
+
+		case .Or_Op, .And_Op:
+			if !is_truthy_type(left) {
+				err = Semantic_Error {
+					kind    = .Mismatched_Types,
+					token   = e.token,
+					details = fmt.tprintf("Expected %s, got %s", c.builtin_types[BOOL_ID].name, result.name),
+				}
+			}
+			result = left
+		}
 
 	case ^Identifier_Expression:
 		result = get_type_from_identifier(c, m, e.name)
