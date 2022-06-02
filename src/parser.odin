@@ -478,25 +478,53 @@ parse_type_decl :: proc(p: ^Parser) -> (result: ^Type_Declaration, err: Error) {
 		result.type_expr = parse_expr(p, .Lowest) or_return
 		#partial switch p.previous.kind {
 		case .Class:
+			result.type_kind = .Class
 			fields: for {
 				t := consume_token(p)
 				#partial switch t.kind {
 				case .Comment, .Newline:
 					continue fields
 
+				case .End:
+					break fields
+
 				case .Identifier:
-				// Allow for "a, b: number"
-				// expect ':' or ','
-				// expect expression
-				// expect newline?
+					// Allow for "a, b: number"
+					// expect ':' or ','
+					// expect expression
+					// expect newline?
+					field := Typed_Identifier {
+						name = t,
+					}
+					next := consume_token(p)
+					#partial switch next.kind {
+					case .Comma:
+						assert(false, "Multiple field declaration not supported yet")
+					case .Colon:
+						consume_token(p)
+						field.type_expr = parse_expr(p, .Lowest) or_return
+						match_token_kind(p, .Newline)
+						append(&result.fields, field)
+					case:
+						err = Parsing_Error {
+							kind    = .Invalid_Syntax,
+							token   = p.current,
+							details = fmt.tprintf("Expected %s, got %s", Token_Kind.Colon, next.kind),
+						}
+					}
+
 
 				case:
-				// error
+					err = Parsing_Error {
+						kind    = .Invalid_Syntax,
+						token   = p.current,
+						details = fmt.tprintf("Expected %s, got %s", Token_Kind.Identifier, t.kind),
+					}
 				}
 			}
 
 		case:
-			result.is_alias = true
+			result.type_kind = .Alias
 			if !is_type_token(p.previous.kind) {
 				err = Parsing_Error {
 					kind    = .Invalid_Syntax,

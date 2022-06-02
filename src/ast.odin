@@ -145,7 +145,10 @@ Type_Declaration :: struct {
 	is_token:   Token,
 	identifier: Token,
 	type_expr:  Expression,
-	is_alias:   bool,
+	type_kind:  enum {
+		Alias,
+		Class,
+	},
 	fields:     [dynamic]Typed_Identifier,
 	// methods:    [dynamic]^Fn_Declaration,
 }

@@ -212,8 +212,20 @@ print_parsed_node :: proc(p: ^AST_Printer, node: Node) {
 		{
 			write_line(p, "Identifier name: ")
 			write(p, n.identifier.text)
-			write_line(p, "Type name: ")
-			print_parsed_expr(p, n.type_expr)
+			switch n.type_kind {
+			case .Alias:
+				write_line(p, "Type name: ")
+				print_parsed_expr(p, n.type_expr)
+			case .Class:
+				write_line(p, "Fields: ")
+				increment(p)
+				for field in n.fields {
+					write_line(p)
+					fmt.sbprintf(&p.builder, "Name: %s, Type: ", field.name.text)
+					print_parsed_expr(p, field.type_expr)
+				}
+				decrement(p)
+			}
 		}
 		decrement(p)
 	}

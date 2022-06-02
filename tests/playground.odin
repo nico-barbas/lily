@@ -23,7 +23,10 @@ playground :: proc() {
 	// `
 
 	input: string = `
-		var a = 10 > 2
+		type Foo is class
+			a: number
+			b: bool
+		end
 	`
 	parsed_module := make_module()
 	defer delete_module(parsed_module)
@@ -32,24 +35,24 @@ playground :: proc() {
 
 	assert(err == nil, fmt.tprint("Failed, Error raised ->", err))
 	fmt.println(input)
-	// print_parsed_ast(parsed_module)
+	print_parsed_ast(parsed_module)
 
-	checker := new_checker()
-	checked_module, check_err := check_module(checker, parsed_module)
-	assert(check_err == nil, fmt.tprint("Failed, Error raised ->", check_err))
-	print_checked_ast(checked_module, checker)
+	// checker := new_checker()
+	// checked_module, check_err := check_module(checker, parsed_module)
+	// assert(check_err == nil, fmt.tprint("Failed, Error raised ->", check_err))
+	// print_checked_ast(checked_module, checker)
 
-	compiler := new_compiler()
-	compiled_module := compile_module(compiler, checked_module)
-	for fn in compiled_module.functions {
-		print_chunk(fn.chunk)
-	}
-	print_chunk(compiled_module.main)
-	fmt.println()
-	vm := Vm{}
-	run_module(&vm, compiled_module)
-	fmt.println(vm.stack[:vm.stack_ptr])
-	fmt.println(vm.chunk.variables)
+	// compiler := new_compiler()
+	// compiled_module := compile_module(compiler, checked_module)
+	// for fn in compiled_module.functions {
+	// 	print_chunk(fn.chunk)
+	// }
+	// print_chunk(compiled_module.main)
+	// fmt.println()
+	// vm := Vm{}
+	// run_module(&vm, compiled_module)
+	// fmt.println(vm.stack[:vm.stack_ptr])
+	// fmt.println(vm.chunk.variables)
 
 	// fmt.println(array.data)
 }

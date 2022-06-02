@@ -601,7 +601,7 @@ check_module :: proc(c: ^Checker, m: ^Parsed_Module) -> (module: ^Checked_Module
 	for node in m.nodes {
 		#partial switch n in node {
 		case ^Type_Declaration:
-			if n.is_alias {
+			if n.type_kind == .Alias {
 				add_type_alias(c, module, n.identifier, UNTYPED_ID)
 			} else {
 				assert(false, "Class not implemented yet")
@@ -612,7 +612,7 @@ check_module :: proc(c: ^Checker, m: ^Parsed_Module) -> (module: ^Checked_Module
 	for node in m.nodes {
 		#partial switch n in node {
 		case ^Type_Declaration:
-			if n.is_alias {
+			if n.type_kind == .Alias {
 				parent_type := check_expr_types(c, module, n.type_expr) or_return
 				update_type_alias(c, module, n.identifier, parent_type.type_id)
 			} else {
@@ -741,7 +741,7 @@ check_node_symbols :: proc(c: ^Checker, m: ^Checked_Module, node: Node) -> (err:
 		check_node_symbols(c, m, n.body) or_return
 
 	case ^Type_Declaration:
-		if n.is_alias {
+		if n.type_kind == .Alias {
 			check_expr_symbols(c, m, n.type_expr) or_return
 		} else {
 			// Branch for class declaration
