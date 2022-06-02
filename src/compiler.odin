@@ -32,6 +32,8 @@ Op_Code :: enum byte {
 	Op_Return,
 
 	Op_Make_Array,
+	Op_Assign_Array,
+	Op_Index_Array,
 	Op_Append_Array,
 }
 //odinfmt: enable
@@ -66,6 +68,8 @@ instruction_lengths := map[Op_Code]int {
 	.Op_Call         = 3,
 	.Op_Return       = 3,
 	.Op_Make_Array   = 1,
+	.Op_Assign_Array = 1,
+	.Op_Index_Array  = 1,
 	.Op_Append_Array = 1,
 }
 
@@ -295,6 +299,7 @@ compile_node :: proc(c: ^Compiler, node: Checked_Node) {
 	switch n in node {
 	case ^Checked_Expression_Statement:
 		compile_expr(c, n.expr.expr)
+		push_op_code(c, .Op_Pop)
 
 	case ^Checked_Block_Statement:
 		for inner in n.nodes {
@@ -307,6 +312,12 @@ compile_node :: proc(c: ^Compiler, node: Checked_Node) {
 		case ^Identifier_Expression:
 			var_addr := get_variable_addr(c, e.name.text)
 			push_op_set_code(c, var_addr, true)
+		case ^Index_Expression:
+			identifier := e.left.(^Identifier_Expression)
+			var_addr := get_variable_addr(c, identifier.name.text)
+			compile_expr(c, e.index)
+			push_op_get_code(c, var_addr)
+			push_op_code(c, .Op_Assign_Array)
 		}
 
 	case ^Checked_If_Statement:
@@ -485,6 +496,14 @@ compile_expr :: proc(c: ^Compiler, expr: Expression) {
 		push_op_get_code(c, var_addr)
 
 	case ^Index_Expression:
+		// Compile the index expression and leave it on the stack
+		// Put the array on top of the stack
+
+		identifier := e.left.(^Identifier_Expression)
+		var_addr := get_variable_addr(c, identifier.name.text)
+		compile_expr(c, e.index)
+		push_op_get_code(c, var_addr)
+		push_op_code(c, .Op_Index_Array)
 
 	case ^Dot_Expression:
 

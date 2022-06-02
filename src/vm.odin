@@ -315,6 +315,21 @@ run_bytecode :: proc(vm: ^Vm) {
 			}
 			push_stack_value(vm, array_object)
 
+		case .Op_Assign_Array:
+			obj := pop_stack_value(vm)
+			index_value := pop_stack_value(vm)
+			value := pop_stack_value(vm)
+
+			array_object := cast(^Array_Object)obj.data.(^Object)
+			array_object.data[int(index_value.data.(f64))] = value
+
+		case .Op_Index_Array:
+			obj := pop_stack_value(vm)
+			index_value := pop_stack_value(vm)
+			array_object := cast(^Array_Object)obj.data.(^Object)
+			result := array_object.data[int(index_value.data.(f64))]
+			push_stack_value(vm, result)
+
 		case .Op_Append_Array:
 			obj := pop_stack_value(vm)
 			element := pop_stack_value(vm)

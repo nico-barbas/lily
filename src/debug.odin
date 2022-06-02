@@ -458,6 +458,8 @@ print_chunk :: proc(c: Chunk) {
 		.Op_Return       = "Op_Return",
 		.Op_Call         = "Op_Call",
 		.Op_Make_Array   = "Op_Make_Array",
+		.Op_Index_Array  = "Op_Index_Array",
+		.Op_Index_Array  = "Op_Index_Array",
 		.Op_Append_Array = "Op_Append_Array",
 	}
 	max_str := -1
@@ -548,7 +550,7 @@ print_chunk :: proc(c: Chunk) {
 			format(&printer, op_code_str[op], max_str)
 			fmt.sbprintf(&printer.builder, " || fn addr: %04d", get_i16(&vm))
 
-		case .Op_Make_Array, .Op_Append_Array:
+		case .Op_Make_Array, .Op_Assign_Array, .Op_Index_Array, .Op_Append_Array:
 			write(&printer, op_code_str[op])
 			format(&printer, op_code_str[op], max_str)
 			fmt.sbprintf(&printer.builder, " ||")
