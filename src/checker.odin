@@ -1040,7 +1040,7 @@ check_expr_types :: proc(c: ^Checker, m: ^Checked_Module, expr: Expression) -> (
 					details = fmt.tprintf("Expected %s, got %s", c.builtin_types[NUMBER_ID].name, result.name),
 				}
 			}
-			result = c.builtin_types[BOOL_ID]
+			result = c.builtin_types[UNTYPED_BOOL_ID]
 
 		case .Or_Op, .And_Op:
 			if !is_truthy_type(left) {
