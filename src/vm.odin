@@ -2,15 +2,22 @@ package lily
 
 VM_STACK_SIZE :: 255
 VM_STACK_GROWTH :: 2
+VM_DEBUG_VIEW :: true
 
 Vm :: struct {
+	chunk:       Chunk,
+	ip:          int,
 	stack:       []Value,
 	header_ptr:  int,
 	stack_ptr:   int,
 	stack_depth: int,
-	chunk:       Chunk,
-	ip:          int,
+
+	// A stack for all the function calls
+	call_stack:  [VM_STACK_SIZE]Call_Frame,
+	call_count:  int,
 }
+
+Call_Frame :: struct {}
 
 push_stack :: proc(vm: ^Vm) {
 	vm.stack[vm.stack_ptr] = Value {
@@ -45,10 +52,18 @@ get_stack_value :: proc(vm: ^Vm, stack_id: int) -> (result: Value) {
 
 set_stack_value :: proc(vm: ^Vm, stack_id: int, value: Value) {
 	vm.stack[stack_id] = value
+	if vm.stack_ptr < stack_id + 1 {
+		vm.stack_ptr = stack_id + 1
+	}
 }
 
 get_current_stack_id :: proc(vm: ^Vm) -> int {
 	return vm.stack_ptr - 1 if vm.stack_ptr > 0 else 0
+}
+
+// Return the first adressable value of the stack scope
+get_scope_start_id :: proc(vm: ^Vm) -> int {
+	return vm.header_ptr + 1
 }
 
 bind_variable_to_stack :: proc(vm: ^Vm, var_addr: i16) -> (stack_id: int) {
@@ -117,10 +132,21 @@ run_bytecode :: proc(vm: ^Vm, chunk: Chunk) {
 
 			set_stack_value(vm, var_stack_id, value)
 
+		case .Op_Set_Scoped:
+			rel_stack_id := get_i16(vm)
+			stack_id := get_scope_start_id(vm) + int(rel_stack_id)
+			value := pop_stack_value(vm)
+			set_stack_value(vm, stack_id, value)
+
 		case .Op_Get:
 			var_addr := get_i16(vm)
 			var_stack_id := get_variable_stack_id(vm, var_addr)
 			push_stack_value(vm, get_stack_value(vm, var_stack_id))
+
+		case .Op_Get_Scoped:
+			rel_stack_id := get_i16(vm)
+			stack_id := get_scope_start_id(vm) + int(rel_stack_id)
+			push_stack_value(vm, get_stack_value(vm, stack_id))
 
 		case .Op_Pop:
 			pop_stack_value(vm)
@@ -224,6 +250,9 @@ run_bytecode :: proc(vm: ^Vm, chunk: Chunk) {
 			if !conditional.data.(bool) {
 				jump_to_instruction(vm, int(jump_ip))
 			}
+		}
+		when VM_DEBUG_VIEW {
+			print_stack(vm)
 		}
 		if vm.ip >= len(vm.chunk.bytecode) {
 			break

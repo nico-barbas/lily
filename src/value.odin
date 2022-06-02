@@ -51,10 +51,9 @@ Map_Object :: struct {
 }
 
 Fn_Object :: struct {
-	using base:  Object,
-	parameters:  [5]string,
-	param_count: int,
-	body:        ^Block_Statement,
+	using base: Object,
+	chunk:      Chunk,
+	// params:     [dynamic]Variable,
 }
 
 token_to_operator :: proc(kind: Token_Kind) -> Operator {

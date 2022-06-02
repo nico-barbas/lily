@@ -410,7 +410,9 @@ print_chunk :: proc(c: Chunk) {
 		.Op_Pop        = "Op_Pop",
 		.Op_Const      = "Op_Const",
 		.Op_Set        = "Op_Set",
+		.Op_Set_Scoped = "Op_Set_Scoped",
 		.Op_Get        = "Op_Get",
+		.Op_Get_Scoped = "Op_Get_Scoped",
 		.Op_Inc        = "Op_Inc",
 		.Op_Dec        = "Op_Dec",
 		.Op_Neg        = "Op_Neg",
@@ -472,12 +474,12 @@ print_chunk :: proc(c: Chunk) {
 			format(&printer, op_code_str[op], max_str)
 			fmt.sbprintf(&printer.builder, " || const addr: %d", get_i16(&vm))
 
-		case .Op_Set:
+		case .Op_Set, .Op_Set_Scoped:
 			write(&printer, op_code_str[op])
 			format(&printer, op_code_str[op], max_str)
 			fmt.sbprintf(&printer.builder, " || var addr: %d", get_i16(&vm))
 
-		case .Op_Get:
+		case .Op_Get, .Op_Get_Scoped:
 			write(&printer, op_code_str[op])
 			format(&printer, op_code_str[op], max_str)
 			fmt.sbprintf(&printer.builder, " || var addr: %d", get_i16(&vm))
@@ -549,5 +551,35 @@ print_chunk :: proc(c: Chunk) {
 
 		write_line(&printer)
 	}
+	fmt.println(strings.to_string(printer.builder))
+}
+
+print_stack :: proc(vm: ^Vm) {
+	printer := AST_Printer {
+		builder      = strings.make_builder(),
+		indent_width = 2,
+	}
+	defer strings.destroy_builder(&printer.builder)
+
+	write_line(&printer, "======================= \n")
+	write(&printer, "== VM STACK DEBUG VIEW == \n")
+
+	for value, i in vm.stack[:vm.stack_ptr] {
+		fmt.sbprintf(&printer.builder, "%03d   ", i)
+		switch data in value.data {
+		case f64:
+			fmt.sbprintf(&printer.builder, "%02f", data)
+		case bool:
+			fmt.sbprintf(&printer.builder, "%t", data)
+		case ^Object:
+		}
+		if i == vm.header_ptr && vm.stack_depth > 0 {
+			write(&printer, "     <- Scope Header")
+		} else if i == vm.header_ptr + 1 && vm.stack_depth > 0 {
+			write(&printer, "     <- Scope Start")
+		}
+		write_line(&printer)
+	}
+
 	fmt.println(strings.to_string(printer.builder))
 }

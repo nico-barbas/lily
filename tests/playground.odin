@@ -35,11 +35,11 @@ playground :: proc() {
 	print_checked_ast(checked_module, checker)
 
 	compiler := new_compiler()
-	chunk := compile_module(compiler, checked_module)
-	print_chunk(chunk)
+	compiled_module := compile_module(compiler, checked_module)
+	print_chunk(compiled_module.main)
 	fmt.println()
 	vm := Vm{}
-	run_bytecode(&vm, chunk)
+	run_bytecode(&vm, compiled_module.main)
 	fmt.println(vm.stack[:vm.stack_ptr])
 	fmt.println(vm.chunk.variables)
 	// run_program(vm, program.nodes[:])

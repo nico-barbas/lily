@@ -7,7 +7,9 @@ Op_Code :: enum byte {
 	Op_Pop,   // Get the last element from the stack and decrement its counter
 	Op_Const, // Take the constant from the associated constant pool and load it on to stack
 	Op_Set,   // Bind the variable name to a stack ID
+	Op_Set_Scoped,
 	Op_Get,   // Get the variable value from the the variable pool and load it on the stack
+	Op_Get_Scoped,
     Op_Inc,
     Op_Dec,
     Op_Neg,   // Get the last element, negate it and push it back on the stack
@@ -34,7 +36,9 @@ instruction_lengths := map[Op_Code]int {
 	.Op_Pop        = 1,
 	.Op_Const      = 3,
 	.Op_Set        = 3,
+	.Op_Set_Scoped = 3,
 	.Op_Get        = 3,
+	.Op_Get_Scoped = 3,
 	.Op_Inc        = 1,
 	.Op_Dec        = 1,
 	.Op_Neg        = 1,
@@ -54,6 +58,8 @@ instruction_lengths := map[Op_Code]int {
 	.Op_Jump_False = 3,
 }
 
+RANGE_HIGH_SLOT :: 1
+
 Compiler :: struct {
 	cursor:          int,
 	write_at_cursor: bool,
@@ -63,6 +69,11 @@ Compiler :: struct {
 	const_count:     i16,
 	var_count:       i16,
 	scope_depth:     int,
+}
+
+Compiled_Module :: struct {
+	functions: [dynamic]Fn_Object,
+	main:      Chunk,
 }
 
 Chunk :: struct {
@@ -148,10 +159,26 @@ push_op_set_code :: proc(c: ^Compiler, addr: i16) {
 	push_byte(c, upper_addr)
 }
 
+push_op_set_scoped_code :: proc(c: ^Compiler, rel_addr: i16) {
+	push_byte(c, byte(Op_Code.Op_Set_Scoped))
+	lower_addr := byte(rel_addr)
+	upper_addr := byte(rel_addr >> 8)
+	push_byte(c, lower_addr)
+	push_byte(c, upper_addr)
+}
+
 push_op_get_code :: proc(c: ^Compiler, addr: i16) {
 	push_byte(c, byte(Op_Code.Op_Get))
 	lower_addr := byte(addr)
 	upper_addr := byte(addr >> 8)
+	push_byte(c, lower_addr)
+	push_byte(c, upper_addr)
+}
+
+push_op_get_scoped_code :: proc(c: ^Compiler, rel_addr: i16) {
+	push_byte(c, byte(Op_Code.Op_Get_Scoped))
+	lower_addr := byte(rel_addr)
+	upper_addr := byte(rel_addr >> 8)
 	push_byte(c, lower_addr)
 	push_byte(c, upper_addr)
 }
@@ -171,8 +198,20 @@ new_compiler :: proc() -> ^Compiler {
 	)
 }
 
-compile_module :: proc(c: ^Compiler, module: ^Checked_Module) -> (result: Chunk) {
-	for node in module.nodes {
+compile_module :: proc(c: ^Compiler, module: ^Checked_Module) -> ^Compiled_Module {
+	m := new_clone(Compiled_Module{functions = make([dynamic]Fn_Object)})
+
+	for _, i in module.functions {
+		fn_chunk := compile_chunk(c, module.functions[i:i])
+		append(&m.functions, Fn_Object{base = Object{kind = .Fn}, chunk = fn_chunk})
+	}
+
+	m.main = compile_chunk(c, module.nodes[:])
+	return m
+}
+
+compile_chunk :: proc(c: ^Compiler, nodes: []Checked_Node) -> (result: Chunk) {
+	for node in nodes {
 		compile_node(c, node)
 	}
 
@@ -257,13 +296,14 @@ compile_node :: proc(c: ^Compiler, node: Checked_Node) {
 		compile_expr(c, n.low.expr)
 		push_op_set_code(c, iterator_addr)
 		// FIXME: incorrect name for max value (risk of name collision if nested loops)
-		max_addr := add_variable(c, "iterator_max")
+		// max_addr := add_variable(c, "iterator_max")
 		compile_expr(c, n.high.expr)
-		push_op_set_code(c, max_addr)
+		push_op_set_scoped_code(c, RANGE_HIGH_SLOT)
 
 		loop_start_cursor := current_byte_offset(c)
 		push_op_get_code(c, iterator_addr)
-		push_op_get_code(c, max_addr)
+		push_op_get_scoped_code(c, RANGE_HIGH_SLOT)
+		// push_op_get_code(c, max_addr)
 		switch n.op {
 		case .Inclusive:
 			push_op_code(c, .Op_Lesser_Eq)
