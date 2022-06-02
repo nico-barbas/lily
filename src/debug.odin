@@ -411,6 +411,8 @@ print_chunk :: proc(c: Chunk) {
 		.Op_Const      = "Op_Const",
 		.Op_Set        = "Op_Set",
 		.Op_Get        = "Op_Get",
+		.Op_Inc        = "Op_Inc",
+		.Op_Dec        = "Op_Dec",
 		.Op_Neg        = "Op_Neg",
 		.Op_Not        = "Op_Not",
 		.Op_Add        = "Op_Add",
@@ -419,6 +421,11 @@ print_chunk :: proc(c: Chunk) {
 		.Op_Rem        = "Op_Rem",
 		.Op_And        = "Op_And",
 		.Op_Or         = "Op_Or",
+		.Op_Eq         = "Op_Eq",
+		.Op_Greater    = "Op_Greater",
+		.Op_Greater_Eq = "Op_Greater_Eq",
+		.Op_Lesser     = "Op_Lesser",
+		.Op_Lesser_Eq  = "Op_Lesser_Eq",
 		.Op_Jump       = "Op_Jump",
 		.Op_Jump_False = "Op_Jump_False",
 	}
@@ -480,7 +487,7 @@ print_chunk :: proc(c: Chunk) {
 			format(&printer, op_code_str[op], max_str)
 			fmt.sbprintf(&printer.builder, " ||")
 
-		case .Op_Neg:
+		case .Op_Neg, .Op_Inc, .Op_Dec:
 			write(&printer, op_code_str[op])
 			format(&printer, op_code_str[op], max_str)
 			fmt.sbprintf(&printer.builder, " ||")
@@ -520,9 +527,15 @@ print_chunk :: proc(c: Chunk) {
 			format(&printer, op_code_str[op], max_str)
 			fmt.sbprintf(&printer.builder, " ||")
 
+		case .Op_Eq, .Op_Greater, .Op_Greater_Eq, .Op_Lesser, .Op_Lesser_Eq:
+			write(&printer, op_code_str[op])
+			format(&printer, op_code_str[op], max_str)
+			fmt.sbprintf(&printer.builder, " ||")
+
 		case .Op_Jump:
 			write(&printer, op_code_str[op])
 			format(&printer, op_code_str[op], max_str)
+			fmt.sbprintf(&printer.builder, " || jump IP: %04d", get_i16(&vm))
 
 		case .Op_Jump_False:
 			write(&printer, "Op_Jump_False")

@@ -15,12 +15,10 @@ main :: proc() {
 playground :: proc() {
 	using lily
 	input: string = `
-		var a = 5 * 2
-		if true:
-			a = a + 3
-		else:
-			a = -1
-		end
+		var a = 1
+        for i in 0..10:
+            a = a + 1
+        end
 	`
 	parsed_module := make_module()
 	defer delete_module(parsed_module)
@@ -29,7 +27,7 @@ playground :: proc() {
 
 	assert(err == nil, fmt.tprint("Failed, Error raised ->", err))
 	fmt.println(input)
-	print_parsed_ast(parsed_module)
+	//print_parsed_ast(parsed_module)
 
 	checker := new_checker()
 	checked_module, check_err := check_module(checker, parsed_module)

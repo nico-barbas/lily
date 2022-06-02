@@ -8,7 +8,9 @@ Op_Code :: enum byte {
 	Op_Const, // Take the constant from the associated constant pool and load it on to stack
 	Op_Set,   // Bind the variable name to a stack ID
 	Op_Get,   // Get the variable value from the the variable pool and load it on the stack
-	Op_Neg,   // Get the last element, negate it and push it back on the stack
+    Op_Inc,
+    Op_Dec,
+    Op_Neg,   // Get the last element, negate it and push it back on the stack
 	Op_Not,
 	Op_Add,   // Get the last 2 elements, add them and push the result back on the stack
 	Op_Mul,   // Get the last 2 elements, multiply them and push the result back on the stack
@@ -16,10 +18,41 @@ Op_Code :: enum byte {
 	Op_Rem,
 	Op_And,
 	Op_Or,
+    Op_Eq,
+    Op_Greater,
+    Op_Greater_Eq,
+    Op_Lesser,
+    Op_Lesser_Eq,
 	Op_Jump,
 	Op_Jump_False,
 }
 //odinfmt: enable
+
+instruction_lengths := map[Op_Code]int {
+	.Op_Begin      = 1,
+	.Op_End        = 1,
+	.Op_Pop        = 1,
+	.Op_Const      = 3,
+	.Op_Set        = 3,
+	.Op_Get        = 3,
+	.Op_Inc        = 1,
+	.Op_Dec        = 1,
+	.Op_Neg        = 1,
+	.Op_Not        = 1,
+	.Op_Add        = 1,
+	.Op_Mul        = 1,
+	.Op_Div        = 1,
+	.Op_Rem        = 1,
+	.Op_And        = 1,
+	.Op_Or         = 1,
+	.Op_Eq         = 1,
+	.Op_Greater    = 1,
+	.Op_Greater_Eq = 1,
+	.Op_Lesser     = 1,
+	.Op_Lesser_Eq  = 1,
+	.Op_Jump       = 3,
+	.Op_Jump_False = 3,
+}
 
 Compiler :: struct {
 	cursor:          int,
@@ -66,11 +99,8 @@ get_variable_addr :: proc(c: ^Compiler, name: string) -> (ptr: i16) {
 	return -1
 }
 
-set_cursor :: proc(c: ^Compiler) {
-	c.cursor = len(c.bytecode)
-}
-
-write_at_cursor :: proc(c: ^Compiler) {
+set_cursor_at_and_write :: proc(c: ^Compiler, pos: int) {
+	c.cursor = pos
 	c.write_at_cursor = true
 }
 
@@ -81,6 +111,12 @@ remove_cursor :: proc(c: ^Compiler) {
 
 current_byte_offset :: proc(c: ^Compiler) -> int {
 	return len(c.bytecode)
+}
+
+reserve_bytes :: proc(c: ^Compiler, count: int) {
+	for _ in 0 ..< count {
+		push_byte(c, 0)
+	}
 }
 
 push_byte :: proc(c: ^Compiler, b: byte) {
@@ -170,25 +206,84 @@ compile_node :: proc(c: ^Compiler, node: Checked_Node) {
 		}
 
 	case ^Checked_If_Statement:
-		push_op_code(c, .Op_Begin)
-		compile_expr(c, n.condition.expr)
-		set_cursor(c)
-		push_op_jump_code(c, -1, true)
-		compile_node(c, n.body)
-		push_op_code(c, .Op_End)
+		// TODO: Use the temp allocator
+		branch_cursor := 0
+		cursors := make([dynamic]int)
+		defer delete(cursors)
 
-		write_at_cursor(c)
-		push_op_jump_code(c, i16(current_byte_offset(c)), true)
-		remove_cursor(c)
+		current_branch := n
+		branch_exist: bool
 
-		if n.next_branch != nil {
-			compile_node(c, n.next_branch)
+		if_loop: for {
+			// Push a scope and evaluate the conditional expression
+			push_op_code(c, .Op_Begin)
+			compile_expr(c, current_branch.condition.expr)
+
+			// We keep track of this instruction to specify the jump location after 
+			// we discover the end of this branch's body
+			branch_cursor = len(c.bytecode)
+			reserve_bytes(c, instruction_lengths[.Op_Jump_False])
+
+			// Compile the body and pop the scope
+			compile_node(c, current_branch.body)
+			push_op_code(c, .Op_End)
+
+			// We keep a track of this instruction too 
+			// This is the Op_Jump in case the branch evaluate to true,
+			// We execute the body and need to get out of the if statement
+			append(&cursors, len(c.bytecode))
+			reserve_bytes(c, instruction_lengths[.Op_Jump])
+
+			set_cursor_at_and_write(c, branch_cursor)
+			push_op_jump_code(c, i16(current_byte_offset(c)), true)
+			remove_cursor(c)
+			current_branch, branch_exist = current_branch.next_branch.(^Checked_If_Statement)
+			if !branch_exist {
+				break if_loop
+			}
+		}
+
+		for cursor in cursors {
+			set_cursor_at_and_write(c, cursor)
+			push_op_jump_code(c, i16(current_byte_offset(c)), false)
+			remove_cursor(c)
 		}
 
 
 	case ^Checked_Range_Statement:
 		push_op_code(c, .Op_Begin)
 		defer push_op_code(c, .Op_End)
+		iterator_addr := add_variable(c, n.iterator_name.text)
+		compile_expr(c, n.low.expr)
+		push_op_set_code(c, iterator_addr)
+		// FIXME: incorrect name for max value (risk of name collision if nested loops)
+		max_addr := add_variable(c, "iterator_max")
+		compile_expr(c, n.high.expr)
+		push_op_set_code(c, max_addr)
+
+		loop_start_cursor := current_byte_offset(c)
+		push_op_get_code(c, iterator_addr)
+		push_op_get_code(c, max_addr)
+		switch n.op {
+		case .Inclusive:
+			push_op_code(c, .Op_Lesser_Eq)
+		case .Exclusive:
+			push_op_code(c, .Op_Lesser)
+		}
+
+		loop_break_cursor := current_byte_offset(c)
+		reserve_bytes(c, instruction_lengths[.Op_Jump_False])
+
+		compile_node(c, n.body)
+		push_op_get_code(c, iterator_addr)
+		push_op_code(c, .Op_Inc)
+		push_op_set_code(c, iterator_addr)
+		push_op_jump_code(c, i16(loop_start_cursor), false)
+
+		set_cursor_at_and_write(c, loop_break_cursor)
+		push_op_jump_code(c, i16(current_byte_offset(c)), true)
+		remove_cursor(c)
+
 
 	case ^Checked_Var_Declaration:
 		// Handle the case of uninitialized variables

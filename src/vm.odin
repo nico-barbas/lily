@@ -125,6 +125,16 @@ run_bytecode :: proc(vm: ^Vm, chunk: Chunk) {
 		case .Op_Pop:
 			pop_stack_value(vm)
 
+		case .Op_Inc:
+			operand := pop_stack_value(vm)
+			result := (operand.data.(f64)) + 1
+			push_stack_value(vm, Value{kind = .Number, data = result})
+
+		case .Op_Dec:
+			operand := pop_stack_value(vm)
+			result := (operand.data.(f64)) - 1
+			push_stack_value(vm, Value{kind = .Number, data = result})
+
 		case .Op_Neg:
 			operand := pop_stack_value(vm)
 			result := -(operand.data.(f64))
@@ -169,6 +179,36 @@ run_bytecode :: proc(vm: ^Vm, chunk: Chunk) {
 			right := pop_stack_value(vm)
 			left := pop_stack_value(vm)
 			result := left.data.(bool) || right.data.(bool)
+			push_stack_value(vm, Value{kind = .Boolean, data = result})
+
+		case .Op_Eq:
+			right := pop_stack_value(vm)
+			left := pop_stack_value(vm)
+			result := left.data.(f64) == right.data.(f64)
+			push_stack_value(vm, Value{kind = .Boolean, data = result})
+
+		case .Op_Greater:
+			right := pop_stack_value(vm)
+			left := pop_stack_value(vm)
+			result := left.data.(f64) > right.data.(f64)
+			push_stack_value(vm, Value{kind = .Boolean, data = result})
+
+		case .Op_Greater_Eq:
+			right := pop_stack_value(vm)
+			left := pop_stack_value(vm)
+			result := left.data.(f64) >= right.data.(f64)
+			push_stack_value(vm, Value{kind = .Boolean, data = result})
+
+		case .Op_Lesser:
+			right := pop_stack_value(vm)
+			left := pop_stack_value(vm)
+			result := left.data.(f64) < right.data.(f64)
+			push_stack_value(vm, Value{kind = .Boolean, data = result})
+
+		case .Op_Lesser_Eq:
+			right := pop_stack_value(vm)
+			left := pop_stack_value(vm)
+			result := left.data.(f64) <= right.data.(f64)
 			push_stack_value(vm, Value{kind = .Boolean, data = result})
 
 		case .Op_Jump:
