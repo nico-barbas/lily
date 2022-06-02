@@ -429,34 +429,36 @@ print_chunk :: proc(c: Chunk) {
 	write_line(&printer, "======================= \n")
 	write(&printer, "== CHUNK DISASSEMBLY == \n")
 	op_code_str := map[Op_Code]string {
-		.Op_Begin      = "Op_Begin",
-		.Op_End        = "Op_End",
-		.Op_Pop        = "Op_Pop",
-		.Op_Const      = "Op_Const",
-		.Op_Bind       = "Op_Bind",
-		.Op_Set        = "Op_Set",
-		.Op_Set_Scoped = "Op_Set_Scoped",
-		.Op_Get        = "Op_Get",
-		.Op_Get_Scoped = "Op_Get_Scoped",
-		.Op_Inc        = "Op_Inc",
-		.Op_Dec        = "Op_Dec",
-		.Op_Neg        = "Op_Neg",
-		.Op_Not        = "Op_Not",
-		.Op_Add        = "Op_Add",
-		.Op_Mul        = "Op_Mul",
-		.Op_Div        = "Op_Div",
-		.Op_Rem        = "Op_Rem",
-		.Op_And        = "Op_And",
-		.Op_Or         = "Op_Or",
-		.Op_Eq         = "Op_Eq",
-		.Op_Greater    = "Op_Greater",
-		.Op_Greater_Eq = "Op_Greater_Eq",
-		.Op_Lesser     = "Op_Lesser",
-		.Op_Lesser_Eq  = "Op_Lesser_Eq",
-		.Op_Jump       = "Op_Jump",
-		.Op_Jump_False = "Op_Jump_False",
-		.Op_Return     = "Op_Return",
-		.Op_Call       = "Op_Call",
+		.Op_Begin        = "Op_Begin",
+		.Op_End          = "Op_End",
+		.Op_Pop          = "Op_Pop",
+		.Op_Const        = "Op_Const",
+		.Op_Bind         = "Op_Bind",
+		.Op_Set          = "Op_Set",
+		.Op_Set_Scoped   = "Op_Set_Scoped",
+		.Op_Get          = "Op_Get",
+		.Op_Get_Scoped   = "Op_Get_Scoped",
+		.Op_Inc          = "Op_Inc",
+		.Op_Dec          = "Op_Dec",
+		.Op_Neg          = "Op_Neg",
+		.Op_Not          = "Op_Not",
+		.Op_Add          = "Op_Add",
+		.Op_Mul          = "Op_Mul",
+		.Op_Div          = "Op_Div",
+		.Op_Rem          = "Op_Rem",
+		.Op_And          = "Op_And",
+		.Op_Or           = "Op_Or",
+		.Op_Eq           = "Op_Eq",
+		.Op_Greater      = "Op_Greater",
+		.Op_Greater_Eq   = "Op_Greater_Eq",
+		.Op_Lesser       = "Op_Lesser",
+		.Op_Lesser_Eq    = "Op_Lesser_Eq",
+		.Op_Jump         = "Op_Jump",
+		.Op_Jump_False   = "Op_Jump_False",
+		.Op_Return       = "Op_Return",
+		.Op_Call         = "Op_Call",
+		.Op_Make_Array   = "Op_Make_Array",
+		.Op_Append_Array = "Op_Append_Array",
 	}
 	max_str := -1
 	for k, v in op_code_str {
@@ -545,6 +547,11 @@ print_chunk :: proc(c: Chunk) {
 			write(&printer, op_code_str[op])
 			format(&printer, op_code_str[op], max_str)
 			fmt.sbprintf(&printer.builder, " || fn addr: %04d", get_i16(&vm))
+
+		case .Op_Make_Array, .Op_Append_Array:
+			write(&printer, op_code_str[op])
+			format(&printer, op_code_str[op], max_str)
+			fmt.sbprintf(&printer.builder, " ||")
 		}
 		if vm.ip >= len(vm.chunk.bytecode) {
 			break
@@ -562,18 +569,12 @@ print_stack :: proc(vm: ^Vm) {
 	}
 	defer strings.destroy_builder(&printer.builder)
 
-	write_line(&printer, "======================= \n")
+	write_line(&printer, "========================= \n")
 	write(&printer, "== VM STACK DEBUG VIEW == \n")
 
 	for value, i in vm.stack[:vm.stack_ptr] {
 		fmt.sbprintf(&printer.builder, "%03d   ", i)
-		switch data in value.data {
-		case f64:
-			fmt.sbprintf(&printer.builder, "%02f", data)
-		case bool:
-			fmt.sbprintf(&printer.builder, "%t", data)
-		case ^Object:
-		}
+		print_value(&printer, value)
 		if i == vm.header_ptr && vm.stack_depth > 0 {
 			write(&printer, "     <- Scope Header")
 		} else if i == vm.header_ptr + 1 && vm.stack_depth > 0 {
@@ -583,4 +584,32 @@ print_stack :: proc(vm: ^Vm) {
 	}
 
 	fmt.println(strings.to_string(printer.builder))
+}
+
+print_value :: proc(p: ^AST_Printer, value: Value) {
+	switch data in value.data {
+	case f64:
+		fmt.sbprintf(&p.builder, "%01f", data)
+	case bool:
+		fmt.sbprintf(&p.builder, "%t", data)
+	case ^Object:
+		switch data.kind {
+		case .String:
+			str_object := cast(^String_Object)data
+			write(p, `"`)
+			for r in str_object.data {
+				strings.write_rune_builder(&p.builder, r)
+			}
+			write(p, `"`)
+		case .Array:
+			array_object := cast(^Array_Object)data
+			write(p, `[`)
+			for element in array_object.data {
+				print_value(p, element)
+				write(p, `,`)
+			}
+			write(p, `]`)
+		case .Fn:
+		}
+	}
 }

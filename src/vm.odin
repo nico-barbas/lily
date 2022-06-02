@@ -305,6 +305,21 @@ run_bytecode :: proc(vm: ^Vm) {
 			pop_call(vm)
 			pop_stack(vm)
 			push_stack_value(vm, result_value)
+
+		case .Op_Make_Array:
+			array := make([dynamic]Value)
+			obj := new_clone(Array_Object{base = Object{kind = .Array}, data = array})
+			array_object := Value {
+				kind = .Object_Ref,
+				data = cast(^Object)obj,
+			}
+			push_stack_value(vm, array_object)
+
+		case .Op_Append_Array:
+			obj := pop_stack_value(vm)
+			element := pop_stack_value(vm)
+			array_object := cast(^Array_Object)obj.data.(^Object)
+			append(&array_object.data, element)
 		}
 		when VM_DEBUG_VIEW {
 			print_stack(vm)

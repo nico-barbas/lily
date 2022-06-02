@@ -2,22 +2,21 @@ package lily
 
 //odinfmt: disable
 Op_Code :: enum byte {
-	Op_Begin, // Mark the begining of a stack scope, used for book keeping in the Vm
-	Op_End,   // Mark the end of a stack scope, used for book keeping in the Vm
-	Op_Pop,   // Get the last element from the stack and decrement its counter
-	Op_Const, // Take the constant from the associated constant pool and load it on to stack
-	// Op_Reserve, 
-	Op_Bind,
-	Op_Set,   // Bind the variable name to a stack ID
-	Op_Set_Scoped,
-	Op_Get,   // Get the variable value from the the variable pool and load it on the stack
-	Op_Get_Scoped,
-    Op_Inc,
-    Op_Dec,
-    Op_Neg,   // Get the last element, negate it and push it back on the stack
-	Op_Not,
-	Op_Add,   // Get the last 2 elements, add them and push the result back on the stack
-	Op_Mul,   // Get the last 2 elements, multiply them and push the result back on the stack
+	Op_Begin,      // Mark the begining of a stack scope, used for book keeping in the Vm
+	Op_End,        // Mark the end of a stack scope, used for book keeping in the Vm
+	Op_Pop,        // Get the last element from the stack and decrement its counter
+	Op_Const,      // Take the constant from the associated constant pool and load it on to stack
+	Op_Bind,       // Bind the variable name to the given stack id
+	Op_Set,        // Bind the variable name to the current top of the stack
+	Op_Set_Scoped, //
+	Op_Get,        // Get the variable value from the the variable pool and load it on the stack
+	Op_Get_Scoped, //
+    Op_Inc,        // Get the last element, increment it and push it back on the stack
+    Op_Dec,        // Get the last element, decrement it and push it back on the stack
+    Op_Neg,        // Get the last element, negate it and push it back on the stack
+	Op_Not,        // Get the last element, boolean negate it and push it back on the stack
+	Op_Add,        // Get the last 2 elements, add them and push the result back on the stack
+	Op_Mul,        // Get the last 2 elements, multiply them and push the result back on the stack
 	Op_Div,
 	Op_Rem,
 	Op_And,
@@ -31,38 +30,43 @@ Op_Code :: enum byte {
 	Op_Jump_False,
 	Op_Call,
 	Op_Return,
+
+	Op_Make_Array,
+	Op_Append_Array,
 }
 //odinfmt: enable
 
 instruction_lengths := map[Op_Code]int {
-	.Op_Begin      = 1,
-	.Op_End        = 1,
-	.Op_Pop        = 1,
-	.Op_Const      = 3,
-	.Op_Set        = 4,
-	.Op_Bind       = 5,
-	.Op_Set_Scoped = 3,
-	.Op_Get        = 3,
-	.Op_Get_Scoped = 3,
-	.Op_Inc        = 1,
-	.Op_Dec        = 1,
-	.Op_Neg        = 1,
-	.Op_Not        = 1,
-	.Op_Add        = 1,
-	.Op_Mul        = 1,
-	.Op_Div        = 1,
-	.Op_Rem        = 1,
-	.Op_And        = 1,
-	.Op_Or         = 1,
-	.Op_Eq         = 1,
-	.Op_Greater    = 1,
-	.Op_Greater_Eq = 1,
-	.Op_Lesser     = 1,
-	.Op_Lesser_Eq  = 1,
-	.Op_Jump       = 3,
-	.Op_Jump_False = 3,
-	.Op_Call       = 3,
-	.Op_Return     = 3,
+	.Op_Begin        = 1,
+	.Op_End          = 1,
+	.Op_Pop          = 1,
+	.Op_Const        = 3,
+	.Op_Set          = 4,
+	.Op_Bind         = 5,
+	.Op_Set_Scoped   = 3,
+	.Op_Get          = 3,
+	.Op_Get_Scoped   = 3,
+	.Op_Inc          = 1,
+	.Op_Dec          = 1,
+	.Op_Neg          = 1,
+	.Op_Not          = 1,
+	.Op_Add          = 1,
+	.Op_Mul          = 1,
+	.Op_Div          = 1,
+	.Op_Rem          = 1,
+	.Op_And          = 1,
+	.Op_Or           = 1,
+	.Op_Eq           = 1,
+	.Op_Greater      = 1,
+	.Op_Greater_Eq   = 1,
+	.Op_Lesser       = 1,
+	.Op_Lesser_Eq    = 1,
+	.Op_Jump         = 3,
+	.Op_Jump_False   = 3,
+	.Op_Call         = 3,
+	.Op_Return       = 3,
+	.Op_Make_Array   = 1,
+	.Op_Append_Array = 1,
 }
 
 RANGE_HIGH_SLOT :: 1
@@ -356,8 +360,6 @@ compile_node :: proc(c: ^Compiler, node: Checked_Node) {
 		iterator_addr := add_variable(c, n.iterator_name.text)
 		compile_expr(c, n.low.expr)
 		push_op_set_code(c, iterator_addr, true)
-		// FIXME: incorrect name for max value (risk of name collision if nested loops)
-		// max_addr := add_variable(c, "iterator_max")
 		compile_expr(c, n.high.expr)
 		push_op_set_scoped_code(c, RANGE_HIGH_SLOT)
 
@@ -416,7 +418,30 @@ compile_expr :: proc(c: ^Compiler, expr: Expression) {
 		push_op_const_code(c, const_addr)
 
 	case ^String_Literal_Expression:
+		// Allocate a new string object and shove the reference in the constant pool
+		str := make([]rune, len(e.value))
+		for r, i in e.value {
+			str[i] = r
+		}
+		obj := new_clone(String_Object{base = Object{kind = .String}, data = str})
+		str_object := Value {
+			kind = .Object_Ref,
+			data = cast(^Object)obj,
+		}
+		str_addr := add_constant(c, str_object)
+		push_op_const_code(c, str_addr)
+
 	case ^Array_Literal_Expression:
+		array_addr: i16 = 0
+		push_op_code(c, .Op_Make_Array)
+		push_op_set_scoped_code(c, array_addr)
+		for value_expr in e.values {
+			compile_expr(c, value_expr)
+			push_op_get_scoped_code(c, array_addr)
+			push_op_code(c, .Op_Append_Array)
+		}
+
+
 	case ^Unary_Expression:
 		compile_expr(c, e.expr)
 		#partial switch e.op {
