@@ -253,11 +253,25 @@ print_checked_ast :: proc(module: ^Checked_Module, checker: ^Checker) {
 	defer strings.destroy_builder(&printer.builder)
 
 	write_line(&printer, "================= \n")
-	write(&printer, "== CHECKED AST == \n")
+	write(&printer, "== CHECKED AST ==")
+
+	write_line(&printer, "====================")
+	write_line(&printer, "* Module's Classes *")
+	write_line(&printer, "====================")
+	for class in module.classes {
+		print_checked_node(&printer, checker, class)
+	}
+
+	write_line(&printer, "======================")
+	write_line(&printer, "* Module's Functions *")
+	write_line(&printer, "======================")
 	for function in module.functions {
 		print_checked_node(&printer, checker, function)
 	}
 
+	write_line(&printer, "=================")
+	write_line(&printer, "* Module's Body *")
+	write_line(&printer, "=================")
 	for node in module.nodes {
 		print_checked_node(&printer, checker, node)
 	}
@@ -354,13 +368,29 @@ print_checked_node :: proc(p: ^AST_Printer, c: ^Checker, node: Checked_Node) {
 		{
 			write_line(p, "Identifier name: ")
 			write(p, n.identifier.text)
+
 			write_line(p, "Type name: ")
 			print_type_info(p, c, n.type_info)
 		}
 		decrement(p)
 
 	case ^Checked_Class_Declaration:
-		assert(false, "Not Implemented yet")
+		write_line(p, "Type Declaration: ")
+		increment(p)
+		{
+			write_line(p, "Identifier name: ")
+			write(p, n.identifier.text)
+			class_info := n.type_info.type_id_data.(Class_Definition_Info)
+			write_line(p, "Fields: ")
+			increment(p)
+			for field, i in n.field_names {
+				write_line(p)
+				fmt.sbprintf(&p.builder, "Name: %s, Type: ", field.text)
+				print_type_info(p, c, class_info.fields[i])
+			}
+			decrement(p)
+		}
+		decrement(p)
 	}
 }
 

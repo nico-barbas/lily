@@ -23,9 +23,11 @@ playground :: proc() {
 	// `
 
 	input: string = `
-		var a = array of number[10, 2, 3]
-		a[0] = 19
-		var b = a[2]
+		type Foo is class
+			a: number
+		end
+
+		var a = false
 	`
 	parsed_module := make_module()
 	defer delete_module(parsed_module)

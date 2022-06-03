@@ -326,11 +326,9 @@ Checked_Type_Declaration :: struct {
 Checked_Class_Declaration :: struct {
 	token:       Token,
 	is_token:    Token,
-	class_token: Token,
-	fields:      [dynamic]struct {
-		name:    string,
-		type_id: Type_ID,
-	},
+	identifier:  Token,
+	type_info:   Type_Info,
+	field_names: []Token,
 }
 
 // Procedures
@@ -371,14 +369,14 @@ new_checked_module :: proc() -> ^Checked_Module {
 	)
 }
 
-append_node_to_checked_module :: proc(m: ^Checked_Module, node: Checked_Node) {
-	#partial switch n in node {
-	case ^Checked_Fn_Declaration:
-	case ^Checked_Class_Declaration:
-	case:
-		append(&m.nodes, n)
-	}
-}
+// append_node_to_checked_module :: proc(m: ^Checked_Module, node: Checked_Node) {
+// 	#partial switch n in node {
+// 	case ^Checked_Fn_Declaration:
+// 	case ^Checked_Type_Declaration:
+// 	case:
+// 		append(&m.nodes, n)
+// 	}
+// }
 
 new_scope :: proc() -> ^Semantic_Scope {
 	scope := new(Semantic_Scope)
@@ -455,8 +453,8 @@ contain_symbol :: proc(c: ^Checker, m: ^Checked_Module, token: Token) -> bool {
 	return false
 }
 
-add_symbol :: proc(c: ^Checker, m: ^Checked_Module, token: Token) -> (err: Error) {
-	if contain_symbol(c, m, token) {
+add_symbol :: proc(c: ^Checker, m: ^Checked_Module, token: Token, shadow := false) -> (err: Error) {
+	if !shadow && contain_symbol(c, m, token) {
 		return Semantic_Error{
 			kind = .Redeclared_Symbol,
 			token = token,
@@ -490,6 +488,27 @@ update_type_alias :: proc(c: ^Checker, m: ^Checked_Module, name: Token, parent_t
 	}
 	m.type_lookup[name.text] = t
 }
+
+
+// Adding a class decl to the type system means adding it to the type checker
+// but also adding the Checked_Type_Declaration to the module for later compilation
+add_class_type :: proc(c: ^Checker, m: ^Checked_Module, decl: ^Type_Declaration) {
+	checked_class := new_clone(
+		Checked_Class_Declaration{
+			token = decl.token,
+			is_token = decl.is_token,
+			identifier = decl.identifier,
+		},
+	)
+	append(&m.classes, checked_class)
+	m.type_lookup[decl.identifier.text] = Type_Info {
+		name      = decl.identifier.text,
+		type_id   = gen_type_id(c),
+		type_kind = .Class_Type,
+	}
+	m.type_count += 1
+}
+
 
 // FIXME: Needs a code review. Does not check all the available modules
 get_type :: proc(c: ^Checker, m: ^Checked_Module, name: string) -> (
@@ -608,20 +627,50 @@ check_module :: proc(c: ^Checker, m: ^Parsed_Module) -> (module: ^Checked_Module
 	for node in m.nodes {
 		#partial switch n in node {
 		case ^Type_Declaration:
-			add_type_alias(c, module, n.identifier, UNTYPED_ID)
+			switch n.type_kind {
+			case .Alias:
+				add_type_alias(c, module, n.identifier, UNTYPED_ID)
+			case .Class:
+				add_class_type(c, module, n)
+			}
 		}
 	}
 
 	for node in m.nodes {
 		#partial switch n in node {
 		case ^Type_Declaration:
-			if n.type_kind == .Alias {
+			switch n.type_kind {
+			case .Alias:
 				parent_type := check_expr_types(c, module, n.type_expr) or_return
 				update_type_alias(c, module, n.identifier, parent_type.type_id)
-			} else {
-				assert(false, "Class not implemented yet")
+			case .Class:
+				name := n.identifier.text
+				class_decl: ^Checked_Class_Declaration
+				for node in module.classes {
+					class := node.(^Checked_Class_Declaration)
+					if class.identifier.text == name {
+						class_decl = class
+					}
+				}
+
+				// assert(false, "Class not implemented yet")
 				// Check all the expression of the class's field
+				class_decl.field_names = make([]Token, len(n.fields))
+				class_info := Class_Definition_Info {
+					fields = make([]Type_Info, len(n.fields)),
+				}
+				for field, i in n.fields {
+					field_type := check_expr_types(c, module, field.type_expr) or_return
+					class_info.fields[i] = field_type
+					class_decl.field_names[i] = field.name
+				}
 				// Check all the methods
+
+				// Update the class Type_Info
+				t := module.type_lookup[name]
+				t.type_id_data = class_info
+				class_decl.type_info = t
+				module.type_lookup[name] = t
 			}
 		}
 	}
@@ -663,7 +712,7 @@ check_module :: proc(c: ^Checker, m: ^Parsed_Module) -> (module: ^Checked_Module
 	for node in m.nodes {
 		checked_node := check_node_types(c, module, node) or_return
 		#partial switch node in checked_node {
-		case ^Checked_Fn_Declaration:
+		case ^Checked_Fn_Declaration, ^Checked_Type_Declaration:
 		case:
 			append(&module.nodes, checked_node)
 		}
@@ -711,14 +760,14 @@ check_node_symbols :: proc(c: ^Checker, m: ^Checked_Module, node: Node) -> (err:
 
 	case ^Var_Declaration:
 		if m.scope_depth > 0 {
-			if contain_symbol(c, m, n.identifier) {
-				err = Semantic_Error {
-					kind    = .Redeclared_Symbol,
-					token   = n.identifier,
-					details = fmt.tprintf("Redeclaration of '%s'", n.identifier.text),
-				}
-				return
-			}
+			// if contain_symbol(c, m, n.identifier) {
+			// 	err = Semantic_Error {
+			// 		kind    = .Redeclared_Symbol,
+			// 		token   = n.identifier,
+			// 		details = fmt.tprintf("Redeclaration of '%s'", n.identifier.text),
+			// 	}
+			// 	return
+			// }
 			add_symbol(c, m, n.identifier) or_return
 		}
 		check_expr_symbols(c, m, n.type_expr) or_return
@@ -731,15 +780,15 @@ check_node_symbols :: proc(c: ^Checker, m: ^Checked_Module, node: Node) -> (err:
 		defer pop_scope(m)
 		add_symbol(c, m, Token{text = "result"}) or_return
 		for param in n.parameters {
-			if contain_symbol(c, m, param.name) {
-				err = Semantic_Error {
-					kind    = .Redeclared_Symbol,
-					token   = param.name,
-					details = fmt.tprintf("Redeclaration of '%s'", param.name.text),
-				}
-				return
-			}
-			add_symbol(c, m, param.name) or_return
+			// if contain_symbol(c, m, param.name) {
+			// 	err = Semantic_Error {
+			// 		kind    = .Redeclared_Symbol,
+			// 		token   = param.name,
+			// 		details = fmt.tprintf("Redeclaration of '%s'", param.name.text),
+			// 	}
+			// 	return
+			// }
+			add_symbol(c, m, param.name, true) or_return
 			check_expr_symbols(c, m, param.type_expr) or_return
 		}
 		check_expr_symbols(c, m, n.return_type_expr) or_return
