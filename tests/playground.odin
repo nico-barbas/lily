@@ -1,4 +1,4 @@
-package test
+package tests
 
 import "core:fmt"
 import lily "../src"
@@ -12,8 +12,7 @@ main :: proc() {
 	playground()
 }
 
-playground :: proc() {
-	using lily
+playground :: proc() {using lily
 	// fn_input: string = `
 	// 	fn add(a: number, b: number): number
 	// 		result = a + b
@@ -22,13 +21,7 @@ playground :: proc() {
 	// 	var foo = add(1, 2)
 	// `
 
-	input: string = `
-		type Foo is class
-			a: number
-		end
-
-		var a = false
-	`
+	input: string = `=`
 	parsed_module := make_module()
 	defer delete_module(parsed_module)
 
@@ -52,7 +45,7 @@ playground :: proc() {
 	fmt.println()
 	vm := Vm{}
 	run_module(&vm, compiled_module)
-	fmt.println(vm.stack[:vm.stack_ptr])
+	fmt.println()
 	fmt.println(vm.chunk.variables)
 
 	// fmt.println(array.data)

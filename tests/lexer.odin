@@ -1,25 +1,31 @@
-package test
+package tests
 
 import "core:fmt"
 import "core:testing"
 import lily "../src"
 
 @(test)
-test_lexer :: proc(t: ^testing.T) {
-	using lily
+test_lexer :: proc(t: ^testing.T) {using lily
+	//
 	inputs := [?]string{
 		"= == < <= > >=",
 		". .. ... ,",
 		"+ - * / %",
-		"var fn return and or true false",
+		"var fn type is class",
+		"return if else for in end",
+		"true false and or",
+		"number bool string array map of",
 		`10 1.2 "hello" --comment`,
 	}
-	counts := [?]int{6, 4, 5, 7, 4}
+	counts := [?]int{6, 4, 5, 5, 6, 4, 6, 4}
 	expects := [?][]Token_Kind{
 		{.Assign, .Equal, .Lesser, .Lesser_Equal, .Greater, .Greater_Equal},
 		{.Dot, .Double_Dot, .Triple_Dot, .Comma},
 		{.Plus, .Minus, .Star, .Slash, .Percent},
-		{.Var, .Fn, .Return, .And, .Or, .True, .False},
+		{.Var, .Fn, .Type, .Is, .Class},
+		{.Return, .If, .Else, .For, .In, .End},
+		{.True, .False, .And, .Or},
+		{.Number, .Boolean, .String, .Array, .Map, .Of},
 		{.Number_Literal, .Number_Literal, .String_Literal, .Comment},
 	}
 
