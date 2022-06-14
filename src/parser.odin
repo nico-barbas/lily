@@ -521,6 +521,7 @@ parse_type_decl :: proc(p: ^Parser) -> (result: ^Type_Declaration, err: Error) {
 				case .Constructor:
 					constructor := parse_fn_decl(p) or_return
 					constructor.return_type_expr = new_clone(Identifier_Expression{name = name_token})
+					append(&result.constructors, constructor)
 
 
 				case:

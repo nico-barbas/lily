@@ -236,6 +236,13 @@ print_parsed_node :: proc(p: ^AST_Printer, node: Node) {
 					print_parsed_expr(p, field.type_expr)
 				}
 				decrement(p)
+
+				write_line(p, "Constructors: ")
+				increment(p)
+				for constructor in n.constructors {
+					print_parsed_node(p, constructor)
+				}
+				decrement(p)
 			}
 		}
 		decrement(p)
