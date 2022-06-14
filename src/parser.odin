@@ -381,6 +381,7 @@ parse_var_decl :: proc(p: ^Parser) -> (result: ^Var_Declaration, err: Error) {
 
 parse_fn_decl :: proc(p: ^Parser) -> (result: ^Fn_Declaration, err: Error) {
 	result = new(Fn_Declaration)
+	result.token = p.current
 	name_token := consume_token(p)
 	if name_token.kind == .Identifier {
 		result.identifier = name_token
@@ -514,6 +515,12 @@ parse_type_decl :: proc(p: ^Parser) -> (result: ^Type_Declaration, err: Error) {
 							details = fmt.tprintf("Expected %s, got %s", Token_Kind.Colon, next.kind),
 						}
 					}
+				
+				case .Fn:
+
+				case .Constructor:
+					constructor := parse_fn_decl(p) or_return
+					constructor.return_type_expr = new_clone(Identifier_Expression{name = name_token})
 
 
 				case:

@@ -158,5 +158,6 @@ Type_Declaration :: struct {
 		Class,
 	},
 	fields:     [dynamic]Typed_Identifier,
-	// methods:    [dynamic]^Fn_Declaration,
+	methods:    [dynamic]^Fn_Declaration,
+	constructors: [dynamic]^Fn_Declaration,
 }
