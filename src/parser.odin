@@ -608,29 +608,31 @@ parse_call :: proc(p: ^Parser, left: Expression) -> (result: Expression, err: Er
 	call := new_clone(Call_Expression{func = left, args = make([dynamic]Expression)})
 
 	// FIXME: Account for parameterless functions
-	args: for {
-		arg := parse_expr(p, .Lowest) or_return
-		append(&call.args, arg)
-		consume_token(p)
-		#partial switch p.previous.kind {
-		case .Close_Paren:
-			break args
-		case .Comma:
-			continue args
-		case:
-			err = Parsing_Error {
-				kind    = .Invalid_Syntax,
-				token   = p.current,
-				details = fmt.tprintf(
-					"Expected one of: %s, %s, got %s",
-					Token_Kind.Comma,
-					Token_Kind.Close_Paren,
-					p.previous.kind,
-				),
+	if p.current.kind != .Close_Paren {
+		args: for {
+			arg := parse_expr(p, .Lowest) or_return
+			append(&call.args, arg)
+			consume_token(p)
+			#partial switch p.previous.kind {
+			case .Close_Paren:
+				break args
+			case .Comma:
+				continue args
+			case:
+				err = Parsing_Error {
+					kind    = .Invalid_Syntax,
+					token   = p.current,
+					details = fmt.tprintf(
+						"Expected one of: %s, %s, got %s",
+						Token_Kind.Comma,
+						Token_Kind.Close_Paren,
+						p.previous.kind,
+					),
+				}
+				return
 			}
-			return
+	
 		}
-
 	}
 
 	result = call
