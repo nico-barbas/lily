@@ -21,7 +21,7 @@ playground :: proc() {using lily
 	// 	var foo = add(1, 2)
 	// `
 
-	input: string = `=`
+	input: string = `call()`
 	parsed_module := make_module()
 	defer delete_module(parsed_module)
 
@@ -31,22 +31,22 @@ playground :: proc() {using lily
 	fmt.println(input)
 	print_parsed_ast(parsed_module)
 
-	checker := new_checker()
-	checked_module, check_err := check_module(checker, parsed_module)
-	assert(check_err == nil, fmt.tprint("Failed, Error raised ->", check_err))
-	print_checked_ast(checked_module, checker)
+	// checker := new_checker()
+	// checked_module, check_err := check_module(checker, parsed_module)
+	// assert(check_err == nil, fmt.tprint("Failed, Error raised ->", check_err))
+	// print_checked_ast(checked_module, checker)
 
-	compiler := new_compiler()
-	compiled_module := compile_module(compiler, checked_module)
-	for fn in compiled_module.functions {
-		print_chunk(fn.chunk)
-	}
-	print_chunk(compiled_module.main)
-	fmt.println()
-	vm := Vm{}
-	run_module(&vm, compiled_module)
-	fmt.println()
-	fmt.println(vm.chunk.variables)
+	// compiler := new_compiler()
+	// compiled_module := compile_module(compiler, checked_module)
+	// for fn in compiled_module.functions {
+	// 	print_chunk(fn.chunk)
+	// }
+	// print_chunk(compiled_module.main)
+	// fmt.println()
+	// vm := Vm{}
+	// run_module(&vm, compiled_module)
+	// fmt.println()
+	// fmt.println(vm.chunk.variables)
 
 	// fmt.println(array.data)
 }

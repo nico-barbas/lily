@@ -62,4 +62,37 @@ test_expressions :: proc(t: ^testing.T) {using lily
 			)
 		}
 	}
+	// Binary plus
+	{
+		m := parsed_modules[2]
+		testing.expect(t, len(m.nodes) == 1, fmt.tprint("Failed, Expected", 1, "Got", len(m.nodes)))
+		node := m.nodes[0].(^Expression_Statement)
+		bin_expr, ok := node.expr.(^Binary_Expression)
+		testing.expect(t, ok, fmt.tprintf("Expected Binary_Expression, got %v", node.expr))
+		if ok {
+			left_expr, left_ok := bin_expr.left.(^Literal_Expression)
+			right_expr, right_ok := bin_expr.right.(^Literal_Expression)
+			testing.expect(t, left_ok, fmt.tprintf("Expected Literal_Expression, got %v", bin_expr.left))
+			testing.expect(t, right_ok, fmt.tprintf("Expected Literal_Expression, got %v", bin_expr.right))
+			testing.expect(t, bin_expr.op == .Plus_Op, fmt.tprintf("Expected Plus_Op, got %v", bin_expr.op))
+		}
+	}
+	// Call
+	{
+		m := parsed_modules[3]
+		print_parsed_ast(m)
+		testing.expect(t, len(m.nodes) == 1, fmt.tprint("Failed, Expected", 1, "Got", len(m.nodes)))
+		node := m.nodes[0].(^Expression_Statement)
+		call_expr, ok := node.expr.(^Call_Expression)
+		testing.expect(t, ok, fmt.tprintf("Expected Call_Expression, got %v", node.expr))
+		if ok {
+			identifier, ok := call_expr.func.(^Identifier_Expression)
+			testing.expect(t, ok, fmt.tprintf("Expected Identifier_Expression, got %v", call_expr.func))
+			testing.expect(
+				t,
+				len(call_expr.args) == 0,
+				fmt.tprintf("Expected no arguments, got %d", len(call_expr.args)),
+			)
+		}
+	}
 }
