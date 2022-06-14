@@ -237,6 +237,8 @@ Checker :: struct {
 	builtin_symbols: [5]string,
 	builtin_types:   [BUILT_IN_ID_COUNT]Type_Info,
 	type_id_ptr:     Type_ID,
+	
+	current: ^Checked_Module,
 }
 
 // In Lily, type and function declaration is only 
@@ -482,14 +484,14 @@ pop_scope :: proc(m: ^Checked_Module) {
 	m.scope_depth -= 1
 }
 
-contain_symbol :: proc(c: ^Checker, m: ^Checked_Module, token: Token) -> bool {
+contain_symbol :: proc(c: ^Checker, token: Token) -> bool {
 	builtins: for name in c.builtin_symbols {
 		if name == token.text {
 			return true
 		}
 	}
 
-	scope := m.scope
+	scope := c.current.scope
 	find: for scope != nil {
 		for name in scope.symbols {
 			switch n in name {
@@ -509,7 +511,7 @@ contain_symbol :: proc(c: ^Checker, m: ^Checked_Module, token: Token) -> bool {
 	return false
 }
 
-get_symbol :: proc(c: ^Checker, m: ^Checked_Module, token: Token) -> (result: Symbol, err: Error) {
+get_symbol :: proc(c: ^Checker, token: Token) -> (result: Symbol, err: Error) {
 	builtins: for name in c.builtin_symbols {
 		if name == token.text {
 			result =  name
@@ -517,7 +519,7 @@ get_symbol :: proc(c: ^Checker, m: ^Checked_Module, token: Token) -> (result: Sy
 		}
 	}
 
-	scope := m.scope
+	scope := c.current.scope
 	find: for scope != nil {
 		for name in scope.symbols {
 			switch n in name {
@@ -545,8 +547,8 @@ get_symbol :: proc(c: ^Checker, m: ^Checked_Module, token: Token) -> (result: Sy
 	return
 }
 
-add_symbol :: proc(c: ^Checker, m: ^Checked_Module, token: Token, shadow := false) -> (err: Error) {
-	if !shadow && contain_symbol(c, m, token) {
+add_symbol :: proc(c: ^Checker, token: Token, shadow := false) -> (err: Error) {
+	if !shadow && contain_symbol(c, token) {
 		return Semantic_Error{
 			kind = .Redeclared_Symbol,
 			token = token,
@@ -554,12 +556,12 @@ add_symbol :: proc(c: ^Checker, m: ^Checked_Module, token: Token, shadow := fals
 		}
 	}
 
-	append(&m.scope.symbols, token.text)
+	append(&c.current.scope.symbols, token.text)
 	return
 }
 
-add_composite_symbol :: proc(c: ^Checker, m: ^Checked_Module, token: Token, scope_id: Scope_ID, shadow := false) -> (err : Error) {
-	if !shadow && contain_symbol(c, m, token) {
+add_composite_symbol :: proc(c: ^Checker, token: Token, scope_id: Scope_ID, shadow := false) -> (err : Error) {
+	if !shadow && contain_symbol(c, token) {
 		return Semantic_Error{
 			kind = .Redeclared_Symbol,
 			token = token,
@@ -567,7 +569,7 @@ add_composite_symbol :: proc(c: ^Checker, m: ^Checked_Module, token: Token, scop
 		}
 	}
 
-	append(&m.scope.symbols, Composite_Symbol{token.text, scope_id})
+	append(&c.current.scope.symbols, Composite_Symbol{token.text, scope_id})
 	return
 }
 
@@ -702,26 +704,27 @@ check_module :: proc(c: ^Checker, m: ^Parsed_Module) -> (module: ^Checked_Module
 	// Create a new module and add all the file level declaration symbols
 	module = new_checked_module()
 	append(&c.modules, module)
+	c.current = module
 	// The type symbols need to be added first
 	for node in m.nodes {
 		if n, ok := node.(^Type_Declaration); ok {
 			switch n.type_kind {
 			case .Alias:
-				add_symbol(c, module, n.identifier) or_return
+				add_symbol(c, n.identifier) or_return
 			case .Class:
-				add_symbol(c, module, n.identifier) or_return
-				scope_id := push_scope(module, n.identifier)
-				defer pop_scope(module)
-				module.class_scope_lookup[n.identifier.text] = scope_id
-				add_composite_symbol(c, module, Token{text="self"}, scope_id, true)
+				add_symbol(c, n.identifier) or_return
+				scope_id := push_scope(c.current, n.identifier)
+				defer pop_scope(c.current)
+				c.current.class_scope_lookup[n.identifier.text] = scope_id
+				add_composite_symbol(c, Token{text="self"}, scope_id, true)
 				for field in n.fields {
-					add_symbol(c, module, field.name) or_return
+					add_symbol(c, field.name) or_return
 				}
 				for constructor in n.constructors {
-					add_symbol(c, module, constructor.identifier) or_return
+					add_symbol(c, constructor.identifier) or_return
 				}
 				for method in n.methods {
-					add_symbol(c, module, method.identifier) or_return
+					add_symbol(c, method.identifier) or_return
 				}
 			}
 		}
@@ -730,16 +733,16 @@ check_module :: proc(c: ^Checker, m: ^Parsed_Module) -> (module: ^Checked_Module
 	for node in m.nodes {
 		#partial switch n in node {
 		case ^Var_Declaration:
-			add_symbol(c, module, n.identifier) or_return
+			add_symbol(c, n.identifier) or_return
 		case ^Fn_Declaration:
-			add_symbol(c, module, n.identifier) or_return
+			add_symbol(c, n.identifier) or_return
 		}
 	}
 
 	// After all the declaration have been gathered, 
 	// we resolve the rest of the symbols in the inner expressions and scopes.
 	for node in m.nodes {
-		check_node_symbols(c, module, node) or_return
+		check_node_symbols(c, node) or_return
 	}
 
 	// Resolve the types:
@@ -840,34 +843,36 @@ check_module :: proc(c: ^Checker, m: ^Parsed_Module) -> (module: ^Checked_Module
 			append(&module.nodes, checked_node)
 		}
 	}
+
+	c.current = nil
 	return
 }
 
-check_node_symbols :: proc(c: ^Checker, m: ^Checked_Module, node: Node) -> (err: Error) {
+check_node_symbols :: proc(c: ^Checker, node: Node) -> (err: Error) {
 	switch n in node {
 	case ^Expression_Statement:
-		check_expr_symbols(c, m, n.expr) or_return
+		check_expr_symbols(c, n.expr) or_return
 
 	case ^Block_Statement:
 		for block_node in n.nodes {
-			check_node_symbols(c, m, block_node) or_return
+			check_node_symbols(c, block_node) or_return
 		}
 
 	case ^Assignment_Statement:
-		check_expr_symbols(c, m, n.left) or_return
-		check_expr_symbols(c, m, n.right) or_return
+		check_expr_symbols(c, n.left) or_return
+		check_expr_symbols(c, n.right) or_return
 
 	case ^If_Statement:
-		check_expr_symbols(c, m, n.condition) or_return
-		push_scope(m, n.token)
-		check_node_symbols(c, m, n.body) or_return
-		pop_scope(m)
+		check_expr_symbols(c, n.condition) or_return
+		push_scope(c.current, n.token)
+		check_node_symbols(c, n.body) or_return
+		pop_scope(c.current)
 		if n.next_branch != nil {
-			check_node_symbols(c, m, n.next_branch) or_return
+			check_node_symbols(c, n.next_branch) or_return
 		}
 
 	case ^Range_Statement:
-		if contain_symbol(c, m, n.iterator_name) {
+		if contain_symbol(c, n.iterator_name) {
 			err = Semantic_Error {
 				kind    = .Redeclared_Symbol,
 				token   = n.token,
@@ -875,14 +880,14 @@ check_node_symbols :: proc(c: ^Checker, m: ^Checked_Module, node: Node) -> (err:
 			}
 			return
 		}
-		check_expr_symbols(c, m, n.low) or_return
-		check_expr_symbols(c, m, n.high) or_return
-		push_scope(m, n.token)
-		defer pop_scope(m)
-		check_node_symbols(c, m, n.body) or_return
+		check_expr_symbols(c, n.low) or_return
+		check_expr_symbols(c, n.high) or_return
+		push_scope(c.current, n.token)
+		defer pop_scope(c.current)
+		check_node_symbols(c, n.body) or_return
 
 	case ^Var_Declaration:
-		if m.scope_depth > 0 {
+		if c.current.scope_depth > 0 {
 			// if contain_symbol(c, m, n.identifier) {
 			// 	err = Semantic_Error {
 			// 		kind    = .Redeclared_Symbol,
@@ -891,17 +896,17 @@ check_node_symbols :: proc(c: ^Checker, m: ^Checked_Module, node: Node) -> (err:
 			// 	}
 			// 	return
 			// }
-			add_symbol(c, m, n.identifier) or_return
+			add_symbol(c, n.identifier) or_return
 		}
-		check_expr_symbols(c, m, n.type_expr) or_return
-		check_expr_symbols(c, m, n.expr) or_return
+		check_expr_symbols(c, n.type_expr) or_return
+		check_expr_symbols(c, n.expr) or_return
 
 	case ^Fn_Declaration:
 		// No need to check for function symbol declaration since 
 		// functions can only be declared at the file scope
-		push_scope(m, n.identifier)
-		defer pop_scope(m)
-		add_symbol(c, m, Token{text = "result"}) or_return
+		push_scope(c.current, n.identifier)
+		defer pop_scope(c.current)
+		add_symbol(c, Token{text = "result"}) or_return
 		for param in n.parameters {
 			// if contain_symbol(c, m, param.name) {
 			// 	err = Semantic_Error {
@@ -911,33 +916,35 @@ check_node_symbols :: proc(c: ^Checker, m: ^Checked_Module, node: Node) -> (err:
 			// 	}
 			// 	return
 			// }
-			add_symbol(c, m, param.name, true) or_return
-			check_expr_symbols(c, m, param.type_expr) or_return
+			add_symbol(c, param.name, true) or_return
+			check_expr_symbols(c, param.type_expr) or_return
 		}
-		check_expr_symbols(c, m, n.return_type_expr) or_return
-		check_node_symbols(c, m, n.body) or_return
+		check_expr_symbols(c, n.return_type_expr) or_return
+		check_node_symbols(c, n.body) or_return
 
 	case ^Type_Declaration:
 		if n.type_kind == .Alias {
-			check_expr_symbols(c, m, n.type_expr) or_return
+			check_expr_symbols(c, n.type_expr) or_return
 		} else {
-			enter_child_scope(m, n.identifier) or_return
-			defer pop_scope(m)
+			enter_child_scope(c.current, n.identifier) or_return
+			defer pop_scope(c.current)
 			for field in n.fields {
-				check_expr_symbols(c, m, field.type_expr) or_return
+				check_expr_symbols(c, field.type_expr) or_return
 			}
 			for constructor in n.constructors {
-				check_node_symbols(c, m, constructor) or_return
+				// FIXME: Probably need to inline the symbol checking to prevent
+				// "result" symbol to be added
+				check_node_symbols(c, constructor) or_return
 			}
 			for method in n.methods {
-				check_node_symbols(c, m, method) or_return
+				check_node_symbols(c, method) or_return
 			}
 		}
 	}
 	return
 }
 
-check_expr_symbols :: proc(c: ^Checker, m: ^Checked_Module, expr: Expression) -> (err: Error) {
+check_expr_symbols :: proc(c: ^Checker, expr: Expression) -> (err: Error) {
 	switch e in expr {
 	case ^Literal_Expression:
 	// No symbols to check
@@ -947,21 +954,21 @@ check_expr_symbols :: proc(c: ^Checker, m: ^Checked_Module, expr: Expression) ->
 
 	case ^Array_Literal_Expression:
 		// Check that the array specialization is of a known type
-		check_expr_symbols(c, m, e.type_expr) or_return
+		check_expr_symbols(c, e.type_expr) or_return
 		// Check all the inlined elements of the array
 		for value in e.values {
-			check_expr_symbols(c, m, value) or_return
+			check_expr_symbols(c, value) or_return
 		}
 
 	case ^Unary_Expression:
-		check_expr_symbols(c, m, e.expr) or_return
+		check_expr_symbols(c, e.expr) or_return
 
 	case ^Binary_Expression:
-		check_expr_symbols(c, m, e.left) or_return
-		check_expr_symbols(c, m, e.right) or_return
+		check_expr_symbols(c,  e.left) or_return
+		check_expr_symbols(c,  e.right) or_return
 
 	case ^Identifier_Expression:
-		if !contain_symbol(c, m, e.name) {
+		if !contain_symbol(c, e.name) {
 			err = Semantic_Error {
 				kind    = .Unknown_Symbol,
 				token = e.name,
@@ -970,27 +977,27 @@ check_expr_symbols :: proc(c: ^Checker, m: ^Checked_Module, expr: Expression) ->
 		}
 
 	case ^Index_Expression:
-		check_expr_symbols(c, m, e.left) or_return
-		check_expr_symbols(c, m, e.index) or_return
+		check_expr_symbols(c, e.left) or_return
+		check_expr_symbols(c, e.index) or_return
 
 	case ^Dot_Expression:
 		// FIXME: It is stupid to push the scope everytime we encounter the symbol..
 		assert(false, "Dot expression not working yet")
 		identifier := e.left.(^Identifier_Expression)
-		l := get_symbol(c, m, identifier.name) or_return
+		l := get_symbol(c, identifier.name) or_return
 		left_symbol := l.(Composite_Symbol)
-		enter_parent_scope_by_id(m, left_symbol.scope_ip) or_return
-		defer pop_scope(m)
-		check_expr_symbols(c, m, e.accessor) or_return
+		enter_parent_scope_by_id(c.current, left_symbol.scope_ip) or_return
+		defer pop_scope(c.current)
+		check_expr_symbols(c, e.accessor) or_return
 
 	case ^Call_Expression:
-		check_expr_symbols(c, m, e.func) or_return
+		check_expr_symbols(c, e.func) or_return
 		for arg in e.args {
-			check_expr_symbols(c, m, arg) or_return
+			check_expr_symbols(c, arg) or_return
 		}
 
 	case ^Array_Type_Expression:
-		check_expr_symbols(c, m, e.elem_type) or_return
+		check_expr_symbols(c, e.elem_type) or_return
 
 	}
 	return
