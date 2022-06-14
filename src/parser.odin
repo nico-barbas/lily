@@ -136,12 +136,13 @@ parse_node :: proc(p: ^Parser) -> (result: Node, err: Error) {
 	case .Type:
 		result, err = parse_type_decl(p)
 	case .Identifier:
+		lhs := parse_expr(p, .Lowest) or_return
 		next := peek_next_token(p)
 		#partial switch next.kind {
 		case .Assign, .Open_Bracket, .Dot:
-			result, err = parse_assign_stmt(p)
+			result, err = parse_assign_stmt(p, lhs)
 		case:
-			result, err = parse_expression_stmt(p)
+			result = new_clone(Expression_Statement{expr = lhs})
 		}
 	case .If:
 		result, err = parse_if_stmt(p)
@@ -160,10 +161,10 @@ parse_expression_stmt :: proc(p: ^Parser) -> (result: ^Expression_Statement, err
 	return
 }
 
-parse_assign_stmt :: proc(p: ^Parser) -> (result: ^Assignment_Statement, err: Error) {
+parse_assign_stmt :: proc(p: ^Parser, lhs: Expression) -> (result: ^Assignment_Statement, err: Error) {
 	result = new(Assignment_Statement)
 	result.token = p.current
-	result.left = parse_expr(p, .Lowest) or_return
+	result.left = lhs
 	consume_token(p)
 	result.right = parse_expr(p, .Lowest) or_return
 	return
@@ -607,7 +608,6 @@ parse_group :: proc(p: ^Parser) -> (result: Expression, err: Error) {
 parse_call :: proc(p: ^Parser, left: Expression) -> (result: Expression, err: Error) {
 	call := new_clone(Call_Expression{func = left, args = make([dynamic]Expression)})
 
-	// FIXME: Account for parameterless functions
 	if p.current.kind != .Close_Paren {
 		args: for {
 			arg := parse_expr(p, .Lowest) or_return

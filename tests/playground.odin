@@ -21,7 +21,7 @@ playground :: proc() {using lily
 	// 	var foo = add(1, 2)
 	// `
 
-	input: string = `call()`
+	input: string = `var a = array of number[10]`
 	parsed_module := make_module()
 	defer delete_module(parsed_module)
 
