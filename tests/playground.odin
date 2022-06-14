@@ -24,6 +24,9 @@ playground :: proc() {using lily
 
 		var a = Foo.new(1)
 	`
+	// input := `
+	// 	a.x = 10
+	// `
 
 	parsed_module := make_module()
 	defer delete_module(parsed_module)

@@ -34,6 +34,16 @@ new_checked_module :: proc() -> ^Checked_Module {
 	return m
 }
 
+get_class_decl :: proc(m: ^Checked_Module, type_id: Type_ID) -> ^Checked_Class_Declaration {
+	for class in m.classes {
+		c := class.(^Checked_Class_Declaration)
+		if c.type_info.type_id == type_id {
+			return c
+		}
+	}
+	return nil
+}
+
 Checked_Expression :: struct {
 	expr:      Expression,
 	type_info: Type_Info,

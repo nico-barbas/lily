@@ -137,11 +137,10 @@ parse_node :: proc(p: ^Parser) -> (result: Parsed_Node, err: Error) {
 		result, err = parse_fn_decl(p)
 	case .Type:
 		result, err = parse_type_decl(p)
-	case .Identifier:
+	case .Identifier, .Self:
 		lhs := parse_expr(p, .Lowest) or_return
-		next := peek_next_token(p)
-		#partial switch next.kind {
-		case .Assign, .Open_Bracket, .Dot:
+		#partial switch p.current.kind {
+		case .Assign:
 			result, err = parse_assign_stmt(p, lhs)
 		case:
 			result = new_clone(Parsed_Expression_Statement{expr = lhs})

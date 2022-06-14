@@ -136,11 +136,13 @@ add_class_type :: proc(c: ^Checker, decl: ^Parsed_Type_Declaration) {
 		},
 	)
 	append(&c.current.classes, checked_class)
-	c.current.type_lookup[decl.identifier.text] = Type_Info {
+	class_info := Type_Info {
 		name      = decl.identifier.text,
 		type_id   = gen_type_id(c),
 		type_kind = .Class_Type,
 	}
+	c.current.type_lookup[decl.identifier.text] = class_info
+	checked_class.type_info = class_info
 	c.current.type_count += 1
 }
 
@@ -290,7 +292,7 @@ check_module :: proc(c: ^Checker, m: ^Parsed_Module) -> (module: ^Checked_Module
 		case ^Parsed_Type_Declaration:
 			switch n.type_kind {
 			case .Alias:
-				parent_type := check_expr_types(c, module, n.type_expr) or_return
+				parent_type := check_expr_types(c, n.type_expr) or_return
 				update_type_alias(c, n.identifier, parent_type.type_id)
 			case .Class:
 				name := n.identifier.text
@@ -312,16 +314,65 @@ check_module :: proc(c: ^Checker, m: ^Parsed_Module) -> (module: ^Checked_Module
 					constructors = make([]Type_Info, len(n.constructors)),
 					methods      = make([]Type_Info, len(n.methods)),
 				}
+				enter_child_scope(&c.current.symbol_table, n.identifier) or_return
+				defer pop_scope(&c.current.symbol_table)
+				set_variable_type(c, "self", class_decl.type_info)
 				for field, i in n.fields {
-					field_type := check_expr_types(c, module, field.type_expr) or_return
+					field_type := check_expr_types(c, field.type_expr) or_return
 					class_info.fields[i] = field_type
 					class_decl.field_names[i] = field.name
+					set_variable_type(c, field.name.text, field_type)
 				}
 				for constructor, i in n.constructors {
-
+					constr_decl := new_clone(
+						Checked_Fn_Declaration{
+							token = constructor.token,
+							identifier = constructor.identifier,
+							type_info = Type_Info{name = "constructor", type_id = FN_ID, type_kind = .Fn_Type},
+							param_names = make([]Token, len(constructor.parameters)),
+						},
+					)
+					constr_signature := Fn_Signature_Info {
+						parameters     = make([]Type_Info, len(constructor.parameters)),
+						return_type_id = class_decl.type_info.type_id,
+					}
+					enter_child_scope(&c.current.symbol_table, constructor.identifier) or_return
+					defer pop_scope(&c.current.symbol_table)
+					for param, i in constructor.parameters {
+						constr_decl.param_names[i] = param.name
+						param_type := check_expr_types(c, param.type_expr) or_return
+						constr_signature.parameters[i] = param_type
+						set_variable_type(c, param.name.text, param_type)
+					}
+					fmt.printf("%#v\n", constructor.body)
+					constr_decl.body = check_node_types(c, constructor.body) or_return
+					constr_decl.type_info.type_id_data = constr_signature
+					class_decl.constructors[i] = constr_decl
 				}
 				for method, i in n.methods {
-
+					method_decl := new_clone(
+						Checked_Fn_Declaration{
+							token = method.token,
+							identifier = method.identifier,
+							type_info = Type_Info{name = "constructor", type_id = FN_ID, type_kind = .Fn_Type},
+							param_names = make([]Token, len(method.parameters)),
+						},
+					)
+					method_signature := Fn_Signature_Info {
+						parameters     = make([]Type_Info, len(method.parameters)),
+						return_type_id = class_decl.type_info.type_id,
+					}
+					enter_child_scope(&c.current.symbol_table, method.identifier) or_return
+					defer pop_scope(&c.current.symbol_table)
+					for param, i in method.parameters {
+						method_decl.param_names[i] = param.name
+						param_type := check_expr_types(c, param.type_expr) or_return
+						method_signature.parameters[i] = param_type
+						set_variable_type(c, param.name.text, param_type)
+					}
+					method_decl.body = check_node_types(c, method.body) or_return
+					method_decl.type_info.type_id_data = method_signature
+					class_decl.methods[i] = method_decl
 				}
 				// Check all the methods
 
@@ -330,6 +381,7 @@ check_module :: proc(c: ^Checker, m: ^Parsed_Module) -> (module: ^Checked_Module
 				t.type_id_data = class_info
 				class_decl.type_info = t
 				module.type_lookup[name] = t
+
 			}
 		}
 	}
@@ -352,15 +404,15 @@ check_module :: proc(c: ^Checker, m: ^Parsed_Module) -> (module: ^Checked_Module
 			enter_child_scope(&c.current.symbol_table, n.identifier) or_return
 			defer pop_scope(&c.current.symbol_table)
 
-			return_type := check_expr_types(c, module, n.return_type_expr) or_return
+			return_type := check_expr_types(c, n.return_type_expr) or_return
 			set_variable_type(c, "result", return_type)
 			for param, i in n.parameters {
 				fn_decl.param_names[i] = param.name
-				param_type := check_expr_types(c, module, param.type_expr) or_return
+				param_type := check_expr_types(c, param.type_expr) or_return
 				fn_signature.parameters[i] = param_type
 				set_variable_type(c, param.name.text, param_type)
 			}
-			fn_decl.body = check_node_types(c, module, n.body) or_return
+			fn_decl.body = check_node_types(c, n.body) or_return
 			fn_signature.return_type_id = return_type.type_id
 			fn_decl.type_info.type_id_data = fn_signature
 
@@ -369,7 +421,7 @@ check_module :: proc(c: ^Checker, m: ^Parsed_Module) -> (module: ^Checked_Module
 	}
 
 	for node in m.nodes {
-		checked_node := check_node_types(c, module, node) or_return
+		checked_node := check_node_types(c, node) or_return
 		#partial switch node in checked_node {
 		case ^Checked_Fn_Declaration, ^Checked_Type_Declaration:
 		case:
@@ -560,26 +612,23 @@ check_expr_symbols :: proc(c: ^Checker, expr: Expression) -> (err: Error) {
 // FIXME: Need a way to extract the token from an expression, either at an
 // Parser level or at a Checker level
 // Checked nodes take ownership of the Parsed Expressions and produce a Checked_Node
-check_node_types :: proc(c: ^Checker, m: ^Checked_Module, node: Parsed_Node) -> (
-	result: Checked_Node,
-	err: Error,
-) {
+check_node_types :: proc(c: ^Checker, node: Parsed_Node) -> (result: Checked_Node, err: Error) {
 	switch n in node {
 	case ^Parsed_Expression_Statement:
-		t := check_expr_types(c, m, n.expr) or_return
+		t := check_expr_types(c, n.expr) or_return
 		result = new_clone(Checked_Expression_Statement{expr = checked_expresssion(n.expr, t)})
 
 	case ^Parsed_Block_Statement:
 		block_stmt := new_clone(Checked_Block_Statement{nodes = make([dynamic]Checked_Node)})
 		for block_node in n.nodes {
-			node := check_node_types(c, m, block_node) or_return
+			node := check_node_types(c, block_node) or_return
 			append(&block_stmt.nodes, node)
 		}
 		result = block_stmt
 
 	case ^Parsed_Assignment_Statement:
-		left := check_expr_types(c, m, n.left) or_return
-		right := check_expr_types(c, m, n.right) or_return
+		left := check_expr_types(c, n.left) or_return
+		right := check_expr_types(c, n.right) or_return
 		if !type_equal(c, left, right) {
 			err = Semantic_Error {
 				kind    = .Mismatched_Types,
@@ -604,7 +653,7 @@ check_node_types :: proc(c: ^Checker, m: ^Checked_Module, node: Parsed_Node) -> 
 
 
 	case ^Parsed_If_Statement:
-		condition_type := check_expr_types(c, m, n.condition) or_return
+		condition_type := check_expr_types(c, n.condition) or_return
 		if !is_truthy_type(condition_type) {
 			err = Semantic_Error {
 				kind    = .Mismatched_Types,
@@ -617,7 +666,7 @@ check_node_types :: proc(c: ^Checker, m: ^Checked_Module, node: Parsed_Node) -> 
 			}
 		}
 		// push a new scope here
-		body_node := check_node_types(c, m, n.body) or_return
+		body_node := check_node_types(c, n.body) or_return
 		if_stmt := new_clone(
 			Checked_If_Statement{
 				token = n.token,
@@ -626,15 +675,15 @@ check_node_types :: proc(c: ^Checker, m: ^Checked_Module, node: Parsed_Node) -> 
 			},
 		)
 		if n.next_branch != nil {
-			next_node := check_node_types(c, m, n.next_branch) or_return
+			next_node := check_node_types(c, n.next_branch) or_return
 			if_stmt.next_branch = next_node
 		}
 		result = if_stmt
 
 	case ^Parsed_Range_Statement:
 		//push scope
-		low := check_expr_types(c, m, n.low) or_return
-		high := check_expr_types(c, m, n.high) or_return
+		low := check_expr_types(c, n.low) or_return
+		high := check_expr_types(c, n.high) or_return
 		if !type_equal(c, low, high) {
 			err = Semantic_Error {
 				kind  = .Mismatched_Types,
@@ -642,7 +691,7 @@ check_node_types :: proc(c: ^Checker, m: ^Checked_Module, node: Parsed_Node) -> 
 			}
 		}
 		// add the newly created iterator to the scope
-		body_node := check_node_types(c, m, n.body) or_return
+		body_node := check_node_types(c, n.body) or_return
 		result = new_clone(
 			Checked_Range_Statement{
 				token = n.token,
@@ -657,8 +706,8 @@ check_node_types :: proc(c: ^Checker, m: ^Checked_Module, node: Parsed_Node) -> 
 		)
 
 	case ^Parsed_Var_Declaration:
-		var_type := check_expr_types(c, m, n.type_expr) or_return
-		value_type := check_expr_types(c, m, n.expr) or_return
+		var_type := check_expr_types(c, n.type_expr) or_return
+		value_type := check_expr_types(c, n.expr) or_return
 
 		// we check if the type needs to be infered
 		if type_equal(c, var_type, c.builtin_types[UNTYPED_ID]) {
@@ -702,10 +751,7 @@ check_node_types :: proc(c: ^Checker, m: ^Checked_Module, node: Parsed_Node) -> 
 	return
 }
 
-check_expr_types :: proc(c: ^Checker, m: ^Checked_Module, expr: Expression) -> (
-	result: Type_Info,
-	err: Error,
-) {
+check_expr_types :: proc(c: ^Checker, expr: Expression) -> (result: Type_Info, err: Error) {
 	switch e in expr {
 	case ^Literal_Expression:
 		#partial switch e.value.kind {
@@ -721,13 +767,13 @@ check_expr_types :: proc(c: ^Checker, m: ^Checked_Module, expr: Expression) -> (
 		result = c.builtin_types[UNTYPED_STRING_ID]
 
 	case ^Array_Literal_Expression:
-		lit_type := check_expr_types(c, m, e.type_expr) or_return
+		lit_type := check_expr_types(c, e.type_expr) or_return
 		generic_id := lit_type.type_id_data.(Generic_Type_Info)
 		inner_type := get_type_from_id(c, generic_id.spec_type_id)
 		fmt.println(inner_type)
 		result = lit_type
 		for element in e.values {
-			elem_type := check_expr_types(c, m, element) or_return
+			elem_type := check_expr_types(c, element) or_return
 			if !type_equal(c, inner_type, elem_type) {
 				err = Semantic_Error {
 					kind    = .Mismatched_Types,
@@ -738,7 +784,7 @@ check_expr_types :: proc(c: ^Checker, m: ^Checked_Module, expr: Expression) -> (
 		}
 
 	case ^Unary_Expression:
-		result = check_expr_types(c, m, e.expr) or_return
+		result = check_expr_types(c, e.expr) or_return
 		#partial switch e.op {
 		// Expression must be of "truthy" type
 		case .Not_Op:
@@ -764,8 +810,8 @@ check_expr_types :: proc(c: ^Checker, m: ^Checked_Module, expr: Expression) -> (
 		}
 
 	case ^Binary_Expression:
-		left := check_expr_types(c, m, e.left) or_return
-		right := check_expr_types(c, m, e.right) or_return
+		left := check_expr_types(c, e.left) or_return
+		right := check_expr_types(c, e.right) or_return
 		if !type_equal(c, left, right) {
 			err = Semantic_Error {
 				kind    = .Mismatched_Types,
@@ -815,9 +861,9 @@ check_expr_types :: proc(c: ^Checker, m: ^Checked_Module, expr: Expression) -> (
 		result = get_type_from_identifier(c, e.name)
 
 	case ^Index_Expression:
-		left := check_expr_types(c, m, e.left) or_return
+		left := check_expr_types(c, e.left) or_return
 		if left.type_id == ARRAY_ID {
-			index := check_expr_types(c, m, e.index) or_return
+			index := check_expr_types(c, e.index) or_return
 			if !is_numerical_type(index) {
 				err = Semantic_Error {
 					kind    = .Mismatched_Types,
@@ -839,11 +885,37 @@ check_expr_types :: proc(c: ^Checker, m: ^Checked_Module, expr: Expression) -> (
 		}
 
 	case ^Dot_Expression:
-		assert(false, "Dot expression not implemented yet")
+		class_info := check_expr_types(c, e.left) or_return
+		class_def := class_info.type_id_data.(Class_Definition_Info)
+		class_decl := get_class_decl(c.current, class_info.type_id)
+		#partial switch a in e.accessor {
+		case ^Identifier_Expression:
+			for field, i in class_decl.field_names {
+				if field.text == a.name.text {
+					result = class_def.fields[i]
+					return
+				}
+			}
+		case ^Call_Expression:
+			for constructor, i in class_decl.constructors {
+				call_name := a.func.(^Identifier_Expression)
+				if constructor.identifier.text == call_name.name.text {
+					result = class_def.constructors[i]
+					return
+				}
+			}
+			for method, i in class_decl.methods {
+				call_name := a.func.(^Identifier_Expression)
+				if method.identifier.text == call_name.name.text {
+					result = class_def.methods[i]
+					return
+				}
+			}
+		}
 
 	case ^Call_Expression:
 		// Get the signature from the environment
-		fn_signature := check_expr_types(c, m, e.func) or_return
+		fn_signature := check_expr_types(c, e.func) or_return
 		if fn_signature.type_id == FN_ID && fn_signature.type_kind == .Fn_Type {
 			signature_info := fn_signature.type_id_data.(Fn_Signature_Info)
 			// Check that the call expression has the exact same amount of arguments
@@ -861,7 +933,7 @@ check_expr_types :: proc(c: ^Checker, m: ^Checked_Module, expr: Expression) -> (
 				return
 			}
 			for arg, i in e.args {
-				arg_type := check_expr_types(c, m, arg) or_return
+				arg_type := check_expr_types(c, arg) or_return
 				if !type_equal(c, arg_type, signature_info.parameters[i]) {
 					err = Semantic_Error {
 						kind    = .Mismatched_Types,
@@ -881,7 +953,7 @@ check_expr_types :: proc(c: ^Checker, m: ^Checked_Module, expr: Expression) -> (
 		}
 
 	case ^Array_Type_Expression:
-		inner_type := check_expr_types(c, m, e.elem_type) or_return
+		inner_type := check_expr_types(c, e.elem_type) or_return
 		result = Type_Info {
 			name = "array",
 			type_id = ARRAY_ID,
