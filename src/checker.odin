@@ -214,12 +214,19 @@ type_equal :: proc(c: ^Checker, t0, t1: Type_Info) -> (result: bool) {
 	return
 }
 
+Composite_Symbol :: struct {
+	name: string,
+	scope_ip: Scope_ID,
+}
 
-// Here a scope is only used to gather symbol defintions 
+Symbol :: union {
+	string,
+	Composite_Symbol,
+}
 
 Semantic_Scope :: struct {
 	id:             Scope_ID,
-	symbols:        [dynamic]string,
+	symbols:        [dynamic]Symbol,
 	variable_types: map[string]Type_Info,
 	parent:         ^Semantic_Scope,
 	children:       [dynamic]^Semantic_Scope,
@@ -246,6 +253,7 @@ Checked_Module :: struct {
 	type_count:  int,
 
 	// symbols
+	class_scope_lookup: map[string]Scope_ID,
 	scope:       ^Semantic_Scope,
 	scope_depth: int,
 }
@@ -380,7 +388,7 @@ new_checked_module :: proc() -> ^Checked_Module {
 
 new_scope :: proc() -> ^Semantic_Scope {
 	scope := new(Semantic_Scope)
-	scope.symbols = make([dynamic]string)
+	scope.symbols = make([dynamic]Symbol)
 	scope.variable_types = make(map[string]Type_Info)
 	scope.children = make([dynamic]^Semantic_Scope)
 	return scope
@@ -399,7 +407,7 @@ format_scope_name :: proc(m: ^Checked_Module, name: Token) -> (result: string) {
 	return
 }
 
-push_scope :: proc(m: ^Checked_Module, name: Token) {
+push_scope :: proc(m: ^Checked_Module, name: Token) -> Scope_ID {
 	scope := new_scope()
 	scope_name := format_scope_name(m, name)
 	defer delete(scope_name)
@@ -408,9 +416,19 @@ push_scope :: proc(m: ^Checked_Module, name: Token) {
 	scope.parent = m.scope
 	m.scope = scope
 	m.scope_depth += 1
+	return scope.id
 }
 
-enter_scope :: proc(m: ^Checked_Module, name: Token) -> (err: Error) {
+push_existing_scope :: proc(m :^Checked_Module, s: ^Semantic_Scope) {
+	for child in s.children {
+		if child.id == s.id {
+			return
+		}
+	}
+	append(&m.scope.children, s)
+}
+
+enter_child_scope :: proc(m: ^Checked_Module, name: Token) -> (err: Error) {
 	scope_name := format_scope_name(m, name)
 	defer delete(scope_name)
 	scope_id := Scope_ID(hash.fnv32(transmute([]u8)scope_name))
@@ -422,10 +440,41 @@ enter_scope :: proc(m: ^Checked_Module, name: Token) -> (err: Error) {
 	}
 	err = Internal_Error {
 		kind    = .Unknown_Scope_Name,
-		details = fmt.tprintf("%i scope not known", scope_id),
+		details = fmt.tprintf("Scope #%i not known", scope_id),
 	}
 	return
 }
+
+enter_child_scope_by_id :: proc(m: ^Checked_Module, scope_id: Scope_ID) -> (err: Error) {
+	for scope in m.scope.children {
+		if scope.id == scope_id {
+			m.scope = scope
+			return
+		}
+	}
+	err = Internal_Error {
+		kind    = .Unknown_Scope_Name,
+		details = fmt.tprintf("Scope #%i not known", scope_id),
+	}
+	return
+}
+
+enter_parent_scope_by_id :: proc(m: ^Checked_Module, scope_id: Scope_ID) -> (err: Error) {
+	scope := m.scope
+	find: for scope != nil {
+		if scope.id == scope_id {
+			push_existing_scope(m, scope)
+			return
+		}
+		scope = scope.parent
+	}
+	err = Internal_Error {
+		kind    = .Unknown_Scope_Name,
+		details = fmt.tprintf("Scope #%i not known", scope_id),
+	}
+	return
+}
+
 
 pop_scope :: proc(m: ^Checked_Module) {
 	s := m.scope
@@ -443,14 +492,57 @@ contain_symbol :: proc(c: ^Checker, m: ^Checked_Module, token: Token) -> bool {
 	scope := m.scope
 	find: for scope != nil {
 		for name in scope.symbols {
-			if name == token.text {
-				return true
+			switch n in name {
+			case string:
+				if name == token.text {
+					return true
+				}
+			case Composite_Symbol:
+				if n.name == token.text {
+					return true
+				}
 			}
 		}
 		scope = scope.parent
 	}
 
 	return false
+}
+
+get_symbol :: proc(c: ^Checker, m: ^Checked_Module, token: Token) -> (result: Symbol, err: Error) {
+	builtins: for name in c.builtin_symbols {
+		if name == token.text {
+			result =  name
+			return
+		}
+	}
+
+	scope := m.scope
+	find: for scope != nil {
+		for name in scope.symbols {
+			switch n in name {
+			case string:
+				if name == token.text {
+					result =  name
+					return
+				}
+			case Composite_Symbol:
+				if n.name == token.text {
+					result =  name
+					return
+				}
+			}
+		}
+		scope = scope.parent
+	}
+
+	// The symbol wasn't found
+	err = Semantic_Error {
+		kind = .Unknown_Symbol,
+		token = token,
+		details = fmt.tprintf("Unknown symbol: %s", token.text),
+	}
+	return
 }
 
 add_symbol :: proc(c: ^Checker, m: ^Checked_Module, token: Token, shadow := false) -> (err: Error) {
@@ -463,6 +555,19 @@ add_symbol :: proc(c: ^Checker, m: ^Checked_Module, token: Token, shadow := fals
 	}
 
 	append(&m.scope.symbols, token.text)
+	return
+}
+
+add_composite_symbol :: proc(c: ^Checker, m: ^Checked_Module, token: Token, scope_id: Scope_ID, shadow := false) -> (err : Error) {
+	if !shadow && contain_symbol(c, m, token) {
+		return Semantic_Error{
+			kind = .Redeclared_Symbol,
+			token = token,
+			details = fmt.tprintf("Redeclared symbol: %s", token.text),
+		}
+	}
+
+	append(&m.scope.symbols, Composite_Symbol{token.text, scope_id})
 	return
 }
 
@@ -600,7 +705,25 @@ check_module :: proc(c: ^Checker, m: ^Parsed_Module) -> (module: ^Checked_Module
 	// The type symbols need to be added first
 	for node in m.nodes {
 		if n, ok := node.(^Type_Declaration); ok {
-			add_symbol(c, module, n.identifier) or_return
+			switch n.type_kind {
+			case .Alias:
+				add_symbol(c, module, n.identifier) or_return
+			case .Class:
+				add_symbol(c, module, n.identifier) or_return
+				scope_id := push_scope(module, n.identifier)
+				defer pop_scope(module)
+				module.class_scope_lookup[n.identifier.text] = scope_id
+				add_composite_symbol(c, module, Token{text="self"}, scope_id, true)
+				for field in n.fields {
+					add_symbol(c, module, field.name) or_return
+				}
+				for constructor in n.constructors {
+					add_symbol(c, module, constructor.identifier) or_return
+				}
+				for method in n.methods {
+					add_symbol(c, module, method.identifier) or_return
+				}
+			}
 		}
 	}
 
@@ -690,7 +813,7 @@ check_module :: proc(c: ^Checker, m: ^Parsed_Module) -> (module: ^Checked_Module
 				parameters = make([]Type_Info, len(n.parameters)),
 			}
 
-			enter_scope(module, n.identifier) or_return
+			enter_child_scope(module, n.identifier) or_return
 			defer pop_scope(module)
 
 			return_type := check_expr_types(c, module, n.return_type_expr) or_return
@@ -798,7 +921,17 @@ check_node_symbols :: proc(c: ^Checker, m: ^Checked_Module, node: Node) -> (err:
 		if n.type_kind == .Alias {
 			check_expr_symbols(c, m, n.type_expr) or_return
 		} else {
-			// Branch for class declaration
+			enter_child_scope(m, n.identifier) or_return
+			defer pop_scope(m)
+			for field in n.fields {
+				check_expr_symbols(c, m, field.type_expr) or_return
+			}
+			for constructor in n.constructors {
+				check_node_symbols(c, m, constructor) or_return
+			}
+			for method in n.methods {
+				check_node_symbols(c, m, method) or_return
+			}
 		}
 	}
 	return
@@ -831,7 +964,8 @@ check_expr_symbols :: proc(c: ^Checker, m: ^Checked_Module, expr: Expression) ->
 		if !contain_symbol(c, m, e.name) {
 			err = Semantic_Error {
 				kind    = .Unknown_Symbol,
-				details = fmt.tprintf("Unknown symbol: %s", e.name),
+				token = e.name,
+				details = fmt.tprintf("Unknown symbol: %s", e.name.text),
 			}
 		}
 
@@ -840,7 +974,14 @@ check_expr_symbols :: proc(c: ^Checker, m: ^Checked_Module, expr: Expression) ->
 		check_expr_symbols(c, m, e.index) or_return
 
 	case ^Dot_Expression:
-		assert(false, "Dot expression not implemented yet")
+		// FIXME: It is stupid to push the scope everytime we encounter the symbol..
+		assert(false, "Dot expression not working yet")
+		identifier := e.left.(^Identifier_Expression)
+		l := get_symbol(c, m, identifier.name) or_return
+		left_symbol := l.(Composite_Symbol)
+		enter_parent_scope_by_id(m, left_symbol.scope_ip) or_return
+		defer pop_scope(m)
+		check_expr_symbols(c, m, e.accessor) or_return
 
 	case ^Call_Expression:
 		check_expr_symbols(c, m, e.func) or_return

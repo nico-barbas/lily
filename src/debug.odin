@@ -425,6 +425,53 @@ print_type_info :: proc(p: ^AST_Printer, c: ^Checker, t: Type_Info) {
 	}
 }
 
+print_symbol_table :: proc(c: ^Checker, m: ^Checked_Module) {
+	printer := AST_Printer {
+		builder      = strings.make_builder(),
+		indent_width = 2,
+	}
+	defer strings.destroy_builder(&printer.builder)
+	scope := m.scope
+	for scope != nil {
+		scope = scope.parent
+	}
+
+	write_line(&printer, "================= \n")
+	write(&printer, "== SYMBOL TABLE ==")
+	print_semantic_scope(&printer, scope)
+	fmt.println(strings.to_string(printer.builder))
+}
+
+print_semantic_scope :: proc(p: ^AST_Printer, s: ^Semantic_Scope) {
+	write_line(p, "Scope: ")
+	fmt.sbprintf(&p.builder, "%d", s.id)
+	increment(p)
+	{
+		write_line(p, "Symbols: ")
+		increment(p)
+		for symbol in s.symbols {
+			write_line(p, "- ")
+			switch smbl in symbol {
+			case string:
+				fmt.sbprintf(&p.builder, "Name: %s", smbl)
+			case Composite_Symbol:
+				fmt.sbprintf(&p.builder, "Name: %s, Referred Scope: %d", smbl.name, smbl.scope_ip)
+			} 
+		}
+		decrement(p)
+		if len(s.children) > 0 {
+			write_line(p, "Inner Scopes: ")
+			increment(p)
+			for child in s.children {
+				print_semantic_scope(p, child)
+			}
+			decrement(p)
+		}
+	}
+	decrement(p)
+	
+}
+
 // Utility procedures
 
 write :: proc(p: ^AST_Printer, s: string = "") {

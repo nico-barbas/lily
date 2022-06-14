@@ -22,7 +22,6 @@ playground :: proc() {using lily
 			end
 		end
 
-		var a = Foo.new(1)
 	`
 
 	parsed_module := make_module()
@@ -34,10 +33,11 @@ playground :: proc() {using lily
 	fmt.println(input)
 	print_parsed_ast(parsed_module)
 
-	// checker := new_checker()
-	// checked_module, check_err := check_module(checker, parsed_module)
-	// assert(check_err == nil, fmt.tprint("Failed, Error raised ->", check_err))
-	// print_checked_ast(checked_module, checker)
+	checker := new_checker()
+	checked_module, check_err := check_module(checker, parsed_module)
+	print_symbol_table(checker, checked_module)
+	assert(check_err == nil, fmt.tprint("Failed, Error raised ->", check_err))
+	print_checked_ast(checked_module, checker)
 
 	// compiler := new_compiler()
 	// compiled_module := compile_module(compiler, checked_module)

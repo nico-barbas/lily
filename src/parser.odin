@@ -11,6 +11,8 @@ parser_rules := map[Token_Kind]struct {
 	infix_fn:  proc(p: ^Parser, left: Expression) -> (Expression, Error),
 } {
 	.Identifier =      {prec = .Lowest,  prefix_fn = parse_identifier, infix_fn = nil},
+	.Self=             {prec = .Lowest,  prefix_fn = parse_identifier, infix_fn = nil},
+	.Result =          {prec = .Lowest,  prefix_fn = parse_identifier, infix_fn = nil},
 	.Number =          {prec = .Lowest,  prefix_fn = parse_identifier, infix_fn = nil},
 	.Boolean =         {prec = .Lowest,  prefix_fn = parse_identifier, infix_fn = nil},
 	.String =          {prec = .Lowest,  prefix_fn = parse_identifier, infix_fn = nil},
@@ -517,6 +519,8 @@ parse_type_decl :: proc(p: ^Parser) -> (result: ^Type_Declaration, err: Error) {
 					}
 				
 				case .Fn:
+					method := parse_fn_decl(p) or_return
+					append(&result.methods, method)
 
 				case .Constructor:
 					constructor := parse_fn_decl(p) or_return
