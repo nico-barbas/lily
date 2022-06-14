@@ -370,11 +370,11 @@ run_bytecode :: proc(vm: ^Vm) {
 // 	free(vm)
 // }
 
-// run_program :: proc(vm: ^Vm, program: []Node) {
+// run_program :: proc(vm: ^Vm, program: []Parsed_Node) {
 // 	// Gather all the declarations
 // 	for node in program {
 // 		#partial switch n in node {
-// 		case ^Var_Declaration:
+// 		case ^Parsed_Var_Declaration:
 // 			value: Value
 // 			#partial switch t in n.type_expr {
 // 			case ^Identifier_Expression:
@@ -401,7 +401,7 @@ run_bytecode :: proc(vm: ^Vm) {
 // 			}
 // 			push_stack_value(vm, n.identifier)
 
-// 		case ^Fn_Declaration:
+// 		case ^Parsed_Fn_Declaration:
 // 			fn := new(Fn_Object)
 // 			fn.base = Object {
 // 				kind = .Fn,
@@ -565,17 +565,17 @@ run_bytecode :: proc(vm: ^Vm) {
 // 	return
 // }
 
-// eval_node :: proc(vm: ^Vm, node: Node) -> (err: Error) {
+// eval_node :: proc(vm: ^Vm, node: Parsed_Node) -> (err: Error) {
 // 	switch n in node {
-// 	case ^Expression_Statement:
+// 	case ^Parsed_Expression_Statement:
 // 		eval_expr(vm, n.expr) or_return
 
-// 	case ^Block_Statement:
+// 	case ^Parsed_Block_Statement:
 // 		for body_node in n.nodes {
 // 			eval_node(vm, body_node) or_return
 // 		}
 
-// 	case ^Assignment_Statement:
+// 	case ^Parsed_Assignment_Statement:
 // 		result := eval_expr(vm, n.right) or_return
 // 		#partial switch left in n.left {
 // 		case ^Identifier_Expression:
@@ -589,7 +589,7 @@ run_bytecode :: proc(vm: ^Vm) {
 // 			assert(false, "Left handside expression kind in Assignment Statement not implemented")
 // 		}
 
-// 	case ^If_Statement:
+// 	case ^Parsed_If_Statement:
 // 		push_stack(vm)
 // 		defer pop_stack(vm)
 // 		condition_result := eval_expr(vm, n.condition) or_return
@@ -599,7 +599,7 @@ run_bytecode :: proc(vm: ^Vm) {
 // 			eval_node(vm, n.next_branch) or_return
 // 		}
 
-// 	case ^Range_Statement:
+// 	case ^Parsed_Range_Statement:
 // 		iterator := RANGE_ITERATOR_IMPL
 // 		low_result := eval_expr(vm, n.low) or_return
 // 		high_result := eval_expr(vm, n.high) or_return
@@ -622,7 +622,7 @@ run_bytecode :: proc(vm: ^Vm) {
 // 			}
 // 		}
 
-// 	case ^Var_Declaration:
+// 	case ^Parsed_Var_Declaration:
 // 		result: Value
 // 		switch n.initialized {
 // 		case true:
@@ -642,8 +642,8 @@ run_bytecode :: proc(vm: ^Vm) {
 // 			set_stack_value(vm, n.identifier, result)
 // 		}
 
-// 	case ^Fn_Declaration:
-// 	case ^Type_Declaration:
+// 	case ^Parsed_Fn_Declaration:
+// 	case ^Parsed_Type_Declaration:
 // 		assert(false)
 // 	}
 // 	return

@@ -128,13 +128,13 @@ print_parsed_expr :: proc(p: ^AST_Printer, expr: Expression) {
 
 }
 
-print_parsed_node :: proc(p: ^AST_Printer, node: Node) {
+print_parsed_node :: proc(p: ^AST_Printer, node: Parsed_Node) {
 	switch n in node {
-	case ^Expression_Statement:
+	case ^Parsed_Expression_Statement:
 		write_line(p, "Expression Statement: ")
 		print_parsed_expr(p, n.expr)
 
-	case ^Block_Statement:
+	case ^Parsed_Block_Statement:
 		write_line(p, "Block Statement: ")
 		increment(p)
 		for inner in n.nodes {
@@ -142,7 +142,7 @@ print_parsed_node :: proc(p: ^AST_Printer, node: Node) {
 		}
 		decrement(p)
 
-	case ^Assignment_Statement:
+	case ^Parsed_Assignment_Statement:
 		write_line(p, "Assignment Statement: ")
 		increment(p)
 		{
@@ -153,7 +153,7 @@ print_parsed_node :: proc(p: ^AST_Printer, node: Node) {
 		}
 		decrement(p)
 
-	case ^If_Statement:
+	case ^Parsed_If_Statement:
 		write_line(p, "If Statement: ")
 		increment(p)
 		{
@@ -167,7 +167,7 @@ print_parsed_node :: proc(p: ^AST_Printer, node: Node) {
 		}
 		decrement(p)
 
-	case ^Range_Statement:
+	case ^Parsed_Range_Statement:
 		write_line(p, "For Statement: ")
 		increment(p)
 		{
@@ -183,7 +183,7 @@ print_parsed_node :: proc(p: ^AST_Printer, node: Node) {
 		}
 		decrement(p)
 
-	case ^Var_Declaration:
+	case ^Parsed_Var_Declaration:
 		write_line(p, "Var Declaration: ")
 		increment(p)
 		{
@@ -196,7 +196,7 @@ print_parsed_node :: proc(p: ^AST_Printer, node: Node) {
 		}
 		decrement(p)
 
-	case ^Fn_Declaration:
+	case ^Parsed_Fn_Declaration:
 		write_line(p, "Function Declaration: ")
 		increment(p)
 		{
@@ -217,7 +217,7 @@ print_parsed_node :: proc(p: ^AST_Printer, node: Node) {
 		}
 		decrement(p)
 
-	case ^Type_Declaration:
+	case ^Parsed_Type_Declaration:
 		write_line(p, "Type Declaration: ")
 		increment(p)
 		{

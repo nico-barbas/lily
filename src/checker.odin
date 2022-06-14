@@ -599,7 +599,7 @@ update_type_alias :: proc(c: ^Checker, m: ^Checked_Module, name: Token, parent_t
 
 // Adding a class decl to the type system means adding it to the type checker
 // but also adding the Checked_Type_Declaration to the module for later compilation
-add_class_type :: proc(c: ^Checker, m: ^Checked_Module, decl: ^Type_Declaration) {
+add_class_type :: proc(c: ^Checker, m: ^Checked_Module, decl: ^Parsed_Type_Declaration) {
 	checked_class := new_clone(
 		Checked_Class_Declaration{
 			token = decl.token,
@@ -707,7 +707,7 @@ check_module :: proc(c: ^Checker, m: ^Parsed_Module) -> (module: ^Checked_Module
 	c.current = module
 	// The type symbols need to be added first
 	for node in m.nodes {
-		if n, ok := node.(^Type_Declaration); ok {
+		if n, ok := node.(^Parsed_Type_Declaration); ok {
 			switch n.type_kind {
 			case .Alias:
 				add_symbol(c, n.identifier) or_return
@@ -732,9 +732,9 @@ check_module :: proc(c: ^Checker, m: ^Parsed_Module) -> (module: ^Checked_Module
 
 	for node in m.nodes {
 		#partial switch n in node {
-		case ^Var_Declaration:
+		case ^Parsed_Var_Declaration:
 			add_symbol(c, n.identifier) or_return
-		case ^Fn_Declaration:
+		case ^Parsed_Fn_Declaration:
 			add_symbol(c, n.identifier) or_return
 		}
 	}
@@ -752,7 +752,7 @@ check_module :: proc(c: ^Checker, m: ^Parsed_Module) -> (module: ^Checked_Module
 
 	for node in m.nodes {
 		#partial switch n in node {
-		case ^Type_Declaration:
+		case ^Parsed_Type_Declaration:
 			switch n.type_kind {
 			case .Alias:
 				add_type_alias(c, module, n.identifier, UNTYPED_ID)
@@ -764,7 +764,7 @@ check_module :: proc(c: ^Checker, m: ^Parsed_Module) -> (module: ^Checked_Module
 
 	for node in m.nodes {
 		#partial switch n in node {
-		case ^Type_Declaration:
+		case ^Parsed_Type_Declaration:
 			switch n.type_kind {
 			case .Alias:
 				parent_type := check_expr_types(c, module, n.type_expr) or_return
@@ -803,7 +803,7 @@ check_module :: proc(c: ^Checker, m: ^Parsed_Module) -> (module: ^Checked_Module
 
 	for node in m.nodes {
 		#partial switch n in node {
-		case ^Fn_Declaration:
+		case ^Parsed_Fn_Declaration:
 			fn_decl := new_clone(
 				Checked_Fn_Declaration{
 					token = n.token,
@@ -848,21 +848,21 @@ check_module :: proc(c: ^Checker, m: ^Parsed_Module) -> (module: ^Checked_Module
 	return
 }
 
-check_node_symbols :: proc(c: ^Checker, node: Node) -> (err: Error) {
+check_node_symbols :: proc(c: ^Checker, node: Parsed_Node) -> (err: Error) {
 	switch n in node {
-	case ^Expression_Statement:
+	case ^Parsed_Expression_Statement:
 		check_expr_symbols(c, n.expr) or_return
 
-	case ^Block_Statement:
+	case ^Parsed_Block_Statement:
 		for block_node in n.nodes {
 			check_node_symbols(c, block_node) or_return
 		}
 
-	case ^Assignment_Statement:
+	case ^Parsed_Assignment_Statement:
 		check_expr_symbols(c, n.left) or_return
 		check_expr_symbols(c, n.right) or_return
 
-	case ^If_Statement:
+	case ^Parsed_If_Statement:
 		check_expr_symbols(c, n.condition) or_return
 		push_scope(c.current, n.token)
 		check_node_symbols(c, n.body) or_return
@@ -871,7 +871,7 @@ check_node_symbols :: proc(c: ^Checker, node: Node) -> (err: Error) {
 			check_node_symbols(c, n.next_branch) or_return
 		}
 
-	case ^Range_Statement:
+	case ^Parsed_Range_Statement:
 		if contain_symbol(c, n.iterator_name) {
 			err = Semantic_Error {
 				kind    = .Redeclared_Symbol,
@@ -886,7 +886,7 @@ check_node_symbols :: proc(c: ^Checker, node: Node) -> (err: Error) {
 		defer pop_scope(c.current)
 		check_node_symbols(c, n.body) or_return
 
-	case ^Var_Declaration:
+	case ^Parsed_Var_Declaration:
 		if c.current.scope_depth > 0 {
 			// if contain_symbol(c, m, n.identifier) {
 			// 	err = Semantic_Error {
@@ -901,7 +901,7 @@ check_node_symbols :: proc(c: ^Checker, node: Node) -> (err: Error) {
 		check_expr_symbols(c, n.type_expr) or_return
 		check_expr_symbols(c, n.expr) or_return
 
-	case ^Fn_Declaration:
+	case ^Parsed_Fn_Declaration:
 		// No need to check for function symbol declaration since 
 		// functions can only be declared at the file scope
 		push_scope(c.current, n.identifier)
@@ -922,7 +922,7 @@ check_node_symbols :: proc(c: ^Checker, node: Node) -> (err: Error) {
 		check_expr_symbols(c, n.return_type_expr) or_return
 		check_node_symbols(c, n.body) or_return
 
-	case ^Type_Declaration:
+	case ^Parsed_Type_Declaration:
 		if n.type_kind == .Alias {
 			check_expr_symbols(c, n.type_expr) or_return
 		} else {
@@ -1007,16 +1007,16 @@ check_expr_symbols :: proc(c: ^Checker, expr: Expression) -> (err: Error) {
 // FIXME: Need a way to extract the token from an expression, either at an
 // Parser level or at a Checker level
 // Checked nodes take ownership of the Parsed Expressions and produce a Checked_Node
-check_node_types :: proc(c: ^Checker, m: ^Checked_Module, node: Node) -> (
+check_node_types :: proc(c: ^Checker, m: ^Checked_Module, node: Parsed_Node) -> (
 	result: Checked_Node,
 	err: Error,
 ) {
 	switch n in node {
-	case ^Expression_Statement:
+	case ^Parsed_Expression_Statement:
 		t := check_expr_types(c, m, n.expr) or_return
 		result = new_clone(Checked_Expression_Statement{expr = checked_expresssion(n.expr, t)})
 
-	case ^Block_Statement:
+	case ^Parsed_Block_Statement:
 		block_stmt := new_clone(Checked_Block_Statement{nodes = make([dynamic]Checked_Node)})
 		for block_node in n.nodes {
 			node := check_node_types(c, m, block_node) or_return
@@ -1024,7 +1024,7 @@ check_node_types :: proc(c: ^Checker, m: ^Checked_Module, node: Node) -> (
 		}
 		result = block_stmt
 
-	case ^Assignment_Statement:
+	case ^Parsed_Assignment_Statement:
 		left := check_expr_types(c, m, n.left) or_return
 		right := check_expr_types(c, m, n.right) or_return
 		if !type_equal(c, left, right) {
@@ -1050,7 +1050,7 @@ check_node_types :: proc(c: ^Checker, m: ^Checked_Module, node: Node) -> (
 		)
 
 
-	case ^If_Statement:
+	case ^Parsed_If_Statement:
 		condition_type := check_expr_types(c, m, n.condition) or_return
 		if !is_truthy_type(condition_type) {
 			err = Semantic_Error {
@@ -1078,7 +1078,7 @@ check_node_types :: proc(c: ^Checker, m: ^Checked_Module, node: Node) -> (
 		}
 		result = if_stmt
 
-	case ^Range_Statement:
+	case ^Parsed_Range_Statement:
 		//push scope
 		low := check_expr_types(c, m, n.low) or_return
 		high := check_expr_types(c, m, n.high) or_return
@@ -1103,7 +1103,7 @@ check_node_types :: proc(c: ^Checker, m: ^Checked_Module, node: Node) -> (
 			},
 		)
 
-	case ^Var_Declaration:
+	case ^Parsed_Var_Declaration:
 		var_type := check_expr_types(c, m, n.type_expr) or_return
 		value_type := check_expr_types(c, m, n.expr) or_return
 
@@ -1142,9 +1142,9 @@ check_node_types :: proc(c: ^Checker, m: ^Checked_Module, node: Node) -> (
 		)
 
 
-	case ^Fn_Declaration:
+	case ^Parsed_Fn_Declaration:
 
-	case ^Type_Declaration:
+	case ^Parsed_Type_Declaration:
 	}
 	return
 }

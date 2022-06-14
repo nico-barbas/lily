@@ -61,11 +61,11 @@ Precedence :: enum {
 
 Parsed_Module :: struct {
 	source: string,
-	nodes:  [dynamic]Node,
+	nodes:  [dynamic]Parsed_Node,
 }
 
 make_module :: proc() -> ^Parsed_Module {
-	return new_clone(Parsed_Module{nodes = make([dynamic]Node)})
+	return new_clone(Parsed_Module{nodes = make([dynamic]Parsed_Node)})
 }
 
 delete_module :: proc(p: ^Parsed_Module) {
@@ -126,7 +126,7 @@ match_token_kind_next :: proc(p: ^Parser, kind: Token_Kind) -> (err: Error) {
 	return
 }
 
-parse_node :: proc(p: ^Parser) -> (result: Node, err: Error) {
+parse_node :: proc(p: ^Parser) -> (result: Parsed_Node, err: Error) {
 	token := consume_token(p)
 	#partial switch token.kind {
 	case .EOF, .Newline, .End, .Else:
@@ -144,7 +144,7 @@ parse_node :: proc(p: ^Parser) -> (result: Node, err: Error) {
 		case .Assign, .Open_Bracket, .Dot:
 			result, err = parse_assign_stmt(p, lhs)
 		case:
-			result = new_clone(Expression_Statement{expr = lhs})
+			result = new_clone(Parsed_Expression_Statement{expr = lhs})
 		}
 	case .If:
 		result, err = parse_if_stmt(p)
@@ -157,14 +157,14 @@ parse_node :: proc(p: ^Parser) -> (result: Node, err: Error) {
 	return
 }
 
-parse_expression_stmt :: proc(p: ^Parser) -> (result: ^Expression_Statement, err: Error) {
-	result = new(Expression_Statement)
+parse_expression_stmt :: proc(p: ^Parser) -> (result: ^Parsed_Expression_Statement, err: Error) {
+	result = new(Parsed_Expression_Statement)
 	result.expr = parse_expr(p, .Lowest) or_return
 	return
 }
 
-parse_assign_stmt :: proc(p: ^Parser, lhs: Expression) -> (result: ^Assignment_Statement, err: Error) {
-	result = new(Assignment_Statement)
+parse_assign_stmt :: proc(p: ^Parser, lhs: Expression) -> (result: ^Parsed_Assignment_Statement, err: Error) {
+	result = new(Parsed_Assignment_Statement)
 	result.token = p.current
 	result.left = lhs
 	consume_token(p)
@@ -172,13 +172,13 @@ parse_assign_stmt :: proc(p: ^Parser, lhs: Expression) -> (result: ^Assignment_S
 	return
 }
 
-parse_if_stmt :: proc(p: ^Parser) -> (result: ^If_Statement, err: Error) {
-	parse_branch :: proc(p: ^Parser, is_end_branch: bool) -> (result: ^If_Statement, err: Error) {
-		result = new(If_Statement)
+parse_if_stmt :: proc(p: ^Parser) -> (result: ^Parsed_If_Statement, err: Error) {
+	parse_branch :: proc(p: ^Parser, is_end_branch: bool) -> (result: ^Parsed_If_Statement, err: Error) {
+		result = new(Parsed_If_Statement)
 		switch is_end_branch {
 		case true:
 			result.condition = new_clone(Literal_Expression{value = Value{kind = .Boolean, data = true}})
-			result.body = new_clone(Block_Statement{nodes = make([dynamic]Node)})
+			result.body = new_clone(Parsed_Block_Statement{nodes = make([dynamic]Parsed_Node)})
 			else_body: for {
 				body_node := parse_node(p) or_return
 				if body_node != nil {
@@ -192,7 +192,7 @@ parse_if_stmt :: proc(p: ^Parser) -> (result: ^If_Statement, err: Error) {
 			consume_token(p)
 			result.condition = parse_expr(p, .Lowest) or_return
 			match_token_kind_next(p, .Colon) or_return
-			result.body = new_clone(Block_Statement{nodes = make([dynamic]Node)})
+			result.body = new_clone(Parsed_Block_Statement{nodes = make([dynamic]Parsed_Node)})
 			else_if_body: for {
 				body_node := parse_node(p) or_return
 				if body_node != nil {
@@ -225,12 +225,12 @@ parse_if_stmt :: proc(p: ^Parser) -> (result: ^If_Statement, err: Error) {
 		return
 	}
 
-	result = new(If_Statement)
+	result = new(Parsed_If_Statement)
 	consume_token(p)
 	result.condition = parse_expr(p, .Lowest) or_return
 	match_token_kind(p, .Colon) or_return
 
-	result.body = new_clone(Block_Statement{nodes = make([dynamic]Node)})
+	result.body = new_clone(Parsed_Block_Statement{nodes = make([dynamic]Parsed_Node)})
 	body: for {
 		body_node := parse_node(p) or_return
 		if body_node != nil {
@@ -264,8 +264,8 @@ parse_if_stmt :: proc(p: ^Parser) -> (result: ^If_Statement, err: Error) {
 	return
 }
 
-parse_range_stmt :: proc(p: ^Parser) -> (result: ^Range_Statement, err: Error) {
-	result = new(Range_Statement)
+parse_range_stmt :: proc(p: ^Parser) -> (result: ^Parsed_Range_Statement, err: Error) {
+	result = new(Parsed_Range_Statement)
 	result.token = p.current
 	name_token := consume_token(p)
 	if name_token.kind == .Identifier {
@@ -294,7 +294,7 @@ parse_range_stmt :: proc(p: ^Parser) -> (result: ^Range_Statement, err: Error) {
 		consume_token(p)
 		result.high = parse_expr(p, .Lowest) or_return
 
-		result.body = new_clone(Block_Statement{nodes = make([dynamic]Node)})
+		result.body = new_clone(Parsed_Block_Statement{nodes = make([dynamic]Parsed_Node)})
 		body: for {
 			body_node := parse_node(p) or_return
 			if body_node != nil {
@@ -317,8 +317,8 @@ parse_range_stmt :: proc(p: ^Parser) -> (result: ^Range_Statement, err: Error) {
 
 // FIXME: Allow for "var a, b := 10, false"
 // FIXME: Allow for uninitialized variable declaration: "var a: number"
-parse_var_decl :: proc(p: ^Parser) -> (result: ^Var_Declaration, err: Error) {
-	result = new(Var_Declaration)
+parse_var_decl :: proc(p: ^Parser) -> (result: ^Parsed_Var_Declaration, err: Error) {
+	result = new(Parsed_Var_Declaration)
 	result.token = p.current
 	name_token := consume_token(p)
 	if name_token.kind == .Identifier {
@@ -381,8 +381,8 @@ parse_var_decl :: proc(p: ^Parser) -> (result: ^Var_Declaration, err: Error) {
 	return
 }
 
-parse_fn_decl :: proc(p: ^Parser) -> (result: ^Fn_Declaration, err: Error) {
-	result = new(Fn_Declaration)
+parse_fn_decl :: proc(p: ^Parser) -> (result: ^Parsed_Fn_Declaration, err: Error) {
+	result = new(Parsed_Fn_Declaration)
 	result.token = p.current
 	name_token := consume_token(p)
 	if name_token.kind == .Identifier {
@@ -451,7 +451,7 @@ parse_fn_decl :: proc(p: ^Parser) -> (result: ^Fn_Declaration, err: Error) {
 		}
 
 		// FIXME: Refactor into separate procedure
-		result.body = new_clone(Block_Statement{nodes = make([dynamic]Node)})
+		result.body = new_clone(Parsed_Block_Statement{nodes = make([dynamic]Parsed_Node)})
 		body: for {
 			body_node := parse_node(p) or_return
 			if body_node != nil {
@@ -472,8 +472,8 @@ parse_fn_decl :: proc(p: ^Parser) -> (result: ^Fn_Declaration, err: Error) {
 }
 
 // Disallow nested type declaration
-parse_type_decl :: proc(p: ^Parser) -> (result: ^Type_Declaration, err: Error) {
-	result = new_clone(Type_Declaration{token = p.current})
+parse_type_decl :: proc(p: ^Parser) -> (result: ^Parsed_Type_Declaration, err: Error) {
+	result = new_clone(Parsed_Type_Declaration{token = p.current})
 	name_token := consume_token(p)
 	if name_token.kind == .Identifier {
 		result.identifier = name_token

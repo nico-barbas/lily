@@ -87,52 +87,52 @@ Array_Type_Expression :: struct {
 
 //////
 
-Node :: union {
+Parsed_Node :: union {
 	// Statements
-	^Expression_Statement,
-	^Block_Statement,
-	^Assignment_Statement,
-	^If_Statement,
-	^Range_Statement,
+	^Parsed_Expression_Statement,
+	^Parsed_Block_Statement,
+	^Parsed_Assignment_Statement,
+	^Parsed_If_Statement,
+	^Parsed_Range_Statement,
 
 	// Declarations
-	^Var_Declaration,
-	^Fn_Declaration,
-	^Type_Declaration,
+	^Parsed_Var_Declaration,
+	^Parsed_Fn_Declaration,
+	^Parsed_Type_Declaration,
 }
 
-Expression_Statement :: struct {
+Parsed_Expression_Statement :: struct {
 	expr: Expression,
 }
 
-Block_Statement :: struct {
-	nodes: [dynamic]Node,
+Parsed_Block_Statement :: struct {
+	nodes: [dynamic]Parsed_Node,
 }
 
-Assignment_Statement :: struct {
+Parsed_Assignment_Statement :: struct {
 	token: Token, // the '=' token
 	left:  Expression,
 	right: Expression,
 }
 
-If_Statement :: struct {
+Parsed_If_Statement :: struct {
 	token:       Token, // the "if" token
 	condition:   Expression,
-	body:        ^Block_Statement,
-	next_branch: ^If_Statement,
+	body:        ^Parsed_Block_Statement,
+	next_branch: ^Parsed_If_Statement,
 }
 
-Range_Statement :: struct {
+Parsed_Range_Statement :: struct {
 	token:         Token, // the "for" token
 	iterator_name: Token,
 	low:           Expression,
 	high:          Expression,
 	reverse:       bool,
 	op:            Range_Operator,
-	body:          ^Block_Statement,
+	body:          ^Parsed_Block_Statement,
 }
 
-Var_Declaration :: struct {
+Parsed_Var_Declaration :: struct {
 	token:       Token, // the "var" token
 	identifier:  Token,
 	type_expr:   Expression,
@@ -140,15 +140,15 @@ Var_Declaration :: struct {
 	initialized: bool,
 }
 
-Fn_Declaration :: struct {
+Parsed_Fn_Declaration :: struct {
 	token:            Token,
 	identifier:       Token,
 	parameters:       [dynamic]Typed_Identifier,
-	body:             ^Block_Statement,
+	body:             ^Parsed_Block_Statement,
 	return_type_expr: Expression,
 }
 
-Type_Declaration :: struct {
+Parsed_Type_Declaration :: struct {
 	token:      Token, // the "type" token
 	is_token:   Token,
 	identifier: Token,
@@ -158,6 +158,6 @@ Type_Declaration :: struct {
 		Class,
 	},
 	fields:     [dynamic]Typed_Identifier,
-	constructors: [dynamic]^Fn_Declaration,
-	methods:    [dynamic]^Fn_Declaration,
+	constructors: [dynamic]^Parsed_Fn_Declaration,
+	methods:    [dynamic]^Parsed_Fn_Declaration,
 }
