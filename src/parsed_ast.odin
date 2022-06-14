@@ -149,15 +149,15 @@ Parsed_Fn_Declaration :: struct {
 }
 
 Parsed_Type_Declaration :: struct {
-	token:      Token, // the "type" token
-	is_token:   Token,
-	identifier: Token,
-	type_expr:  Expression,
-	type_kind:  enum {
+	token:        Token, // the "type" token
+	is_token:     Token,
+	identifier:   Token,
+	type_expr:    Expression,
+	type_kind:    enum {
 		Alias,
 		Class,
 	},
-	fields:     [dynamic]Typed_Identifier,
+	fields:       [dynamic]Typed_Identifier,
 	constructors: [dynamic]^Parsed_Fn_Declaration,
-	methods:    [dynamic]^Parsed_Fn_Declaration,
+	methods:      [dynamic]^Parsed_Fn_Declaration,
 }

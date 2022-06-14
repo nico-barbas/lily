@@ -7,8 +7,7 @@ Checker :: struct {
 	builtin_symbols: [5]string,
 	builtin_types:   [BUILT_IN_ID_COUNT]Type_Info,
 	type_id_ptr:     Type_ID,
-	
-	current: ^Checked_Module,
+	current:         ^Checked_Module,
 }
 
 new_checker :: proc() -> ^Checker {
@@ -56,7 +55,7 @@ contain_symbol :: proc(c: ^Checker, token: Token) -> bool {
 get_symbol :: proc(c: ^Checker, token: Token) -> (result: Symbol, err: Error) {
 	builtins: for name in c.builtin_symbols {
 		if name == token.text {
-			result =  name
+			result = name
 			return
 		}
 	}
@@ -67,12 +66,12 @@ get_symbol :: proc(c: ^Checker, token: Token) -> (result: Symbol, err: Error) {
 			switch n in name {
 			case string:
 				if name == token.text {
-					result =  name
+					result = name
 					return
 				}
 			case Composite_Symbol:
 				if n.name == token.text {
-					result =  name
+					result = name
 					return
 				}
 			}
@@ -82,8 +81,8 @@ get_symbol :: proc(c: ^Checker, token: Token) -> (result: Symbol, err: Error) {
 
 	// The symbol wasn't found
 	err = Semantic_Error {
-		kind = .Unknown_Symbol,
-		token = token,
+		kind    = .Unknown_Symbol,
+		token   = token,
 		details = fmt.tprintf("Unknown symbol: %s", token.text),
 	}
 	return
@@ -93,37 +92,42 @@ add_symbol :: proc(c: ^Checker, token: Token, shadow := false) -> Error {
 	return add_scoped_symbol(c.current.symbol_table.scope, token, shadow)
 }
 
-add_composite_symbol :: proc(c: ^Checker, token: Token, scope_id: Scope_ID, shadow := false) -> Error {
+add_composite_symbol :: proc(
+	c: ^Checker,
+	token: Token,
+	scope_id: Scope_ID,
+	shadow := false,
+) -> Error {
 	return add_scoped_composite_symbol(c.current.symbol_table.scope, token, scope_id, shadow)
 }
 
-set_variable_type :: proc(m: ^Checked_Module, name: string, t: Type_Info) {
-	m.symbol_table.scope.variable_types[name] = t
+set_variable_type :: proc(c: ^Checker, name: string, t: Type_Info) {
+	c.current.symbol_table.scope.variable_types[name] = t
 }
 
 
-add_type_alias :: proc(c: ^Checker, m: ^Checked_Module, name: Token, parent_type: Type_ID) {
-	m.type_lookup[name.text] = Type_Info {
+add_type_alias :: proc(c: ^Checker, name: Token, parent_type: Type_ID) {
+	c.current.type_lookup[name.text] = Type_Info {
 		name = name.text,
 		type_id = gen_type_id(c),
 		type_kind = .Type_Alias,
 		type_id_data = Type_Alias_Info{underlying_type_id = parent_type},
 	}
-	m.type_count += 1
+	c.current.type_count += 1
 }
 
-update_type_alias :: proc(c: ^Checker, m: ^Checked_Module, name: Token, parent_type: Type_ID) {
-	t := m.type_lookup[name.text]
+update_type_alias :: proc(c: ^Checker, name: Token, parent_type: Type_ID) {
+	t := c.current.type_lookup[name.text]
 	t.type_id_data = Type_Alias_Info {
 		underlying_type_id = parent_type,
 	}
-	m.type_lookup[name.text] = t
+	c.current.type_lookup[name.text] = t
 }
 
 
 // Adding a class decl to the type system means adding it to the type checker
 // but also adding the Checked_Type_Declaration to the module for later compilation
-add_class_type :: proc(c: ^Checker, m: ^Checked_Module, decl: ^Parsed_Type_Declaration) {
+add_class_type :: proc(c: ^Checker, decl: ^Parsed_Type_Declaration) {
 	checked_class := new_clone(
 		Checked_Class_Declaration{
 			token = decl.token,
@@ -131,21 +135,18 @@ add_class_type :: proc(c: ^Checker, m: ^Checked_Module, decl: ^Parsed_Type_Decla
 			identifier = decl.identifier,
 		},
 	)
-	append(&m.classes, checked_class)
-	m.type_lookup[decl.identifier.text] = Type_Info {
+	append(&c.current.classes, checked_class)
+	c.current.type_lookup[decl.identifier.text] = Type_Info {
 		name      = decl.identifier.text,
 		type_id   = gen_type_id(c),
 		type_kind = .Class_Type,
 	}
-	m.type_count += 1
+	c.current.type_count += 1
 }
 
 
 // FIXME: Needs a code review. Does not check all the available modules
-get_type :: proc(c: ^Checker, m: ^Checked_Module, name: string) -> (
-	result: Type_Info,
-	exist: bool,
-) {
+get_type :: proc(c: ^Checker, name: string) -> (result: Type_Info, exist: bool) {
 	for info in c.builtin_types {
 		if info.name == name {
 			result = info
@@ -153,7 +154,7 @@ get_type :: proc(c: ^Checker, m: ^Checked_Module, name: string) -> (
 			return
 		}
 	}
-	result, exist = m.type_lookup[name]
+	result, exist = c.current.type_lookup[name]
 	return
 }
 
@@ -180,19 +181,19 @@ get_type_from_id :: proc(c: ^Checker, id: Type_ID) -> (result: Type_Info) {
 	return
 }
 
-get_type_from_identifier :: proc(c: ^Checker, m: ^Checked_Module, i: Token) -> (result: Type_Info) {
-	if t, t_exist := get_type(c, m, i.text); t_exist {
+get_type_from_identifier :: proc(c: ^Checker, i: Token) -> (result: Type_Info) {
+	if t, t_exist := get_type(c, i.text); t_exist {
 		result = t
-	} else if fn_type, fn_exist := get_fn_type(c, m, i.text); fn_exist {
+	} else if fn_type, fn_exist := get_fn_type(c, i.text); fn_exist {
 		result = fn_type
 	} else {
-		result, _ = get_variable_type(m, i.text)
+		result, _ = get_variable_type(c, i.text)
 	}
 	return
 }
 
-get_variable_type :: proc(m: ^Checked_Module, name: string) -> (result: Type_Info, exist: bool) {
-	current := m.symbol_table.scope
+get_variable_type :: proc(c: ^Checker, name: string) -> (result: Type_Info, exist: bool) {
+	current := c.current.symbol_table.scope
 	for current != nil {
 		if info, contains := current.variable_types[name]; contains {
 			result = info
@@ -204,11 +205,8 @@ get_variable_type :: proc(m: ^Checked_Module, name: string) -> (result: Type_Inf
 	return
 }
 
-get_fn_type :: proc(c: ^Checker, m: ^Checked_Module, name: string) -> (
-	result: Type_Info,
-	exist: bool,
-) {
-	for fn in m.functions {
+get_fn_type :: proc(c: ^Checker, name: string) -> (result: Type_Info, exist: bool) {
+	for fn in c.current.functions {
 		function := fn.(^Checked_Fn_Declaration)
 		if function.identifier.text == name {
 			result = function.type_info
@@ -241,7 +239,7 @@ check_module :: proc(c: ^Checker, m: ^Parsed_Module) -> (module: ^Checked_Module
 				push_scope(&c.current.symbol_table, n.identifier)
 				defer pop_scope(&c.current.symbol_table)
 				add_class_scope(&c.current.symbol_table, scope_id)
-				add_composite_symbol(c, Token{text="self"}, scope_id, true) or_return
+				add_composite_symbol(c, Token{text = "self"}, scope_id, true) or_return
 				for field in n.fields {
 					add_symbol(c, field.name) or_return
 				}
@@ -280,9 +278,9 @@ check_module :: proc(c: ^Checker, m: ^Parsed_Module) -> (module: ^Checked_Module
 		case ^Parsed_Type_Declaration:
 			switch n.type_kind {
 			case .Alias:
-				add_type_alias(c, module, n.identifier, UNTYPED_ID)
+				add_type_alias(c, n.identifier, UNTYPED_ID)
 			case .Class:
-				add_class_type(c, module, n)
+				add_class_type(c, n)
 			}
 		}
 	}
@@ -293,7 +291,7 @@ check_module :: proc(c: ^Checker, m: ^Parsed_Module) -> (module: ^Checked_Module
 			switch n.type_kind {
 			case .Alias:
 				parent_type := check_expr_types(c, module, n.type_expr) or_return
-				update_type_alias(c, module, n.identifier, parent_type.type_id)
+				update_type_alias(c, n.identifier, parent_type.type_id)
 			case .Class:
 				name := n.identifier.text
 				class_decl: ^Checked_Class_Declaration
@@ -304,16 +302,26 @@ check_module :: proc(c: ^Checker, m: ^Parsed_Module) -> (module: ^Checked_Module
 					}
 				}
 
-				// assert(false, "Class not implemented yet")
+				// FIXME: Check if class has methods, constructors and fields before allocating
 				// Check all the expression of the class's field
 				class_decl.field_names = make([]Token, len(n.fields))
+				class_decl.constructors = make([]^Checked_Fn_Declaration, len(n.constructors))
+				class_decl.methods = make([]^Checked_Fn_Declaration, len(n.methods))
 				class_info := Class_Definition_Info {
-					fields = make([]Type_Info, len(n.fields)),
+					fields       = make([]Type_Info, len(n.fields)),
+					constructors = make([]Type_Info, len(n.constructors)),
+					methods      = make([]Type_Info, len(n.methods)),
 				}
 				for field, i in n.fields {
 					field_type := check_expr_types(c, module, field.type_expr) or_return
 					class_info.fields[i] = field_type
 					class_decl.field_names[i] = field.name
+				}
+				for constructor, i in n.constructors {
+
+				}
+				for method, i in n.methods {
+
 				}
 				// Check all the methods
 
@@ -345,12 +353,12 @@ check_module :: proc(c: ^Checker, m: ^Parsed_Module) -> (module: ^Checked_Module
 			defer pop_scope(&c.current.symbol_table)
 
 			return_type := check_expr_types(c, module, n.return_type_expr) or_return
-			set_variable_type(module, "result", return_type)
+			set_variable_type(c, "result", return_type)
 			for param, i in n.parameters {
 				fn_decl.param_names[i] = param.name
 				param_type := check_expr_types(c, module, param.type_expr) or_return
 				fn_signature.parameters[i] = param_type
-				set_variable_type(module, param.name.text, param_type)
+				set_variable_type(c, param.name.text, param_type)
 			}
 			fn_decl.body = check_node_types(c, module, n.body) or_return
 			fn_signature.return_type_id = return_type.type_id
@@ -489,14 +497,14 @@ check_expr_symbols :: proc(c: ^Checker, expr: Expression) -> (err: Error) {
 		check_expr_symbols(c, e.expr) or_return
 
 	case ^Binary_Expression:
-		check_expr_symbols(c,  e.left) or_return
-		check_expr_symbols(c,  e.right) or_return
+		check_expr_symbols(c, e.left) or_return
+		check_expr_symbols(c, e.right) or_return
 
 	case ^Identifier_Expression:
 		if !contain_symbol(c, e.name) {
 			err = Semantic_Error {
 				kind    = .Unknown_Symbol,
-				token = e.name,
+				token   = e.name,
 				details = fmt.tprintf("Unknown symbol: %s", e.name.text),
 			}
 		}
@@ -516,7 +524,7 @@ check_expr_symbols :: proc(c: ^Checker, expr: Expression) -> (err: Error) {
 			if !contain_scoped_symbol(class_scope, a.name.text) {
 				err = Semantic_Error {
 					kind    = .Unknown_Symbol,
-					token = a.name,
+					token   = a.name,
 					details = fmt.tprintf("Unknown Class field: %s", a.name.text),
 				}
 			}
@@ -526,7 +534,7 @@ check_expr_symbols :: proc(c: ^Checker, expr: Expression) -> (err: Error) {
 			if !contain_scoped_symbol(class_scope, fn_identifier.name.text) {
 				err = Semantic_Error {
 					kind    = .Unknown_Symbol,
-					token = fn_identifier.name,
+					token   = fn_identifier.name,
 					details = fmt.tprintf("Unknown Class method: %s", fn_identifier.name.text),
 				}
 			}
@@ -665,7 +673,7 @@ check_node_types :: proc(c: ^Checker, m: ^Checked_Module, node: Parsed_Node) -> 
 			case:
 				var_type = value_type
 			}
-			set_variable_type(m, n.identifier.text, var_type)
+			set_variable_type(c, n.identifier.text, var_type)
 		} else {
 			if !type_equal(c, var_type, value_type) {
 				err = Semantic_Error {
@@ -675,7 +683,7 @@ check_node_types :: proc(c: ^Checker, m: ^Checked_Module, node: Parsed_Node) -> 
 				}
 			}
 		}
-		set_variable_type(m, n.identifier.text, var_type)
+		set_variable_type(c, n.identifier.text, var_type)
 		result = new_clone(
 			Checked_Var_Declaration{
 				token = n.token,
@@ -804,7 +812,7 @@ check_expr_types :: proc(c: ^Checker, m: ^Checked_Module, expr: Expression) -> (
 		}
 
 	case ^Identifier_Expression:
-		result = get_type_from_identifier(c, m, e.name)
+		result = get_type_from_identifier(c, e.name)
 
 	case ^Index_Expression:
 		left := check_expr_types(c, m, e.left) or_return

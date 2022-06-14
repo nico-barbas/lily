@@ -456,7 +456,7 @@ print_semantic_scope :: proc(p: ^AST_Printer, s: ^Semantic_Scope) {
 				fmt.sbprintf(&p.builder, "Name: %s", smbl)
 			case Composite_Symbol:
 				fmt.sbprintf(&p.builder, "Name: %s, Referred Scope: %d", smbl.name, smbl.scope_ip)
-			} 
+			}
 		}
 		decrement(p)
 		if len(s.children) > 0 {
@@ -469,7 +469,7 @@ print_semantic_scope :: proc(p: ^AST_Printer, s: ^Semantic_Scope) {
 		}
 	}
 	decrement(p)
-	
+
 }
 
 // Utility procedures

@@ -8,21 +8,21 @@ import "core:strings"
 // allowed at the file scope. This means that all the
 // type infos can be kept at one place,
 Checked_Module :: struct {
-	name:        string,
+	name:         string,
 	// This is all the nodes at the file level
-	nodes:       [dynamic]Checked_Node,
-	functions:   [dynamic]Checked_Node,
-	classes:     [dynamic]Checked_Node,
+	nodes:        [dynamic]Checked_Node,
+	functions:    [dynamic]Checked_Node,
+	classes:      [dynamic]Checked_Node,
 	// types:       [dynamic]Type_Info,
-	type_lookup: map[string]Type_Info,
-	type_count:  int,
+	type_lookup:  map[string]Type_Info,
+	type_count:   int,
 
 	// symbols
 	symbol_table: Symbol_Table,
 }
 
 new_checked_module :: proc() -> ^Checked_Module {
-	m :=  new_clone(
+	m := new_clone(
 		Checked_Module{
 			nodes = make([dynamic]Checked_Node),
 			functions = make([dynamic]Checked_Node),
@@ -30,8 +30,8 @@ new_checked_module :: proc() -> ^Checked_Module {
 			type_lookup = make(map[string]Type_Info),
 		},
 	)
-    init_symbol_table(&m.symbol_table, m.name)
-    return m
+	init_symbol_table(&m.symbol_table, m.name)
+	return m
 }
 
 Checked_Expression :: struct {
@@ -108,11 +108,13 @@ Checked_Type_Declaration :: struct {
 }
 
 Checked_Class_Declaration :: struct {
-	token:       Token,
-	is_token:    Token,
-	identifier:  Token,
-	type_info:   Type_Info,
-	field_names: []Token,
+	token:        Token,
+	is_token:     Token,
+	identifier:   Token,
+	type_info:    Type_Info,
+	field_names:  []Token,
+	constructors: []^Checked_Fn_Declaration,
+	methods:      []^Checked_Fn_Declaration,
 }
 
 // Symbol table stuff
@@ -131,7 +133,7 @@ Symbol :: union {
 }
 
 Composite_Symbol :: struct {
-	name: string,
+	name:     string,
 	scope_ip: Scope_ID,
 }
 
@@ -149,7 +151,7 @@ delete_scope :: proc(s: ^Semantic_Scope) {
 }
 
 add_scoped_symbol :: proc(s: ^Semantic_Scope, token: Token, shadow := false) -> (err: Error) {
-    if !shadow && contain_scoped_symbol(s, token.text) {
+	if !shadow && contain_scoped_symbol(s, token.text) {
 		return Semantic_Error{
 			kind = .Redeclared_Symbol,
 			token = token,
@@ -158,11 +160,18 @@ add_scoped_symbol :: proc(s: ^Semantic_Scope, token: Token, shadow := false) -> 
 	}
 
 	append(&s.symbols, token.text)
-    return
+	return
 }
 
-add_scoped_composite_symbol :: proc(s: ^Semantic_Scope, token: Token, scope_id: Scope_ID, shadow := false) -> (err: Error) {
-    if !shadow && contain_scoped_symbol(s, token.text) {
+add_scoped_composite_symbol :: proc(
+	s: ^Semantic_Scope,
+	token: Token,
+	scope_id: Scope_ID,
+	shadow := false,
+) -> (
+	err: Error,
+) {
+	if !shadow && contain_scoped_symbol(s, token.text) {
 		return Semantic_Error{
 			kind = .Redeclared_Symbol,
 			token = token,
@@ -171,37 +180,37 @@ add_scoped_composite_symbol :: proc(s: ^Semantic_Scope, token: Token, scope_id: 
 	}
 
 	append(&s.symbols, Composite_Symbol{name = token.text, scope_ip = scope_id})
-    return
+	return
 }
 
 contain_scoped_symbol :: proc(s: ^Semantic_Scope, name: string) -> bool {
-    for symbol in s.symbols {
-        switch smbl in symbol {
-        case string:
-            if smbl == name {
-                return true
-            }
-        case Composite_Symbol:
-            if smbl.name == name {
-                return true
-            }
-        }
-    }
-    return false
+	for symbol in s.symbols {
+		switch smbl in symbol {
+		case string:
+			if smbl == name {
+				return true
+			}
+		case Composite_Symbol:
+			if smbl.name == name {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 Symbol_Table :: struct {
-    module_name: string,
-    class_scopes: map[Scope_ID]^Semantic_Scope,
-	scope:       ^Semantic_Scope,
-	scope_depth: int,
+	module_name:  string,
+	class_scopes: map[Scope_ID]^Semantic_Scope,
+	scope:        ^Semantic_Scope,
+	scope_depth:  int,
 }
 
 init_symbol_table :: proc(s: ^Symbol_Table, name: string) {
-    s.module_name = name
-    s.class_scopes = make(map[Scope_ID]^Semantic_Scope)
-    s.scope = new_scope()
-    s.scope_depth = 0
+	s.module_name = name
+	s.class_scopes = make(map[Scope_ID]^Semantic_Scope)
+	s.scope = new_scope()
+	s.scope_depth = 0
 }
 
 format_scope_name :: proc(s: ^Symbol_Table, name: Token) -> (result: string) {
@@ -213,7 +222,7 @@ format_scope_name :: proc(s: ^Symbol_Table, name: Token) -> (result: string) {
 }
 
 hash_scope_id :: proc(s: ^Symbol_Table, name: Token) -> Scope_ID {
-    scope_name := format_scope_name(s, name)
+	scope_name := format_scope_name(s, name)
 	defer delete(scope_name)
 	return Scope_ID(hash.fnv32(transmute([]u8)scope_name))
 }
@@ -240,26 +249,26 @@ push_existing_scope :: proc(s: ^Symbol_Table, scope: ^Semantic_Scope) {
 }
 
 add_class_scope :: proc(s: ^Symbol_Table, scope_id: Scope_ID) {
-    get_child_scope :: proc(s: ^Semantic_Scope, scope_id: Scope_ID) -> ^Semantic_Scope {
-        for child in s.children {
-            if child.id == scope_id {
-                return child
-            }
-            scope := get_child_scope(child, scope_id)
-            if scope != nil {
-                return scope
-            }
-        }
-        return nil
-    }
+	get_child_scope :: proc(s: ^Semantic_Scope, scope_id: Scope_ID) -> ^Semantic_Scope {
+		for child in s.children {
+			if child.id == scope_id {
+				return child
+			}
+			scope := get_child_scope(child, scope_id)
+			if scope != nil {
+				return scope
+			}
+		}
+		return nil
+	}
 
-    current := s.scope
-    for current.parent != nil {
-        current = current.parent
-    }
+	current := s.scope
+	for current.parent != nil {
+		current = current.parent
+	}
 
-    class_scope := get_child_scope(current, scope_id)
-    s.class_scopes[scope_id] = class_scope
+	class_scope := get_child_scope(current, scope_id)
+	s.class_scopes[scope_id] = class_scope
 }
 
 enter_child_scope :: proc(s: ^Symbol_Table, name: Token) -> (err: Error) {
@@ -315,5 +324,5 @@ pop_scope :: proc(s: ^Symbol_Table) {
 }
 
 get_class_scope :: proc(s: ^Symbol_Table, scope_id: Scope_ID) -> ^Semantic_Scope {
-    return s.class_scopes[scope_id]
+	return s.class_scopes[scope_id]
 }

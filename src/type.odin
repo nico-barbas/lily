@@ -80,8 +80,9 @@ Fn_Signature_Info :: struct {
 }
 
 Class_Definition_Info :: struct {
-	fields:  []Type_Info,
-	methods: []Type_Info,
+	fields:       []Type_Info,
+	constructors: []Type_Info,
+	methods:      []Type_Info,
 }
 
 Type_Info :: struct {

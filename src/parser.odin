@@ -163,7 +163,10 @@ parse_expression_stmt :: proc(p: ^Parser) -> (result: ^Parsed_Expression_Stateme
 	return
 }
 
-parse_assign_stmt :: proc(p: ^Parser, lhs: Expression) -> (result: ^Parsed_Assignment_Statement, err: Error) {
+parse_assign_stmt :: proc(p: ^Parser, lhs: Expression) -> (
+	result: ^Parsed_Assignment_Statement,
+	err: Error,
+) {
 	result = new(Parsed_Assignment_Statement)
 	result.token = p.current
 	result.left = lhs
@@ -173,7 +176,10 @@ parse_assign_stmt :: proc(p: ^Parser, lhs: Expression) -> (result: ^Parsed_Assig
 }
 
 parse_if_stmt :: proc(p: ^Parser) -> (result: ^Parsed_If_Statement, err: Error) {
-	parse_branch :: proc(p: ^Parser, is_end_branch: bool) -> (result: ^Parsed_If_Statement, err: Error) {
+	parse_branch :: proc(p: ^Parser, is_end_branch: bool) -> (
+		result: ^Parsed_If_Statement,
+		err: Error,
+	) {
 		result = new(Parsed_If_Statement)
 		switch is_end_branch {
 		case true:
@@ -517,7 +523,7 @@ parse_type_decl :: proc(p: ^Parser) -> (result: ^Parsed_Type_Declaration, err: E
 							details = fmt.tprintf("Expected %s, got %s", Token_Kind.Colon, next.kind),
 						}
 					}
-				
+
 				case .Fn:
 					method := parse_fn_decl(p) or_return
 					append(&result.methods, method)
@@ -643,7 +649,7 @@ parse_call :: proc(p: ^Parser, left: Expression) -> (result: Expression, err: Er
 				}
 				return
 			}
-	
+
 		}
 	}
 
