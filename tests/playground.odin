@@ -22,6 +22,7 @@ playground :: proc() {using lily
 			end
 		end
 
+		var a = Foo.new(1)
 	`
 
 	parsed_module := make_module()

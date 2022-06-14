@@ -431,8 +431,8 @@ print_symbol_table :: proc(c: ^Checker, m: ^Checked_Module) {
 		indent_width = 2,
 	}
 	defer strings.destroy_builder(&printer.builder)
-	scope := m.scope
-	for scope != nil {
+	scope := m.symbol_table.scope
+	for scope.parent != nil {
 		scope = scope.parent
 	}
 

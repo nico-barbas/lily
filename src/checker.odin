@@ -1,236 +1,6 @@
 package lily
 
 import "core:fmt"
-import "core:hash"
-import "core:strings"
-
-// TODO: Embed the module ID inside the Type_ID
-
-Type_ID :: distinct int
-UNTYPED_ID :: 0
-UNTYPED_NUMBER_ID :: 1
-UNTYPED_BOOL_ID :: 2
-UNTYPED_STRING_ID :: 3
-NUMBER_ID :: 4
-BOOL_ID :: 5
-STRING_ID :: 6
-FN_ID :: 7
-ARRAY_ID :: 8
-BUILT_IN_ID_COUNT :: ARRAY_ID + 1
-
-UNTYPED_INFO :: Type_Info {
-	name      = "untyped",
-	type_id   = UNTYPED_ID,
-	type_kind = .Builtin,
-}
-UNTYPED_NUMBER_INFO :: Type_Info {
-	name      = "untyped number",
-	type_id   = UNTYPED_NUMBER_ID,
-	type_kind = .Builtin,
-}
-UNTYPED_BOOL_INFO :: Type_Info {
-	name      = "untyped bool",
-	type_id   = UNTYPED_BOOL_ID,
-	type_kind = .Builtin,
-}
-UNTYPED_STRING_INFO :: Type_Info {
-	name      = "untyped string",
-	type_id   = UNTYPED_STRING_ID,
-	type_kind = .Builtin,
-}
-NUMBER_INFO :: Type_Info {
-	name      = "number",
-	type_id   = NUMBER_ID,
-	type_kind = .Builtin,
-}
-BOOL_INFO :: Type_Info {
-	name      = "bool",
-	type_id   = BOOL_ID,
-	type_kind = .Builtin,
-}
-STRING_INFO :: Type_Info {
-	name      = "string",
-	type_id   = STRING_ID,
-	type_kind = .Builtin,
-}
-// FIXME: ?? Why do we need this
-FN_INFO :: Type_Info {
-	name      = "fn",
-	type_id   = FN_ID,
-	type_kind = .Builtin,
-}
-ARRAY_INFO :: Type_Info {
-	name      = "array",
-	type_id   = ARRAY_ID,
-	type_kind = .Builtin,
-}
-
-Module_ID :: distinct int
-BUILTIN_MODULE_ID :: 0
-
-Scope_ID :: distinct int
-
-Type_Alias_Info :: struct {
-	underlying_type_id: Type_ID,
-}
-
-Generic_Type_Info :: struct {
-	spec_type_id: Type_ID,
-}
-
-Fn_Signature_Info :: struct {
-	parameters:     []Type_Info,
-	return_type_id: Type_ID,
-}
-
-Class_Definition_Info :: struct {
-	fields:  []Type_Info,
-	methods: []Type_Info,
-}
-
-Type_Info :: struct {
-	name:         string,
-	type_id:      Type_ID,
-	type_kind:    enum {
-		Builtin,
-		Elementary_Type,
-		Type_Alias,
-		Fn_Type,
-		Class_Type,
-		Generic_Type,
-	},
-	type_id_data: union {
-		Type_Alias_Info,
-		Generic_Type_Info,
-		Fn_Signature_Info,
-		Class_Definition_Info,
-	},
-}
-
-is_untyped_type :: proc(t: Type_Info) -> bool {
-	return t.type_id == UNTYPED_NUMBER_ID || t.type_id == UNTYPED_BOOL_ID || t.type_id == UNTYPED_STRING_ID
-}
-
-// In Lily, a truthy type can be of only 2 kind:
-// - of Boolean type (BOOL_ID)
-// - of a type alias with a parent of type Untyped Bool (UNTYPED_BOOL_ID)
-is_truthy_type :: proc(t: Type_Info) -> bool {
-	#partial switch t.type_kind {
-	case .Builtin:
-		if t.type_id == BOOL_ID || t.type_id == UNTYPED_BOOL_ID {
-			return true
-		}
-	case .Type_Alias:
-		parent := t.type_id_data.(Type_Alias_Info)
-		if parent.underlying_type_id == UNTYPED_BOOL_ID {
-			return true
-		}
-	}
-	return false
-}
-
-is_numerical_type :: proc(t: Type_Info) -> bool {
-	#partial switch t.type_kind {
-	case .Builtin:
-		if t.type_id == NUMBER_ID || t.type_id == UNTYPED_NUMBER_ID {
-			return true
-		}
-	case .Type_Alias:
-		parent := t.type_id_data.(Type_Alias_Info)
-		if parent.underlying_type_id == UNTYPED_NUMBER_ID {
-			return true
-		}
-	}
-	return false
-}
-
-// Rules of type aliasing:
-// - Type alias is incompatible with the parent type; a value from the parent type
-// cannot be assigned to a variable from the type alias
-// - Type alias inherits all the fields and methods of the parent
-// - Type alias conserve the same capabilities as their parent (only applicable for native types)
-// i.e: an alias of type bool can still be used for conditional (considered "truthy")  
-//
-// EXAMPLE: Following type alias scenario should eval to true
-// type MyNumber is number
-// var foo: MyNumber = 10
-//
-// |- foo: MyNumber and |- 10: untyped number
-// Number Literal are of type "untyped number" 
-// and coherced to right type upon evaluation
-// FIXME: Probably needs a rewrite at some point
-type_equal :: proc(c: ^Checker, t0, t1: Type_Info) -> (result: bool) {
-	if t0.type_id == t1.type_id {
-		if t0.type_kind == t1.type_kind {
-			#partial switch t0.type_kind {
-			case .Generic_Type:
-				t0_generic_id := t0.type_id_data.(Generic_Type_Info)
-				t1_generic_id := t1.type_id_data.(Generic_Type_Info)
-				if t0_generic_id.spec_type_id == t1_generic_id.spec_type_id {
-					result = true
-				}
-			case:
-				result = true
-			}
-		} else {
-			assert(false, "Invalid type equality branch")
-		}
-	} else if t0.type_kind == .Type_Alias || t1.type_kind == .Type_Alias {
-		alias: Type_Alias_Info
-		other: Type_Info
-		if t0.type_kind == .Type_Alias {
-			alias = t0.type_id_data.(Type_Alias_Info)
-			other = t1
-		} else {
-			alias = t1.type_id_data.(Type_Alias_Info)
-			other = t0
-		}
-		if is_untyped_type(other) {
-			parent_type := get_type_from_id(c, alias.underlying_type_id)
-			result = type_equal(c, parent_type, other)
-		}
-
-	} else if is_untyped_type(t0) || is_untyped_type(t1) {
-		untyped_t: Type_Info
-		typed_t: Type_Info
-		other: Type_Info
-		if is_untyped_type(t0) {
-			untyped_t = t0
-			other = t1
-		} else {
-			untyped_t = t1
-			other = t0
-		}
-		switch untyped_t.type_id {
-		case UNTYPED_NUMBER_ID:
-			typed_t = NUMBER_INFO
-		case UNTYPED_BOOL_ID:
-			typed_t = BOOL_INFO
-		case UNTYPED_STRING_ID:
-			typed_t = STRING_INFO
-		}
-		result = type_equal(c, typed_t, other)
-	}
-	return
-}
-
-Composite_Symbol :: struct {
-	name: string,
-	scope_ip: Scope_ID,
-}
-
-Symbol :: union {
-	string,
-	Composite_Symbol,
-}
-
-Semantic_Scope :: struct {
-	id:             Scope_ID,
-	symbols:        [dynamic]Symbol,
-	variable_types: map[string]Type_Info,
-	parent:         ^Semantic_Scope,
-	children:       [dynamic]^Semantic_Scope,
-}
 
 Checker :: struct {
 	modules:         [dynamic]^Checked_Module,
@@ -240,108 +10,6 @@ Checker :: struct {
 	
 	current: ^Checked_Module,
 }
-
-// In Lily, type and function declaration is only 
-// allowed at the file scope. This means that all the
-// type infos can be kept at one place,
-Checked_Module :: struct {
-	name:        string,
-	// This is all the nodes at the file level
-	nodes:       [dynamic]Checked_Node,
-	functions:   [dynamic]Checked_Node,
-	classes:     [dynamic]Checked_Node,
-	// types:       [dynamic]Type_Info,
-	type_lookup: map[string]Type_Info,
-	type_count:  int,
-
-	// symbols
-	class_scope_lookup: map[string]Scope_ID,
-	scope:       ^Semantic_Scope,
-	scope_depth: int,
-}
-
-Checked_Expression :: struct {
-	expr:      Expression,
-	type_info: Type_Info,
-}
-
-Checked_Node :: union {
-	^Checked_Expression_Statement,
-	^Checked_Block_Statement,
-	^Checked_Assigment_Statement,
-	^Checked_If_Statement,
-	^Checked_Range_Statement,
-	^Checked_Var_Declaration,
-	^Checked_Fn_Declaration,
-	^Checked_Type_Declaration,
-	^Checked_Class_Declaration,
-}
-
-Checked_Expression_Statement :: struct {
-	token: Token,
-	expr:  Checked_Expression,
-}
-
-Checked_Block_Statement :: struct {
-	nodes: [dynamic]Checked_Node,
-}
-
-Checked_Assigment_Statement :: struct {
-	token: Token,
-	left:  Checked_Expression,
-	right: Checked_Expression,
-}
-
-Checked_If_Statement :: struct {
-	token:       Token,
-	condition:   Checked_Expression,
-	body:        Checked_Node,
-	next_branch: Checked_Node,
-}
-
-Checked_Range_Statement :: struct {
-	token:              Token,
-	iterator_name:      Token,
-	iterator_type_info: Type_Info,
-	low:                Checked_Expression,
-	high:               Checked_Expression,
-	reverse:            bool,
-	op:                 Range_Operator,
-	body:               Checked_Node,
-}
-
-Checked_Var_Declaration :: struct {
-	token:       Token,
-	identifier:  Token,
-	type_info:   Type_Info,
-	expr:        Checked_Expression,
-	initialized: bool,
-}
-
-Checked_Fn_Declaration :: struct {
-	token:       Token,
-	identifier:  Token,
-	body:        Checked_Node,
-	type_info:   Type_Info,
-	param_names: []Token,
-}
-
-Checked_Type_Declaration :: struct {
-	token:      Token,
-	is_token:   Token,
-	identifier: Token,
-	type_info:  Type_Info,
-}
-
-Checked_Class_Declaration :: struct {
-	token:       Token,
-	is_token:    Token,
-	identifier:  Token,
-	type_info:   Type_Info,
-	field_names: []Token,
-}
-
-// Procedures
 
 new_checker :: proc() -> ^Checker {
 	c := new_clone(
@@ -367,123 +35,6 @@ checked_expresssion :: proc(expr: Expression, info: Type_Info) -> Checked_Expres
 	return {expr = expr, type_info = info}
 }
 
-new_checked_module :: proc() -> ^Checked_Module {
-	return new_clone(
-		Checked_Module{
-			nodes = make([dynamic]Checked_Node),
-			functions = make([dynamic]Checked_Node),
-			classes = make([dynamic]Checked_Node),
-			type_lookup = make(map[string]Type_Info),
-			scope = new_scope(),
-		},
-	)
-}
-
-// append_node_to_checked_module :: proc(m: ^Checked_Module, node: Checked_Node) {
-// 	#partial switch n in node {
-// 	case ^Checked_Fn_Declaration:
-// 	case ^Checked_Type_Declaration:
-// 	case:
-// 		append(&m.nodes, n)
-// 	}
-// }
-
-new_scope :: proc() -> ^Semantic_Scope {
-	scope := new(Semantic_Scope)
-	scope.symbols = make([dynamic]Symbol)
-	scope.variable_types = make(map[string]Type_Info)
-	scope.children = make([dynamic]^Semantic_Scope)
-	return scope
-}
-
-delete_scope :: proc(s: ^Semantic_Scope) {
-	delete(s.symbols)
-	free(s)
-}
-
-format_scope_name :: proc(m: ^Checked_Module, name: Token) -> (result: string) {
-	result = strings.concatenate(
-		{m.name, name.text, fmt.tprint(name.line, name.start)},
-		context.temp_allocator,
-	)
-	return
-}
-
-push_scope :: proc(m: ^Checked_Module, name: Token) -> Scope_ID {
-	scope := new_scope()
-	scope_name := format_scope_name(m, name)
-	defer delete(scope_name)
-	scope.id = Scope_ID(hash.fnv32(transmute([]u8)scope_name))
-	append(&m.scope.children, scope)
-	scope.parent = m.scope
-	m.scope = scope
-	m.scope_depth += 1
-	return scope.id
-}
-
-push_existing_scope :: proc(m :^Checked_Module, s: ^Semantic_Scope) {
-	for child in s.children {
-		if child.id == s.id {
-			return
-		}
-	}
-	append(&m.scope.children, s)
-}
-
-enter_child_scope :: proc(m: ^Checked_Module, name: Token) -> (err: Error) {
-	scope_name := format_scope_name(m, name)
-	defer delete(scope_name)
-	scope_id := Scope_ID(hash.fnv32(transmute([]u8)scope_name))
-	for scope in m.scope.children {
-		if scope.id == scope_id {
-			m.scope = scope
-			return
-		}
-	}
-	err = Internal_Error {
-		kind    = .Unknown_Scope_Name,
-		details = fmt.tprintf("Scope #%i not known", scope_id),
-	}
-	return
-}
-
-enter_child_scope_by_id :: proc(m: ^Checked_Module, scope_id: Scope_ID) -> (err: Error) {
-	for scope in m.scope.children {
-		if scope.id == scope_id {
-			m.scope = scope
-			return
-		}
-	}
-	err = Internal_Error {
-		kind    = .Unknown_Scope_Name,
-		details = fmt.tprintf("Scope #%i not known", scope_id),
-	}
-	return
-}
-
-enter_parent_scope_by_id :: proc(m: ^Checked_Module, scope_id: Scope_ID) -> (err: Error) {
-	scope := m.scope
-	find: for scope != nil {
-		if scope.id == scope_id {
-			push_existing_scope(m, scope)
-			return
-		}
-		scope = scope.parent
-	}
-	err = Internal_Error {
-		kind    = .Unknown_Scope_Name,
-		details = fmt.tprintf("Scope #%i not known", scope_id),
-	}
-	return
-}
-
-
-pop_scope :: proc(m: ^Checked_Module) {
-	s := m.scope
-	m.scope = s.parent
-	m.scope_depth -= 1
-}
-
 contain_symbol :: proc(c: ^Checker, token: Token) -> bool {
 	builtins: for name in c.builtin_symbols {
 		if name == token.text {
@@ -491,19 +42,10 @@ contain_symbol :: proc(c: ^Checker, token: Token) -> bool {
 		}
 	}
 
-	scope := c.current.scope
+	scope := c.current.symbol_table.scope
 	find: for scope != nil {
-		for name in scope.symbols {
-			switch n in name {
-			case string:
-				if name == token.text {
-					return true
-				}
-			case Composite_Symbol:
-				if n.name == token.text {
-					return true
-				}
-			}
+		if contain_scoped_symbol(scope, token.text) {
+			return true
 		}
 		scope = scope.parent
 	}
@@ -519,7 +61,7 @@ get_symbol :: proc(c: ^Checker, token: Token) -> (result: Symbol, err: Error) {
 		}
 	}
 
-	scope := c.current.scope
+	scope := c.current.symbol_table.scope
 	find: for scope != nil {
 		for name in scope.symbols {
 			switch n in name {
@@ -547,34 +89,16 @@ get_symbol :: proc(c: ^Checker, token: Token) -> (result: Symbol, err: Error) {
 	return
 }
 
-add_symbol :: proc(c: ^Checker, token: Token, shadow := false) -> (err: Error) {
-	if !shadow && contain_symbol(c, token) {
-		return Semantic_Error{
-			kind = .Redeclared_Symbol,
-			token = token,
-			details = fmt.tprintf("Redeclared symbol: %s", token.text),
-		}
-	}
-
-	append(&c.current.scope.symbols, token.text)
-	return
+add_symbol :: proc(c: ^Checker, token: Token, shadow := false) -> Error {
+	return add_scoped_symbol(c.current.symbol_table.scope, token, shadow)
 }
 
-add_composite_symbol :: proc(c: ^Checker, token: Token, scope_id: Scope_ID, shadow := false) -> (err : Error) {
-	if !shadow && contain_symbol(c, token) {
-		return Semantic_Error{
-			kind = .Redeclared_Symbol,
-			token = token,
-			details = fmt.tprintf("Redeclared symbol: %s", token.text),
-		}
-	}
-
-	append(&c.current.scope.symbols, Composite_Symbol{token.text, scope_id})
-	return
+add_composite_symbol :: proc(c: ^Checker, token: Token, scope_id: Scope_ID, shadow := false) -> Error {
+	return add_scoped_composite_symbol(c.current.symbol_table.scope, token, scope_id, shadow)
 }
 
 set_variable_type :: proc(m: ^Checked_Module, name: string, t: Type_Info) {
-	m.scope.variable_types[name] = t
+	m.symbol_table.scope.variable_types[name] = t
 }
 
 
@@ -668,7 +192,7 @@ get_type_from_identifier :: proc(c: ^Checker, m: ^Checked_Module, i: Token) -> (
 }
 
 get_variable_type :: proc(m: ^Checked_Module, name: string) -> (result: Type_Info, exist: bool) {
-	current := m.scope
+	current := m.symbol_table.scope
 	for current != nil {
 		if info, contains := current.variable_types[name]; contains {
 			result = info
@@ -712,11 +236,12 @@ check_module :: proc(c: ^Checker, m: ^Parsed_Module) -> (module: ^Checked_Module
 			case .Alias:
 				add_symbol(c, n.identifier) or_return
 			case .Class:
-				add_symbol(c, n.identifier) or_return
-				scope_id := push_scope(c.current, n.identifier)
-				defer pop_scope(c.current)
-				c.current.class_scope_lookup[n.identifier.text] = scope_id
-				add_composite_symbol(c, Token{text="self"}, scope_id, true)
+				scope_id := hash_scope_id(&c.current.symbol_table, n.identifier)
+				add_composite_symbol(c, n.identifier, scope_id) or_return
+				push_scope(&c.current.symbol_table, n.identifier)
+				defer pop_scope(&c.current.symbol_table)
+				add_class_scope(&c.current.symbol_table, scope_id)
+				add_composite_symbol(c, Token{text="self"}, scope_id, true) or_return
 				for field in n.fields {
 					add_symbol(c, field.name) or_return
 				}
@@ -816,8 +341,8 @@ check_module :: proc(c: ^Checker, m: ^Parsed_Module) -> (module: ^Checked_Module
 				parameters = make([]Type_Info, len(n.parameters)),
 			}
 
-			enter_child_scope(module, n.identifier) or_return
-			defer pop_scope(module)
+			enter_child_scope(&c.current.symbol_table, n.identifier) or_return
+			defer pop_scope(&c.current.symbol_table)
 
 			return_type := check_expr_types(c, module, n.return_type_expr) or_return
 			set_variable_type(module, "result", return_type)
@@ -864,9 +389,9 @@ check_node_symbols :: proc(c: ^Checker, node: Parsed_Node) -> (err: Error) {
 
 	case ^Parsed_If_Statement:
 		check_expr_symbols(c, n.condition) or_return
-		push_scope(c.current, n.token)
+		push_scope(&c.current.symbol_table, n.token)
 		check_node_symbols(c, n.body) or_return
-		pop_scope(c.current)
+		pop_scope(&c.current.symbol_table)
 		if n.next_branch != nil {
 			check_node_symbols(c, n.next_branch) or_return
 		}
@@ -882,12 +407,12 @@ check_node_symbols :: proc(c: ^Checker, node: Parsed_Node) -> (err: Error) {
 		}
 		check_expr_symbols(c, n.low) or_return
 		check_expr_symbols(c, n.high) or_return
-		push_scope(c.current, n.token)
-		defer pop_scope(c.current)
+		push_scope(&c.current.symbol_table, n.token)
+		defer pop_scope(&c.current.symbol_table)
 		check_node_symbols(c, n.body) or_return
 
 	case ^Parsed_Var_Declaration:
-		if c.current.scope_depth > 0 {
+		if c.current.symbol_table.scope_depth > 0 {
 			// if contain_symbol(c, m, n.identifier) {
 			// 	err = Semantic_Error {
 			// 		kind    = .Redeclared_Symbol,
@@ -904,8 +429,8 @@ check_node_symbols :: proc(c: ^Checker, node: Parsed_Node) -> (err: Error) {
 	case ^Parsed_Fn_Declaration:
 		// No need to check for function symbol declaration since 
 		// functions can only be declared at the file scope
-		push_scope(c.current, n.identifier)
-		defer pop_scope(c.current)
+		push_scope(&c.current.symbol_table, n.identifier)
+		defer pop_scope(&c.current.symbol_table)
 		add_symbol(c, Token{text = "result"}) or_return
 		for param in n.parameters {
 			// if contain_symbol(c, m, param.name) {
@@ -926,8 +451,8 @@ check_node_symbols :: proc(c: ^Checker, node: Parsed_Node) -> (err: Error) {
 		if n.type_kind == .Alias {
 			check_expr_symbols(c, n.type_expr) or_return
 		} else {
-			enter_child_scope(c.current, n.identifier) or_return
-			defer pop_scope(c.current)
+			enter_child_scope(&c.current.symbol_table, n.identifier) or_return
+			defer pop_scope(&c.current.symbol_table)
 			for field in n.fields {
 				check_expr_symbols(c, field.type_expr) or_return
 			}
@@ -981,14 +506,34 @@ check_expr_symbols :: proc(c: ^Checker, expr: Expression) -> (err: Error) {
 		check_expr_symbols(c, e.index) or_return
 
 	case ^Dot_Expression:
-		// FIXME: It is stupid to push the scope everytime we encounter the symbol..
-		assert(false, "Dot expression not working yet")
-		identifier := e.left.(^Identifier_Expression)
-		l := get_symbol(c, identifier.name) or_return
+		left_identifier := e.left.(^Identifier_Expression)
+		l := get_symbol(c, left_identifier.name) or_return
 		left_symbol := l.(Composite_Symbol)
-		enter_parent_scope_by_id(c.current, left_symbol.scope_ip) or_return
-		defer pop_scope(c.current)
-		check_expr_symbols(c, e.accessor) or_return
+		class_scope := get_class_scope(&c.current.symbol_table, left_symbol.scope_ip)
+
+		#partial switch a in e.accessor {
+		case ^Identifier_Expression:
+			if !contain_scoped_symbol(class_scope, a.name.text) {
+				err = Semantic_Error {
+					kind    = .Unknown_Symbol,
+					token = a.name,
+					details = fmt.tprintf("Unknown Class field: %s", a.name.text),
+				}
+			}
+		case ^Call_Expression:
+			// FIXME: Does not support Function literals
+			fn_identifier := a.func.(^Identifier_Expression)
+			if !contain_scoped_symbol(class_scope, fn_identifier.name.text) {
+				err = Semantic_Error {
+					kind    = .Unknown_Symbol,
+					token = fn_identifier.name,
+					details = fmt.tprintf("Unknown Class method: %s", fn_identifier.name.text),
+				}
+			}
+			for arg in a.args {
+				check_expr_symbols(c, arg) or_return
+			}
+		}
 
 	case ^Call_Expression:
 		check_expr_symbols(c, e.func) or_return
