@@ -209,7 +209,7 @@ scan_token :: proc(l: ^Lexer) -> (t: Token) {
 
 	case:
 		switch {
-		case is_letter(c):
+		case is_letter(c) || c == '_':
 			identifier: for {
 				if is_eof(l) {
 					break identifier
