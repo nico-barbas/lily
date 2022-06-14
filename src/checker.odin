@@ -316,7 +316,6 @@ check_module :: proc(c: ^Checker, m: ^Parsed_Module) -> (module: ^Checked_Module
 				}
 				enter_child_scope(&c.current.symbol_table, n.identifier) or_return
 				defer pop_scope(&c.current.symbol_table)
-				set_variable_type(c, "self", class_decl.type_info)
 				for field, i in n.fields {
 					field_type := check_expr_types(c, field.type_expr) or_return
 					class_info.fields[i] = field_type
@@ -344,10 +343,10 @@ check_module :: proc(c: ^Checker, m: ^Parsed_Module) -> (module: ^Checked_Module
 						constr_signature.parameters[i] = param_type
 						set_variable_type(c, param.name.text, param_type)
 					}
-					fmt.printf("%#v\n", constructor.body)
-					constr_decl.body = check_node_types(c, constructor.body) or_return
+					// constr_decl.body = check_node_types(c, constructor.body) or_return
 					constr_decl.type_info.type_id_data = constr_signature
 					class_decl.constructors[i] = constr_decl
+					class_info.constructors[i] = constr_decl.type_info
 				}
 				for method, i in n.methods {
 					method_decl := new_clone(
@@ -370,7 +369,7 @@ check_module :: proc(c: ^Checker, m: ^Parsed_Module) -> (module: ^Checked_Module
 						method_signature.parameters[i] = param_type
 						set_variable_type(c, param.name.text, param_type)
 					}
-					method_decl.body = check_node_types(c, method.body) or_return
+					// method_decl.body = check_node_types(c, method.body) or_return
 					method_decl.type_info.type_id_data = method_signature
 					class_decl.methods[i] = method_decl
 				}
@@ -382,6 +381,17 @@ check_module :: proc(c: ^Checker, m: ^Parsed_Module) -> (module: ^Checked_Module
 				class_decl.type_info = t
 				module.type_lookup[name] = t
 
+				set_variable_type(c, "self", t)
+				for constructor, i in n.constructors {
+					enter_child_scope(&c.current.symbol_table, constructor.identifier) or_return
+					defer pop_scope(&c.current.symbol_table)
+					class_decl.constructors[i].body = check_node_types(c, constructor.body) or_return
+				}
+				for method, i in n.methods {
+					enter_child_scope(&c.current.symbol_table, method.identifier) or_return
+					defer pop_scope(&c.current.symbol_table)
+					class_decl.methods[i].body = check_node_types(c, method.body) or_return
+				}
 			}
 		}
 	}
@@ -900,7 +910,7 @@ check_expr_types :: proc(c: ^Checker, expr: Expression) -> (result: Type_Info, e
 			for constructor, i in class_decl.constructors {
 				call_name := a.func.(^Identifier_Expression)
 				if constructor.identifier.text == call_name.name.text {
-					result = class_def.constructors[i]
+					result = class_info
 					return
 				}
 			}

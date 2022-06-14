@@ -403,7 +403,7 @@ print_checked_node :: proc(p: ^AST_Printer, c: ^Checker, node: Checked_Node) {
 
 print_type_info :: proc(p: ^AST_Printer, c: ^Checker, t: Type_Info) {
 	switch t.type_kind {
-	case .Builtin, .Elementary_Type, .Type_Alias:
+	case .Builtin, .Elementary_Type, .Type_Alias, .Class_Type:
 		write(p, t.name)
 	case .Generic_Type:
 		generic_id := t.type_id_data.(Generic_Type_Info)
@@ -421,7 +421,6 @@ print_type_info :: proc(p: ^AST_Printer, c: ^Checker, t: Type_Info) {
 		return_type := get_type_from_id(c, fn_signature.return_type_id)
 		print_type_info(p, c, return_type)
 		decrement(p)
-	case .Class_Type:
 	}
 }
 
