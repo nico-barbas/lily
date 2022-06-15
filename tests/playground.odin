@@ -38,7 +38,7 @@ playground :: proc() {using lily
 	err := parse_module(input, parsed_module)
 
 	assert(err == nil, fmt.tprint("Failed, Error raised ->", err))
-	print_parsed_ast(parsed_module)
+	// print_parsed_ast(parsed_module)
 
 	checker := new_checker()
 	checked_module, check_err := check_module(checker, parsed_module)

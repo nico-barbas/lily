@@ -748,6 +748,12 @@ check_node_types :: proc(c: ^Checker, node: Parsed_Node) -> (result: Checked_Nod
 		var_expr, var_info := check_expr_types(c, n.type_expr) or_return
 		value_expr, value_info := check_expr_types(c, n.expr) or_return
 		defer free_checked_expression(var_expr)
+		when VM_DEBUG_VIEW {
+			call := n.expr.(^Parsed_Call_Expression)
+			fmt.printf("%#v\n", n)
+			fmt.printf("%#v\n", call.func)
+			fmt.println(value_expr, value_info)
+		}
 
 		// we check if the type needs to be infered
 		if type_equal(c, var_info, c.builtin_types[UNTYPED_ID]) {

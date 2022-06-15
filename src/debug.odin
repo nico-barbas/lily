@@ -32,15 +32,15 @@ print_parsed_ast :: proc(program: ^Parsed_Module) {
 print_parsed_expr :: proc(p: ^Debug_Printer, expr: Parsed_Expression) {
 	switch e in expr {
 	case ^Parsed_Literal_Expression:
-		write(p, "Literal Parsed_Expression: ")
+		write(p, "Literal Expression: ")
 		fmt.sbprint(&p.builder, e.value)
 
 	case ^Parsed_String_Literal_Expression:
-		write(p, "String Literal Parsed_Expression: ")
+		write(p, "String Literal Expression: ")
 		fmt.sbprint(&p.builder, e.value)
 
 	case ^Parsed_Array_Literal_Expression:
-		write(p, "Array Parsed_Expression: ")
+		write(p, "Array Expression: ")
 		increment(p)
 		{
 			write_line(p, "Type: ")
@@ -55,36 +55,36 @@ print_parsed_expr :: proc(p: ^Debug_Printer, expr: Parsed_Expression) {
 
 
 	case ^Parsed_Unary_Expression:
-		write(p, "Unary Parsed_Expression: ")
+		write(p, "Unary Expression: ")
 		increment(p)
 		{
 			write_line(p, "Operator: ")
 			fmt.sbprint(&p.builder, e.op)
-			write_line(p, "Parsed_Expression: ")
+			write_line(p, "Expression: ")
 			print_parsed_expr(p, e.expr)
 
 		}
 		decrement(p)
 
 	case ^Parsed_Binary_Expression:
-		write(p, "Binary Parsed_Expression: ")
+		write(p, "Binary Expression: ")
 		increment(p)
 		{
 			write_line(p, "Operator: ")
 			fmt.sbprint(&p.builder, e.op)
-			write_line(p, "Left Parsed_Expression: ")
+			write_line(p, "Left Expression: ")
 			print_parsed_expr(p, e.left)
-			write_line(p, "Right Parsed_Expression: ")
+			write_line(p, "Right Expression: ")
 			print_parsed_expr(p, e.right)
 		}
 		decrement(p)
 
 	case ^Parsed_Identifier_Expression:
-		write(p, "Identifier Parsed_Expression: ")
+		write(p, "Identifier Expression: ")
 		fmt.sbprint(&p.builder, e.name.text)
 
 	case ^Parsed_Index_Expression:
-		write(p, "Index Parsed_Expression: ")
+		write(p, "Index Expression: ")
 		increment(p)
 		{
 			write_line(p, "Left: ")
@@ -95,7 +95,7 @@ print_parsed_expr :: proc(p: ^Debug_Printer, expr: Parsed_Expression) {
 		decrement(p)
 
 	case ^Parsed_Dot_Expression:
-		write(p, "Dot Parsed_Expression: ")
+		write(p, "Dot Expression: ")
 		increment(p)
 		{
 			write_line(p, "Left: ")
@@ -106,7 +106,7 @@ print_parsed_expr :: proc(p: ^Debug_Printer, expr: Parsed_Expression) {
 		decrement(p)
 
 	case ^Parsed_Call_Expression:
-		write(p, "Call Parsed_Expression: ")
+		write(p, "Call Expression: ")
 		increment(p)
 		{
 			write_line(p, "Func: ")
@@ -131,7 +131,7 @@ print_parsed_expr :: proc(p: ^Debug_Printer, expr: Parsed_Expression) {
 print_parsed_node :: proc(p: ^Debug_Printer, node: Parsed_Node) {
 	switch n in node {
 	case ^Parsed_Expression_Statement:
-		write_line(p, "Parsed_Expression Statement: ")
+		write_line(p, "Expression Statement: ")
 		print_parsed_expr(p, n.expr)
 
 	case ^Parsed_Block_Statement:
@@ -191,7 +191,7 @@ print_parsed_node :: proc(p: ^Debug_Printer, node: Parsed_Node) {
 			write(p, n.identifier.text)
 			write_line(p, "Type: ")
 			print_parsed_expr(p, n.type_expr)
-			write_line(p, "Parsed_Expression: ")
+			write_line(p, "Expression: ")
 			print_parsed_expr(p, n.expr)
 		}
 		decrement(p)
@@ -295,15 +295,15 @@ print_checked_ast :: proc(module: ^Checked_Module, checker: ^Checker) {
 print_checked_expr :: proc(p: ^Debug_Printer, c: ^Checker, checked_expr: Checked_Expression) {
 	switch e in checked_expr {
 	case ^Checked_Literal_Expression:
-		write(p, "Literal Parsed_Expression: ")
+		write(p, "Literal Expression: ")
 		fmt.sbprint(&p.builder, e.value)
 
 	case ^Checked_String_Literal_Expression:
-		write(p, "String Literal Parsed_Expression: ")
+		write(p, "String Literal Expression: ")
 		fmt.sbprint(&p.builder, e.value)
 
 	case ^Checked_Array_Literal_Expression:
-		write(p, "Array Parsed_Expression: ")
+		write(p, "Array Expression: ")
 		increment(p)
 		{
 			write_line(p, "Type: ")
@@ -318,36 +318,36 @@ print_checked_expr :: proc(p: ^Debug_Printer, c: ^Checker, checked_expr: Checked
 
 
 	case ^Checked_Unary_Expression:
-		write(p, "Unary Parsed_Expression: ")
+		write(p, "Unary Expression: ")
 		increment(p)
 		{
 			write_line(p, "Operator: ")
 			fmt.sbprint(&p.builder, e.op)
-			write_line(p, "Parsed_Expression: ")
+			write_line(p, "Expression: ")
 			print_checked_expr(p, c, e.expr)
 
 		}
 		decrement(p)
 
 	case ^Checked_Binary_Expression:
-		write(p, "Binary Parsed_Expression: ")
+		write(p, "Binary Expression: ")
 		increment(p)
 		{
 			write_line(p, "Operator: ")
 			fmt.sbprint(&p.builder, e.op)
-			write_line(p, "Left Parsed_Expression: ")
+			write_line(p, "Left Expression: ")
 			print_checked_expr(p, c, e.left)
-			write_line(p, "Right Parsed_Expression: ")
+			write_line(p, "Right Expression: ")
 			print_checked_expr(p, c, e.right)
 		}
 		decrement(p)
 
 	case ^Checked_Identifier_Expression:
-		write(p, "Identifier Parsed_Expression: ")
+		write(p, "Identifier Expression: ")
 		fmt.sbprint(&p.builder, e.name.text)
 
 	case ^Checked_Index_Expression:
-		write(p, "Index Parsed_Expression: ")
+		write(p, "Index Expression: ")
 		increment(p)
 		{
 			write_line(p, "Left: ")
@@ -358,7 +358,7 @@ print_checked_expr :: proc(p: ^Debug_Printer, c: ^Checker, checked_expr: Checked
 		decrement(p)
 
 	case ^Checked_Dot_Expression:
-		write(p, "Dot Parsed_Expression: ")
+		write(p, "Dot Expression: ")
 		increment(p)
 		{
 			write_line(p, "Left: ")
@@ -369,7 +369,7 @@ print_checked_expr :: proc(p: ^Debug_Printer, c: ^Checker, checked_expr: Checked
 		decrement(p)
 
 	case ^Checked_Call_Expression:
-		write(p, "Call Parsed_Expression: ")
+		write(p, "Call Expression: ")
 		increment(p)
 		{
 			write_line(p, "Func: ")
@@ -391,7 +391,7 @@ print_checked_expr :: proc(p: ^Debug_Printer, c: ^Checker, checked_expr: Checked
 print_checked_node :: proc(p: ^Debug_Printer, c: ^Checker, node: Checked_Node) {
 	switch n in node {
 	case ^Checked_Expression_Statement:
-		write_line(p, "Parsed_Expression Statement: ")
+		write_line(p, "Expression Statement: ")
 		print_checked_expr(p, c, n.expr)
 
 	case ^Checked_Block_Statement:
@@ -451,7 +451,7 @@ print_checked_node :: proc(p: ^Debug_Printer, c: ^Checker, node: Checked_Node) {
 			write(p, n.identifier.text)
 			write_line(p, "Type: ")
 			print_type_info(p, c, n.type_info)
-			write_line(p, "Parsed_Expression: ")
+			write_line(p, "Expression: ")
 			print_checked_expr(p, c, n.expr)
 		}
 		decrement(p)
@@ -516,7 +516,7 @@ print_checked_node :: proc(p: ^Debug_Printer, c: ^Checker, node: Checked_Node) {
 
 print_type_info :: proc(p: ^Debug_Printer, c: ^Checker, t: Type_Info) {
 	switch t.type_kind {
-	case .Builtin, .Elementary_Type, .Type_Alias, .Class_Type:
+	case .Builtin, .Elementary_Type, .Type_Alias:
 		write(p, t.name)
 	case .Generic_Type:
 		generic_id := t.type_id_data.(Generic_Type_Info)
@@ -534,6 +534,8 @@ print_type_info :: proc(p: ^Debug_Printer, c: ^Checker, t: Type_Info) {
 		return_type := get_type_from_id(c, fn_signature.return_type_id)
 		print_type_info(p, c, return_type)
 		decrement(p)
+	case .Class_Type:
+		write(p, t.name)
 	}
 }
 
