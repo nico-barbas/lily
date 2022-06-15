@@ -8,14 +8,14 @@ import "core:strings"
 	- Fix Array Priting
 */
 
-AST_Printer :: struct {
+Debug_Printer :: struct {
 	builder:      strings.Builder,
 	indent_level: int,
 	indent_width: int,
 }
 
 print_parsed_ast :: proc(program: ^Parsed_Module) {
-	printer := AST_Printer {
+	printer := Debug_Printer {
 		builder      = strings.make_builder(),
 		indent_width = 2,
 	}
@@ -29,7 +29,7 @@ print_parsed_ast :: proc(program: ^Parsed_Module) {
 	fmt.println(strings.to_string(printer.builder))
 }
 
-print_parsed_expr :: proc(p: ^AST_Printer, expr: Expression) {
+print_parsed_expr :: proc(p: ^Debug_Printer, expr: Expression) {
 	switch e in expr {
 	case ^Literal_Expression:
 		write(p, "Literal Expression: ")
@@ -100,8 +100,8 @@ print_parsed_expr :: proc(p: ^AST_Printer, expr: Expression) {
 		{
 			write_line(p, "Left: ")
 			print_parsed_expr(p, e.left)
-			write_line(p, "Accessor: ")
-			print_parsed_expr(p, e.accessor)
+			write_line(p, "Selector: ")
+			print_parsed_expr(p, e.selector)
 		}
 		decrement(p)
 
@@ -128,7 +128,7 @@ print_parsed_expr :: proc(p: ^AST_Printer, expr: Expression) {
 
 }
 
-print_parsed_node :: proc(p: ^AST_Printer, node: Parsed_Node) {
+print_parsed_node :: proc(p: ^Debug_Printer, node: Parsed_Node) {
 	switch n in node {
 	case ^Parsed_Expression_Statement:
 		write_line(p, "Expression Statement: ")
@@ -253,7 +253,7 @@ print_parsed_node :: proc(p: ^AST_Printer, node: Parsed_Node) {
 // Checked AST debugging
 
 print_checked_ast :: proc(module: ^Checked_Module, checker: ^Checker) {
-	printer := AST_Printer {
+	printer := Debug_Printer {
 		builder      = strings.make_builder(),
 		indent_width = 2,
 	}
@@ -285,15 +285,107 @@ print_checked_ast :: proc(module: ^Checked_Module, checker: ^Checker) {
 	fmt.println(strings.to_string(printer.builder))
 }
 
-print_checked_expr :: proc(p: ^AST_Printer, checked_expr: Checked_Expression) {
-	print_parsed_expr(p, checked_expr.expr)
+print_checked_expr :: proc(p: ^Debug_Printer, c: ^Checker, checked_expr: Checked_Expression) {
+	switch e in checked_expr {
+	case ^Checked_Literal_Expression:
+		write(p, "Literal Expression: ")
+		fmt.sbprint(&p.builder, e.value)
+
+	case ^Checked_String_Literal_Expression:
+		write(p, "String Literal Expression: ")
+		fmt.sbprint(&p.builder, e.value)
+
+	case ^Checked_Array_Literal_Expression:
+		write(p, "Array Expression: ")
+		increment(p)
+		{
+			write_line(p, "Type: ")
+			print_type_info(p, c, e.type_info)
+			write_line(p, "Elements: ")
+			for element in e.values {
+				print_checked_expr(p, c, element)
+			}
+
+		}
+		decrement(p)
+
+
+	case ^Checked_Unary_Expression:
+		write(p, "Unary Expression: ")
+		increment(p)
+		{
+			write_line(p, "Operator: ")
+			fmt.sbprint(&p.builder, e.op)
+			write_line(p, "Expression: ")
+			print_checked_expr(p, c, e.expr)
+
+		}
+		decrement(p)
+
+	case ^Checked_Binary_Expression:
+		write(p, "Binary Expression: ")
+		increment(p)
+		{
+			write_line(p, "Operator: ")
+			fmt.sbprint(&p.builder, e.op)
+			write_line(p, "Left Expression: ")
+			print_checked_expr(p, c, e.left)
+			write_line(p, "Right Expression: ")
+			print_checked_expr(p, c, e.right)
+		}
+		decrement(p)
+
+	case ^Checked_Identifier_Expression:
+		write(p, "Identifier Expression: ")
+		fmt.sbprint(&p.builder, e.name.text)
+
+	case ^Checked_Index_Expression:
+		write(p, "Index Expression: ")
+		increment(p)
+		{
+			write_line(p, "Left: ")
+			write(p, e.left.text)
+			write_line(p, "Index: ")
+			print_checked_expr(p, c, e.index)
+		}
+		decrement(p)
+
+	case ^Checked_Dot_Expression:
+		write(p, "Dot Expression: ")
+		increment(p)
+		{
+			write_line(p, "Left: ")
+			write(p, e.left.text)
+			write_line(p, "Selector: ")
+			write(p, e.selector.text)
+		}
+		decrement(p)
+
+	case ^Checked_Call_Expression:
+		write(p, "Call Expression: ")
+		increment(p)
+		{
+			write_line(p, "Func: ")
+			print_checked_expr(p, c, e.func)
+			write_line(p, "Arguments: ")
+			increment(p)
+			for arg in e.args {
+				write_line(p)
+				print_checked_expr(p, c, arg)
+			}
+			decrement(p)
+		}
+		decrement(p)
+
+	}
+
 }
 
-print_checked_node :: proc(p: ^AST_Printer, c: ^Checker, node: Checked_Node) {
+print_checked_node :: proc(p: ^Debug_Printer, c: ^Checker, node: Checked_Node) {
 	switch n in node {
 	case ^Checked_Expression_Statement:
 		write_line(p, "Expression Statement: ")
-		print_checked_expr(p, n.expr)
+		print_checked_expr(p, c, n.expr)
 
 	case ^Checked_Block_Statement:
 		write_line(p, "Block Statement: ")
@@ -308,9 +400,9 @@ print_checked_node :: proc(p: ^AST_Printer, c: ^Checker, node: Checked_Node) {
 		increment(p)
 		{
 			write_line(p, "Left: ")
-			print_checked_expr(p, n.left)
+			print_checked_expr(p, c, n.left)
 			write_line(p, "Right: ")
-			print_checked_expr(p, n.right)
+			print_checked_expr(p, c, n.right)
 		}
 		decrement(p)
 
@@ -319,7 +411,7 @@ print_checked_node :: proc(p: ^AST_Printer, c: ^Checker, node: Checked_Node) {
 		increment(p)
 		{
 			write_line(p, "Condition: ")
-			print_checked_expr(p, n.condition)
+			print_checked_expr(p, c, n.condition)
 			print_checked_node(p, c, n.body)
 			if n.next_branch != nil {
 				write_line(p, "Else: ")
@@ -337,9 +429,9 @@ print_checked_node :: proc(p: ^AST_Printer, c: ^Checker, node: Checked_Node) {
 			write_line(p, "Operator: ")
 			fmt.sbprint(&p.builder, n.op)
 			write_line(p, "Low: ")
-			print_checked_expr(p, n.low)
+			print_checked_expr(p, c, n.low)
 			write_line(p, "High: ")
-			print_checked_expr(p, n.high)
+			print_checked_expr(p, c, n.high)
 			print_checked_node(p, c, n.body)
 		}
 		decrement(p)
@@ -353,7 +445,7 @@ print_checked_node :: proc(p: ^AST_Printer, c: ^Checker, node: Checked_Node) {
 			write_line(p, "Type: ")
 			print_type_info(p, c, n.type_info)
 			write_line(p, "Expression: ")
-			print_checked_expr(p, n.expr)
+			print_checked_expr(p, c, n.expr)
 		}
 		decrement(p)
 
@@ -401,7 +493,7 @@ print_checked_node :: proc(p: ^AST_Printer, c: ^Checker, node: Checked_Node) {
 	}
 }
 
-print_type_info :: proc(p: ^AST_Printer, c: ^Checker, t: Type_Info) {
+print_type_info :: proc(p: ^Debug_Printer, c: ^Checker, t: Type_Info) {
 	switch t.type_kind {
 	case .Builtin, .Elementary_Type, .Type_Alias, .Class_Type:
 		write(p, t.name)
@@ -425,7 +517,7 @@ print_type_info :: proc(p: ^AST_Printer, c: ^Checker, t: Type_Info) {
 }
 
 print_symbol_table :: proc(c: ^Checker, m: ^Checked_Module) {
-	printer := AST_Printer {
+	printer := Debug_Printer {
 		builder      = strings.make_builder(),
 		indent_width = 2,
 	}
@@ -441,7 +533,7 @@ print_symbol_table :: proc(c: ^Checker, m: ^Checked_Module) {
 	fmt.println(strings.to_string(printer.builder))
 }
 
-print_semantic_scope :: proc(p: ^AST_Printer, s: ^Semantic_Scope) {
+print_semantic_scope :: proc(p: ^Debug_Printer, s: ^Semantic_Scope) {
 	write_line(p, "Scope: ")
 	fmt.sbprintf(&p.builder, "%d", s.id)
 	increment(p)
@@ -473,28 +565,28 @@ print_semantic_scope :: proc(p: ^AST_Printer, s: ^Semantic_Scope) {
 
 // Utility procedures
 
-write :: proc(p: ^AST_Printer, s: string = "") {
+write :: proc(p: ^Debug_Printer, s: string = "") {
 	strings.write_string_builder(&p.builder, s)
 }
 
-write_line :: proc(p: ^AST_Printer, s: string = "") {
+write_line :: proc(p: ^Debug_Printer, s: string = "") {
 	strings.write_byte(&p.builder, '\n')
 	indent(p)
 	strings.write_string_builder(&p.builder, s)
 }
 
-indent :: proc(p: ^AST_Printer) {
+indent :: proc(p: ^Debug_Printer) {
 	whitespace := p.indent_level * p.indent_width
 	for _ in 0 ..< whitespace {
 		strings.write_rune_builder(&p.builder, ' ')
 	}
 }
 
-increment :: proc(p: ^AST_Printer) {
+increment :: proc(p: ^Debug_Printer) {
 	p.indent_level += 1
 }
 
-decrement :: proc(p: ^AST_Printer) {
+decrement :: proc(p: ^Debug_Printer) {
 	p.indent_level -= 1
 }
 
@@ -503,7 +595,7 @@ decrement :: proc(p: ^AST_Printer) {
 // Chunk Decompiling
 
 print_chunk :: proc(c: Chunk) {
-	printer := AST_Printer {
+	printer := Debug_Printer {
 		builder      = strings.make_builder(),
 		indent_width = 2,
 	}
@@ -552,11 +644,11 @@ print_chunk :: proc(c: Chunk) {
 		}
 	}
 
-	print_ip :: proc(p: ^AST_Printer, ip: int) {
+	print_ip :: proc(p: ^Debug_Printer, ip: int) {
 		fmt.sbprintf(&p.builder, "%04d    ", ip)
 	}
 
-	format :: proc(p: ^AST_Printer, word: string, max_len: int) {
+	format :: proc(p: ^Debug_Printer, word: string, max_len: int) {
 		diff := max_len - len(word)
 		for _ in 0 ..< diff {
 			write(p, " ")
@@ -648,7 +740,7 @@ print_chunk :: proc(c: Chunk) {
 }
 
 print_stack :: proc(vm: ^Vm) {
-	printer := AST_Printer {
+	printer := Debug_Printer {
 		builder      = strings.make_builder(),
 		indent_width = 2,
 	}
@@ -671,7 +763,7 @@ print_stack :: proc(vm: ^Vm) {
 	fmt.println(strings.to_string(printer.builder))
 }
 
-print_value :: proc(p: ^AST_Printer, value: Value) {
+print_value :: proc(p: ^Debug_Printer, value: Value) {
 	switch data in value.data {
 	case f64:
 		fmt.sbprintf(&p.builder, "%01f", data)

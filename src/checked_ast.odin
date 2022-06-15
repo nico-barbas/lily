@@ -46,9 +46,125 @@ get_class_decl :: proc(m: ^Checked_Module, type_id: Type_ID) -> ^Checked_Class_D
 	return nil
 }
 
-Checked_Expression :: struct {
-	expr:      Expression,
+Checked_Expression :: union {
+	^Checked_Literal_Expression,
+	^Checked_String_Literal_Expression,
+	^Checked_Array_Literal_Expression,
+	^Checked_Unary_Expression,
+	^Checked_Binary_Expression,
+	^Checked_Identifier_Expression,
+	^Checked_Index_Expression,
+	^Checked_Dot_Expression,
+	^Checked_Call_Expression,
+}
+
+Checked_Literal_Expression :: struct {
 	type_info: Type_Info,
+	value:     Value,
+}
+
+Checked_String_Literal_Expression :: struct {
+	type_info: Type_Info,
+	value:     string,
+}
+
+Checked_Array_Literal_Expression :: struct {
+	token:     Token,
+	type_info: Type_Info,
+	values:    []Checked_Expression,
+}
+
+Checked_Unary_Expression :: struct {
+	token:     Token,
+	type_info: Type_Info,
+	expr:      Checked_Expression,
+	op:        Operator,
+}
+
+Checked_Binary_Expression :: struct {
+	token:     Token,
+	type_info: Type_Info,
+	left:      Checked_Expression,
+	right:     Checked_Expression,
+	op:        Operator,
+}
+
+Checked_Identifier_Expression :: struct {
+	name:      Token,
+	type_info: Type_Info,
+}
+
+Checked_Index_Expression :: struct {
+	token:     Token,
+	type_info: Type_Info,
+	kind:      enum {
+		Array,
+		Map,
+	},
+	left:      Token,
+	index:     Checked_Expression,
+}
+
+Checked_Dot_Expression :: struct {
+	token:     Token,
+	type_info: Type_Info,
+	kind:      enum {
+		Module,
+		Class,
+		Instance,
+	},
+	left:      Token,
+	selector:  Token,
+}
+
+Checked_Call_Expression :: struct {
+	token:     Token,
+	type_info: Type_Info,
+	func:      Checked_Expression,
+	args:      []Checked_Expression,
+}
+
+free_checked_expression :: proc(expr: Checked_Expression) {
+	switch e in expr {
+	case ^Checked_Literal_Expression:
+		free(e)
+
+	case ^Checked_String_Literal_Expression:
+		free(e)
+
+	case ^Checked_Array_Literal_Expression:
+		for value in e.values {
+			free_checked_expression(value)
+		}
+		free(e)
+
+	case ^Checked_Unary_Expression:
+		free_checked_expression(e.expr)
+		free(e)
+
+	case ^Checked_Binary_Expression:
+		free_checked_expression(e.left)
+		free_checked_expression(e.right)
+		free(e)
+
+	case ^Checked_Identifier_Expression:
+		free(e)
+
+	case ^Checked_Index_Expression:
+		free_checked_expression(e.index)
+		free(e)
+
+	case ^Checked_Dot_Expression:
+		free(e)
+
+	case ^Checked_Call_Expression:
+		free_checked_expression(e.func)
+		for arg in e.args {
+			free_checked_expression(arg)
+		}
+		free(e)
+
+	}
 }
 
 Checked_Node :: union {

@@ -24,6 +24,7 @@ Semantic_Error :: struct {
 		Mismatched_Types,
 		Invalid_Arg_Count,
 		Invalid_Type_Operation,
+		Invalid_Class_Constructor_Usage,
 	},
 	token:   Token,
 	details: string,

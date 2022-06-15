@@ -69,7 +69,7 @@ Index_Expression :: struct {
 Dot_Expression :: struct {
 	token:    Token, // the '.' token
 	left:     Expression,
-	accessor: Expression,
+	selector: Expression,
 }
 
 Call_Expression :: struct {

@@ -717,7 +717,7 @@ parse_index :: proc(p: ^Parser, left: Expression) -> (result: Expression, err: E
 
 parse_dot :: proc(p: ^Parser, left: Expression) -> (result: Expression, err: Error) {
 	dot_expr := new_clone(Dot_Expression{token = p.previous, left = left})
-	dot_expr.accessor = parse_expr(p, .Lowest) or_return
+	dot_expr.selector = parse_expr(p, .Lowest) or_return
 	result = dot_expr
 	return
 }

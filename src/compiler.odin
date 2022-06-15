@@ -356,7 +356,7 @@ compile_chunk_node :: proc(c: ^Compiler, node: Checked_Node) -> (result: Chunk) 
 compile_node :: proc(c: ^Compiler, node: Checked_Node) {
 	switch n in node {
 	case ^Checked_Expression_Statement:
-		compile_expr(c, n.expr.expr)
+		compile_expr(c, n.expr)
 		push_op_code(c, .Op_Pop)
 
 	case ^Checked_Block_Statement:
@@ -365,14 +365,14 @@ compile_node :: proc(c: ^Compiler, node: Checked_Node) {
 		}
 
 	case ^Checked_Assigment_Statement:
-		compile_expr(c, n.right.expr)
-		#partial switch e in n.left.expr {
-		case ^Identifier_Expression:
+		compile_expr(c, n.right)
+		#partial switch e in n.left {
+		case ^Checked_Identifier_Expression:
 			var_addr := get_variable_addr(c, e.name.text)
 			push_op_set_code(c, var_addr, true)
-		case ^Index_Expression:
-			identifier := e.left.(^Identifier_Expression)
-			var_addr := get_variable_addr(c, identifier.name.text)
+		case ^Checked_Index_Expression:
+			identifier := e.left.text
+			var_addr := get_variable_addr(c, identifier)
 			compile_expr(c, e.index)
 			push_op_get_code(c, var_addr)
 			push_op_code(c, .Op_Assign_Array)
@@ -390,7 +390,7 @@ compile_node :: proc(c: ^Compiler, node: Checked_Node) {
 		if_loop: for {
 			// Push a scope and evaluate the conditional expression
 			push_op_code(c, .Op_Begin)
-			compile_expr(c, current_branch.condition.expr)
+			compile_expr(c, current_branch.condition)
 
 			// We keep track of this instruction to specify the jump location after 
 			// we discover the end of this branch's body
@@ -427,9 +427,9 @@ compile_node :: proc(c: ^Compiler, node: Checked_Node) {
 		push_op_code(c, .Op_Begin)
 		defer push_op_code(c, .Op_End)
 		iterator_addr := add_variable(c, n.iterator_name.text)
-		compile_expr(c, n.low.expr)
+		compile_expr(c, n.low)
 		push_op_set_code(c, iterator_addr, true)
-		compile_expr(c, n.high.expr)
+		compile_expr(c, n.high)
 		push_op_set_scoped_code(c, RANGE_HIGH_SLOT)
 
 		loop_start_cursor := current_byte_offset(c)
@@ -460,7 +460,7 @@ compile_node :: proc(c: ^Compiler, node: Checked_Node) {
 	case ^Checked_Var_Declaration:
 		// Handle the case of uninitialized variables
 		var_addr := add_variable(c, n.identifier.text)
-		compile_expr(c, n.expr.expr)
+		compile_expr(c, n.expr)
 		push_op_set_code(c, var_addr, true)
 
 	case ^Checked_Fn_Declaration:
@@ -480,13 +480,13 @@ compile_node :: proc(c: ^Compiler, node: Checked_Node) {
 	}
 }
 
-compile_expr :: proc(c: ^Compiler, expr: Expression) {
+compile_expr :: proc(c: ^Compiler, expr: Checked_Expression) {
 	switch e in expr {
-	case ^Literal_Expression:
+	case ^Checked_Literal_Expression:
 		const_addr := add_constant(c, e.value)
 		push_op_const_code(c, const_addr)
 
-	case ^String_Literal_Expression:
+	case ^Checked_String_Literal_Expression:
 		// Allocate a new string object and shove the reference in the constant pool
 		str := make([]rune, len(e.value))
 		for r, i in e.value {
@@ -500,7 +500,7 @@ compile_expr :: proc(c: ^Compiler, expr: Expression) {
 		str_addr := add_constant(c, str_object)
 		push_op_const_code(c, str_addr)
 
-	case ^Array_Literal_Expression:
+	case ^Checked_Array_Literal_Expression:
 		array_addr: i16 = 0
 		for i := len(e.values) - 1; i >= 0; i -= 1 {
 			value_expr := e.values[i]
@@ -513,7 +513,7 @@ compile_expr :: proc(c: ^Compiler, expr: Expression) {
 		}
 
 
-	case ^Unary_Expression:
+	case ^Checked_Unary_Expression:
 		compile_expr(c, e.expr)
 		#partial switch e.op {
 		case .Minus_Op:
@@ -522,7 +522,7 @@ compile_expr :: proc(c: ^Compiler, expr: Expression) {
 			push_op_code(c, .Op_Not)
 		}
 
-	case ^Binary_Expression:
+	case ^Checked_Binary_Expression:
 		compile_expr(c, e.left)
 		compile_expr(c, e.right)
 		#partial switch e.op {
@@ -551,32 +551,31 @@ compile_expr :: proc(c: ^Compiler, expr: Expression) {
 			push_op_code(c, .Op_Lesser_Eq)
 		}
 
-	case ^Identifier_Expression:
+	case ^Checked_Identifier_Expression:
 		var_addr := get_variable_addr(c, e.name.text)
 		push_op_get_code(c, var_addr)
 
-	case ^Index_Expression:
+	case ^Checked_Index_Expression:
 		// Compile the index expression and leave it on the stack
 		// Put the array on top of the stack
 
-		identifier := e.left.(^Identifier_Expression)
-		var_addr := get_variable_addr(c, identifier.name.text)
+		identifier := e.left.text
+		var_addr := get_variable_addr(c, identifier)
 		compile_expr(c, e.index)
 		push_op_get_code(c, var_addr)
 		push_op_code(c, .Op_Index_Array)
 
-	case ^Dot_Expression:
+	case ^Checked_Dot_Expression:
 
 
-	case ^Call_Expression:
+	case ^Checked_Call_Expression:
 		push_op_code(c, .Op_Begin)
 		for arg_expr in e.args {
 			compile_expr(c, arg_expr)
 		}
-		fn_identifier := e.func.(^Identifier_Expression)
+		fn_identifier := e.func.(^Checked_Identifier_Expression)
 		fn_addr := get_fn_addr(c, fn_identifier.name.text)
 		push_op_call_code(c, fn_addr)
 
-	case ^Array_Type_Expression:
 	}
 }

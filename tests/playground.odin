@@ -21,6 +21,8 @@ playground :: proc() {using lily
 				self.x = _x
 			end
 		end
+
+        var a = Foo.new(1)
 	`
 	// input := `
 	// 	a.x = 10
@@ -41,13 +43,13 @@ playground :: proc() {using lily
 	assert(check_err == nil, fmt.tprint("Failed, Error raised ->", check_err))
 	print_checked_ast(checked_module, checker)
 
-	compiler := new_compiler()
-	compiled_module := compile_module(compiler, checked_module)
-	// for class in compiled_module.
-	for fn in compiled_module.functions {
-		print_chunk(fn.chunk)
-	}
-	print_chunk(compiled_module.main)
+	// compiler := new_compiler()
+	// compiled_module := compile_module(compiler, checked_module)
+	// // for class in compiled_module.
+	// for fn in compiled_module.functions {
+	// 	print_chunk(fn.chunk)
+	// }
+	// print_chunk(compiled_module.main)
 	// fmt.println()
 	// vm := Vm{}
 	// run_module(&vm, compiled_module)

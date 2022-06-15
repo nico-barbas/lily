@@ -30,10 +30,6 @@ new_checker :: proc() -> ^Checker {
 	return c
 }
 
-checked_expresssion :: proc(expr: Expression, info: Type_Info) -> Checked_Expression {
-	return {expr = expr, type_info = info}
-}
-
 contain_symbol :: proc(c: ^Checker, token: Token) -> bool {
 	builtins: for name in c.builtin_symbols {
 		if name == token.text {
@@ -292,8 +288,10 @@ check_module :: proc(c: ^Checker, m: ^Parsed_Module) -> (module: ^Checked_Module
 		case ^Parsed_Type_Declaration:
 			switch n.type_kind {
 			case .Alias:
-				parent_type := check_expr_types(c, n.type_expr) or_return
-				update_type_alias(c, n.identifier, parent_type.type_id)
+				parent_expr, parent_info := check_expr_types(c, n.type_expr) or_return
+				update_type_alias(c, n.identifier, parent_info.type_id)
+				free_checked_expression(parent_expr)
+
 			case .Class:
 				name := n.identifier.text
 				class_decl: ^Checked_Class_Declaration
@@ -317,10 +315,11 @@ check_module :: proc(c: ^Checker, m: ^Parsed_Module) -> (module: ^Checked_Module
 				enter_child_scope(c.current, n.identifier) or_return
 				defer pop_scope(c.current)
 				for field, i in n.fields {
-					field_type := check_expr_types(c, field.type_expr) or_return
-					class_info.fields[i] = field_type
+					field_expr, field_info := check_expr_types(c, field.type_expr) or_return
+					class_info.fields[i] = field_info
 					class_decl.field_names[i] = field.name
-					set_variable_type(c, field.name.text, field_type)
+					set_variable_type(c, field.name.text, field_info)
+					free_checked_expression(field_expr)
 				}
 				for constructor, i in n.constructors {
 					constr_decl := new_clone(
@@ -339,9 +338,10 @@ check_module :: proc(c: ^Checker, m: ^Parsed_Module) -> (module: ^Checked_Module
 					defer pop_scope(c.current)
 					for param, i in constructor.parameters {
 						constr_decl.param_names[i] = param.name
-						param_type := check_expr_types(c, param.type_expr) or_return
-						constr_signature.parameters[i] = param_type
-						set_variable_type(c, param.name.text, param_type)
+						param_expr, param_info := check_expr_types(c, param.type_expr) or_return
+						constr_signature.parameters[i] = param_info
+						set_variable_type(c, param.name.text, param_info)
+						free_checked_expression(param_expr)
 					}
 					// constr_decl.body = check_node_types(c, constructor.body) or_return
 					constr_decl.type_info.type_id_data = constr_signature
@@ -365,9 +365,10 @@ check_module :: proc(c: ^Checker, m: ^Parsed_Module) -> (module: ^Checked_Module
 					defer pop_scope(c.current)
 					for param, i in method.parameters {
 						method_decl.param_names[i] = param.name
-						param_type := check_expr_types(c, param.type_expr) or_return
-						method_signature.parameters[i] = param_type
-						set_variable_type(c, param.name.text, param_type)
+						param_expr, param_info := check_expr_types(c, param.type_expr) or_return
+						method_signature.parameters[i] = param_info
+						set_variable_type(c, param.name.text, param_info)
+						free_checked_expression(param_expr)
 					}
 					// method_decl.body = check_node_types(c, method.body) or_return
 					method_decl.type_info.type_id_data = method_signature
@@ -414,16 +415,19 @@ check_module :: proc(c: ^Checker, m: ^Parsed_Module) -> (module: ^Checked_Module
 			enter_child_scope(c.current, n.identifier) or_return
 			defer pop_scope(c.current)
 
-			return_type := check_expr_types(c, n.return_type_expr) or_return
-			set_variable_type(c, "result", return_type)
+			return_expr, return_info := check_expr_types(c, n.return_type_expr) or_return
+			defer free_checked_expression(return_expr)
+			set_variable_type(c, "result", return_info)
 			for param, i in n.parameters {
 				fn_decl.param_names[i] = param.name
-				param_type := check_expr_types(c, param.type_expr) or_return
-				fn_signature.parameters[i] = param_type
-				set_variable_type(c, param.name.text, param_type)
+				param_expr, param_info := check_expr_types(c, param.type_expr) or_return
+				defer free_checked_expression(param_expr)
+
+				fn_signature.parameters[i] = param_info
+				set_variable_type(c, param.name.text, param_info)
 			}
 			fn_decl.body = check_node_types(c, n.body) or_return
-			fn_signature.return_type_id = return_type.type_id
+			fn_signature.return_type_id = return_info.type_id
 			fn_decl.type_info.type_id_data = fn_signature
 
 			append(&module.functions, fn_decl)
@@ -581,7 +585,7 @@ check_expr_symbols :: proc(c: ^Checker, expr: Expression) -> (err: Error) {
 		left_symbol := l.(Composite_Symbol)
 		class_scope := get_class_scope(c.current, left_symbol.scope_ip)
 
-		#partial switch a in e.accessor {
+		#partial switch a in e.selector {
 		case ^Identifier_Expression:
 			if !contain_scoped_symbol(class_scope, a.name.text) {
 				err = Semantic_Error {
@@ -625,8 +629,8 @@ check_expr_symbols :: proc(c: ^Checker, expr: Expression) -> (err: Error) {
 check_node_types :: proc(c: ^Checker, node: Parsed_Node) -> (result: Checked_Node, err: Error) {
 	switch n in node {
 	case ^Parsed_Expression_Statement:
-		t := check_expr_types(c, n.expr) or_return
-		result = new_clone(Checked_Expression_Statement{expr = checked_expresssion(n.expr, t)})
+		expr, _ := check_expr_types(c, n.expr) or_return
+		result = new_clone(Checked_Expression_Statement{expr = expr})
 
 	case ^Parsed_Block_Statement:
 		block_stmt := new_clone(Checked_Block_Statement{nodes = make([dynamic]Checked_Node)})
@@ -637,52 +641,42 @@ check_node_types :: proc(c: ^Checker, node: Parsed_Node) -> (result: Checked_Nod
 		result = block_stmt
 
 	case ^Parsed_Assignment_Statement:
-		left := check_expr_types(c, n.left) or_return
-		right := check_expr_types(c, n.right) or_return
-		if !type_equal(c, left, right) {
+		left, left_info := check_expr_types(c, n.left) or_return
+		right, right_info := check_expr_types(c, n.right) or_return
+		if !type_equal(c, left_info, right_info) {
 			err = Semantic_Error {
 				kind    = .Mismatched_Types,
 				token   = n.token,
 				details = fmt.tprintf(
 					"Left expression of type %s, right expression of type %s",
-					left.name,
-					right.name,
+					left_info.name,
+					right_info.name,
 				),
 			}
 		}
 		// The type info should always exist at this point,
 		// but we will keep this as a sanity check for now
 
-		result = new_clone(
-			Checked_Assigment_Statement{
-				token = n.token,
-				left = checked_expresssion(n.left, left),
-				right = checked_expresssion(n.right, right),
-			},
-		)
+		result = new_clone(Checked_Assigment_Statement{token = n.token, left = left, right = right})
 
 
 	case ^Parsed_If_Statement:
-		condition_type := check_expr_types(c, n.condition) or_return
-		if !is_truthy_type(condition_type) {
+		condition_expr, condition_info := check_expr_types(c, n.condition) or_return
+		if !is_truthy_type(condition_info) {
 			err = Semantic_Error {
 				kind    = .Mismatched_Types,
 				token   = n.token,
 				details = fmt.tprintf(
 					"Expected %s, got %s",
 					c.builtin_types[BOOL_ID].name,
-					condition_type.name,
+					condition_info.name,
 				),
 			}
 		}
 		// push a new scope here
 		body_node := check_node_types(c, n.body) or_return
 		if_stmt := new_clone(
-			Checked_If_Statement{
-				token = n.token,
-				condition = checked_expresssion(n.condition, condition_type),
-				body = body_node,
-			},
+			Checked_If_Statement{token = n.token, condition = condition_expr, body = body_node},
 		)
 		if n.next_branch != nil {
 			next_node := check_node_types(c, n.next_branch) or_return
@@ -692,23 +686,36 @@ check_node_types :: proc(c: ^Checker, node: Parsed_Node) -> (result: Checked_Nod
 
 	case ^Parsed_Range_Statement:
 		//push scope
-		low := check_expr_types(c, n.low) or_return
-		high := check_expr_types(c, n.high) or_return
-		if !type_equal(c, low, high) {
+		low_expr, low_info := check_expr_types(c, n.low) or_return
+		high_expr, high_info := check_expr_types(c, n.high) or_return
+		if !type_equal(c, low_info, high_info) {
 			err = Semantic_Error {
-				kind  = .Mismatched_Types,
-				token = n.token,
+				kind    = .Mismatched_Types,
+				token   = n.token,
+				details = fmt.tprintf(
+					"Low expression of type %s, High expression of type %s",
+					low_info.name,
+					high_info.name,
+				),
 			}
 		}
+		if !is_numerical_type(low_info) {
+			err = Semantic_Error {
+				kind    = .Mismatched_Types,
+				token   = n.token,
+				details = fmt.tprintf("Expected %s, got %s", c.builtin_types[NUMBER_ID].name, low_info.name),
+			}
+		}
+
 		// add the newly created iterator to the scope
 		body_node := check_node_types(c, n.body) or_return
 		result = new_clone(
 			Checked_Range_Statement{
 				token = n.token,
 				iterator_name = n.iterator_name,
-				iterator_type_info = low,
-				low = checked_expresssion(n.low, low),
-				high = checked_expresssion(n.high, high),
+				iterator_type_info = low_info,
+				low = low_expr,
+				high = high_expr,
 				reverse = n.reverse,
 				op = n.op,
 				body = body_node,
@@ -716,39 +723,42 @@ check_node_types :: proc(c: ^Checker, node: Parsed_Node) -> (result: Checked_Nod
 		)
 
 	case ^Parsed_Var_Declaration:
-		var_type := check_expr_types(c, n.type_expr) or_return
-		value_type := check_expr_types(c, n.expr) or_return
+		var_expr, var_info := check_expr_types(c, n.type_expr) or_return
+		value_expr, value_info := check_expr_types(c, n.expr) or_return
+		if var_expr != nil {
+			free_checked_expression(var_expr)
+		}
 
 		// we check if the type needs to be infered
-		if type_equal(c, var_type, c.builtin_types[UNTYPED_ID]) {
+		if type_equal(c, var_info, c.builtin_types[UNTYPED_ID]) {
 			// add the var to the environment's scope
 			switch {
-			case type_equal(c, value_type, c.builtin_types[UNTYPED_NUMBER_ID]):
-				var_type = c.builtin_types[NUMBER_ID]
-			case type_equal(c, value_type, c.builtin_types[UNTYPED_BOOL_ID]):
-				var_type = c.builtin_types[BOOL_ID]
-			case type_equal(c, value_type, c.builtin_types[UNTYPED_STRING_ID]):
-				var_type = c.builtin_types[STRING_ID]
+			case type_equal(c, value_info, c.builtin_types[UNTYPED_NUMBER_ID]):
+				var_info = c.builtin_types[NUMBER_ID]
+			case type_equal(c, value_info, c.builtin_types[UNTYPED_BOOL_ID]):
+				var_info = c.builtin_types[BOOL_ID]
+			case type_equal(c, value_info, c.builtin_types[UNTYPED_STRING_ID]):
+				var_info = c.builtin_types[STRING_ID]
 			case:
-				var_type = value_type
+				var_info = value_info
 			}
-			set_variable_type(c, n.identifier.text, var_type)
+			set_variable_type(c, n.identifier.text, var_info)
 		} else {
-			if !type_equal(c, var_type, value_type) {
+			if !type_equal(c, var_info, value_info) {
 				err = Semantic_Error {
 					kind    = .Mismatched_Types,
 					token   = n.token,
-					details = fmt.tprintf("Expected %s, got %s", var_type.name, value_type.name),
+					details = fmt.tprintf("Expected %s, got %s", var_info.name, value_info.name),
 				}
 			}
 		}
-		set_variable_type(c, n.identifier.text, var_type)
+		set_variable_type(c, n.identifier.text, var_info)
 		result = new_clone(
 			Checked_Var_Declaration{
 				token = n.token,
 				identifier = n.identifier,
-				type_info = var_type,
-				expr = checked_expresssion(n.expr, value_type),
+				type_info = var_info,
+				expr = value_expr,
 				initialized = n.initialized,
 			},
 		)
@@ -761,29 +771,43 @@ check_node_types :: proc(c: ^Checker, node: Parsed_Node) -> (result: Checked_Nod
 	return
 }
 
-check_expr_types :: proc(c: ^Checker, expr: Expression) -> (result: Type_Info, err: Error) {
+check_expr_types :: proc(c: ^Checker, expr: Expression) -> (
+	result: Checked_Expression,
+	info: Type_Info,
+	err: Error,
+) {
 	switch e in expr {
 	case ^Literal_Expression:
 		#partial switch e.value.kind {
 		case .Number:
-			result = c.builtin_types[UNTYPED_NUMBER_ID]
+			info = c.builtin_types[UNTYPED_NUMBER_ID]
 		case .Boolean:
-			result = c.builtin_types[UNTYPED_BOOL_ID]
+			info = c.builtin_types[UNTYPED_BOOL_ID]
 		case:
 			assert(false, "Probably erroneous path for Literal_Expression in  check_expr_types procedure")
 		}
+		result = new_clone(Checked_Literal_Expression{type_info = info, value = e.value})
 
 	case ^String_Literal_Expression:
-		result = c.builtin_types[UNTYPED_STRING_ID]
+		info = c.builtin_types[UNTYPED_STRING_ID]
+		result = new_clone(Checked_String_Literal_Expression{type_info = info, value = e.value})
 
 	case ^Array_Literal_Expression:
-		lit_type := check_expr_types(c, e.type_expr) or_return
+		_, lit_type := check_expr_types(c, e.type_expr) or_return
 		generic_id := lit_type.type_id_data.(Generic_Type_Info)
 		inner_type := get_type_from_id(c, generic_id.spec_type_id)
 		fmt.println(inner_type)
-		result = lit_type
-		for element in e.values {
-			elem_type := check_expr_types(c, element) or_return
+		info = lit_type
+
+		checked_arr := new_clone(
+			Checked_Array_Literal_Expression{
+				token = e.token,
+				type_info = info,
+				values = make([]Checked_Expression, len(e.values)),
+			},
+		)
+		for element, i in e.values {
+			elem_expr, elem_type := check_expr_types(c, element) or_return
 			if !type_equal(c, inner_type, elem_type) {
 				err = Semantic_Error {
 					kind    = .Mismatched_Types,
@@ -791,45 +815,51 @@ check_expr_types :: proc(c: ^Checker, expr: Expression) -> (result: Type_Info, e
 					details = fmt.tprintf("Expected %s, got %s", inner_type.name, elem_type.name),
 				}
 			}
+			checked_arr.values[i] = elem_expr
 		}
+		result = checked_arr
 
 	case ^Unary_Expression:
-		result = check_expr_types(c, e.expr) or_return
+		checked_unary := new_clone(Checked_Unary_Expression{token = e.token, op = e.op})
+		checked_unary.expr, info = check_expr_types(c, e.expr) or_return
+		checked_unary.type_info = info
 		#partial switch e.op {
 		// Expression must be of "truthy" type
 		case .Not_Op:
-			if !is_truthy_type(result) {
+			if !is_truthy_type(info) {
 				err = Semantic_Error {
 					kind    = .Mismatched_Types,
 					token   = e.token,
-					details = fmt.tprintf("Expected %s, got %s", c.builtin_types[BOOL_ID].name, result.name),
+					details = fmt.tprintf("Expected %s, got %s", c.builtin_types[BOOL_ID].name, info.name),
 				}
 			}
 
 		// Expression must be of numerical type
 		case .Minus_Op:
-			if !is_numerical_type(result) {
+			if !is_numerical_type(info) {
 				err = Semantic_Error {
 					kind    = .Mismatched_Types,
 					token   = e.token,
-					details = fmt.tprintf("Expected %s, got %s", c.builtin_types[NUMBER_ID].name, result.name),
+					details = fmt.tprintf("Expected %s, got %s", c.builtin_types[NUMBER_ID].name, info.name),
 				}
 			}
 		case:
 			assert(false)
 		}
+		result = checked_unary
 
 	case ^Binary_Expression:
-		left := check_expr_types(c, e.left) or_return
-		right := check_expr_types(c, e.right) or_return
-		if !type_equal(c, left, right) {
+		checked_binary := new_clone(Checked_Binary_Expression{token = e.token, op = e.op})
+		left, left_info := check_expr_types(c, e.left) or_return
+		right, right_info := check_expr_types(c, e.right) or_return
+		if !type_equal(c, left_info, right_info) {
 			err = Semantic_Error {
 				kind    = .Mismatched_Types,
 				token   = e.token,
 				details = fmt.tprintf(
 					"Left expression of type %s, right expression of type %s",
-					left.name,
-					right.name,
+					left_info.name,
+					right_info.name,
 				),
 			}
 			return
@@ -837,97 +867,158 @@ check_expr_types :: proc(c: ^Checker, expr: Expression) -> (result: Type_Info, e
 
 		#partial switch e.op {
 		case .Minus_Op, .Plus_Op, .Mult_Op, .Div_Op, .Rem_Op:
-			if !is_numerical_type(left) {
+			if !is_numerical_type(left_info) {
 				err = Semantic_Error {
 					kind    = .Mismatched_Types,
 					token   = e.token,
-					details = fmt.tprintf("Expected %s, got %s", c.builtin_types[NUMBER_ID].name, result.name),
+					details = fmt.tprintf("Expected %s, got %s", c.builtin_types[NUMBER_ID].name, left_info.name),
 				}
 			}
-			result = left
+			info = left_info
 
 		case .Greater_Op, .Greater_Eq_Op, .Lesser_Op, .Lesser_Eq_Op:
-			if !is_numerical_type(left) {
+			if !is_numerical_type(left_info) {
 				err = Semantic_Error {
 					kind    = .Mismatched_Types,
 					token   = e.token,
-					details = fmt.tprintf("Expected %s, got %s", c.builtin_types[NUMBER_ID].name, result.name),
+					details = fmt.tprintf("Expected %s, got %s", c.builtin_types[NUMBER_ID].name, left_info.name),
 				}
 			}
-			result = c.builtin_types[UNTYPED_BOOL_ID]
+			info = c.builtin_types[UNTYPED_BOOL_ID]
 
 		case .Or_Op, .And_Op:
-			if !is_truthy_type(left) {
+			if !is_truthy_type(left_info) {
 				err = Semantic_Error {
 					kind    = .Mismatched_Types,
 					token   = e.token,
-					details = fmt.tprintf("Expected %s, got %s", c.builtin_types[BOOL_ID].name, result.name),
+					details = fmt.tprintf("Expected %s, got %s", c.builtin_types[BOOL_ID].name, left_info.name),
 				}
 			}
-			result = left
+			info = left_info
 		}
+		checked_binary.left = left
+		checked_binary.right = right
+		checked_binary.type_info = info
+		result = checked_binary
 
 	case ^Identifier_Expression:
-		result = get_type_from_identifier(c, e.name)
+		info = get_type_from_identifier(c, e.name)
+		result = new_clone(Checked_Identifier_Expression{name = e.name, type_info = info})
 
 	case ^Index_Expression:
-		left := check_expr_types(c, e.left) or_return
-		if left.type_id == ARRAY_ID {
-			index := check_expr_types(c, e.index) or_return
-			if !is_numerical_type(index) {
+		checked_index := new_clone(Checked_Index_Expression{token = e.token})
+		left, left_info := check_expr_types(c, e.left) or_return
+		defer free_checked_expression(left)
+
+		if left_info.type_id == ARRAY_ID {
+			left_indentfier := left.(^Checked_Identifier_Expression)
+			checked_index.left = left_indentfier.name
+			checked_index.kind = .Array
+			index, index_info := check_expr_types(c, e.index) or_return
+			if !is_numerical_type(index_info) {
 				err = Semantic_Error {
 					kind    = .Mismatched_Types,
 					token   = e.token,
-					details = fmt.tprintf("Expected %s, got %s", c.builtin_types[NUMBER_ID].name, result.name),
+					details = fmt.tprintf("Expected %s, got %s", c.builtin_types[NUMBER_ID].name, index_info.name),
 				}
 				return
 			}
-			elem_type := left.type_id_data.(Generic_Type_Info)
 			// Retrieve the Type_Info from the the element Type_ID
-			result = get_type_from_id(c, elem_type.spec_type_id)
+			elem_type := left_info.type_id_data.(Generic_Type_Info)
+			info = get_type_from_id(c, elem_type.spec_type_id)
+			checked_index.index = index
+			checked_index.type_info = info
+			result = checked_index
 		} else {
 			identifier := e.left.(^Identifier_Expression)
 			err = Semantic_Error {
 				kind    = .Mismatched_Types,
 				token   = e.token,
-				details = fmt.tprintf("Cannot index %s of type %s", identifier.name.text, left.name),
+				details = fmt.tprintf("Cannot index %s of type %s", identifier.name.text, left_info.name),
 			}
 		}
 
 	case ^Dot_Expression:
-		class_info := check_expr_types(c, e.left) or_return
+		left_identifier := e.left.(^Identifier_Expression)
+		selector_identifier := e.selector.(^Identifier_Expression)
+		checked_dot := new_clone(
+			Checked_Dot_Expression{
+				token = e.token,
+				left = left_identifier.name,
+				selector = selector_identifier.name,
+			},
+		)
+
+		class_info: Type_Info
+		name := left_identifier.name.text
+		if t, exist := c.current.type_lookup[name]; exist {
+			class_info = t
+			checked_dot.kind = .Class
+		} else {
+			is_module := false
+			for module in c.modules {
+				if name == module.name {
+					is_module = true
+					break
+				}
+			}
+			if is_module {
+				assert(false, "Module support not implemented yet")
+			} else {
+				class_info, _ := get_variable_type(c, name)
+				checked_dot.kind = .Instance
+			}
+		}
+		// class_info := check_expr_types(c, e.left) or_return
 		class_def := class_info.type_id_data.(Class_Definition_Info)
 		class_decl := get_class_decl(c.current, class_info.type_id)
-		#partial switch a in e.accessor {
+		#partial switch a in e.selector {
 		case ^Identifier_Expression:
 			for field, i in class_decl.field_names {
 				if field.text == a.name.text {
-					result = class_def.fields[i]
-					return
+					info = class_def.fields[i]
+					break
 				}
 			}
 		case ^Call_Expression:
+			is_constructor := false
 			for constructor, i in class_decl.constructors {
 				call_name := a.func.(^Identifier_Expression)
 				if constructor.identifier.text == call_name.name.text {
-					result = class_info
-					return
+					info = class_info
+					is_constructor = true
+					break
 				}
 			}
-			for method, i in class_decl.methods {
-				call_name := a.func.(^Identifier_Expression)
-				if method.identifier.text == call_name.name.text {
-					result = class_def.methods[i]
-					return
+			if is_constructor && checked_dot.kind != .Instance {
+				err = Semantic_Error {
+					kind    = .Invalid_Class_Constructor_Usage,
+					token   = e.token,
+					details = fmt.tprintf("%s is an instance of Class %s", name, class_info.name),
+				}
+				return
+			} else {
+				for method, i in class_decl.methods {
+					call_name := a.func.(^Identifier_Expression)
+					if method.identifier.text == call_name.name.text {
+						info = class_def.methods[i]
+						break
+					}
 				}
 			}
 		}
+		checked_dot.type_info = info
+		result = checked_dot
 
 	case ^Call_Expression:
+		checked_call := new_clone(
+			Checked_Call_Expression{token = e.token, args = make([]Checked_Expression, len(e.args))},
+		)
+
 		// Get the signature from the environment
-		fn_signature := check_expr_types(c, e.func) or_return
-		if fn_signature.type_id == FN_ID && fn_signature.type_kind == .Fn_Type {
-			signature_info := fn_signature.type_id_data.(Fn_Signature_Info)
+		fn_expr, fn_info := check_expr_types(c, e.func) or_return
+		if fn_info.type_id == FN_ID && fn_info.type_kind == .Fn_Type {
+			signature_info := fn_info.type_id_data.(Fn_Signature_Info)
 			// Check that the call expression has the exact same amount of arguments
 			// as the fn signature
 			if len(signature_info.parameters) != len(e.args) {
@@ -943,32 +1034,40 @@ check_expr_types :: proc(c: ^Checker, expr: Expression) -> (result: Type_Info, e
 				return
 			}
 			for arg, i in e.args {
-				arg_type := check_expr_types(c, arg) or_return
-				if !type_equal(c, arg_type, signature_info.parameters[i]) {
+				arg_expr, arg_info := check_expr_types(c, arg) or_return
+				if !type_equal(c, arg_info, signature_info.parameters[i]) {
 					err = Semantic_Error {
 						kind    = .Mismatched_Types,
 						token   = e.token,
 						details = fmt.tprintf(
 							"Expected %s, got %s",
-							arg_type.name,
+							arg_info.name,
 							signature_info.parameters[i].name,
 						),
 					}
 					return
 				}
+				checked_call.args[i] = arg_expr
 			}
-			result = get_type_from_id(c, signature_info.return_type_id)
+			info = get_type_from_id(c, signature_info.return_type_id)
+
+			checked_call.type_info = info
+			checked_call.func = fn_expr
 		} else {
 			// FIXME: return an error
 		}
 
 	case ^Array_Type_Expression:
-		inner_type := check_expr_types(c, e.elem_type) or_return
-		result = Type_Info {
+		// FIXME: Probably does not support multi-dimensional arrays
+		inner_expr, inner_info := check_expr_types(c, e.elem_type) or_return
+		if inner_expr != nil {
+			free_checked_expression(inner_expr)
+		}
+		info = Type_Info {
 			name = "array",
 			type_id = ARRAY_ID,
 			type_kind = .Generic_Type,
-			type_id_data = Generic_Type_Info{spec_type_id = inner_type.type_id},
+			type_id_data = Generic_Type_Info{spec_type_id = inner_info.type_id},
 		}
 	}
 	return
