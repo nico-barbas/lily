@@ -467,7 +467,8 @@ compile_node :: proc(c: ^Compiler, node: Checked_Node) {
 		// Bind all the variable to stack slot
 		param_ptr: i16 = 0
 		result_addr: i16
-		is_void := n.type_info.type_id == UNTYPED_ID
+		fn_signature := n.type_info.type_id_data.(Fn_Signature_Info)
+		is_void := fn_signature.return_type_id == UNTYPED_ID
 		if !is_void {
 			result_addr = add_variable(c, "result")
 			push_op_bind_code(c, result_addr, param_ptr)

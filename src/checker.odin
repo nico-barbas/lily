@@ -1024,13 +1024,27 @@ check_expr_types :: proc(c: ^Checker, expr: Parsed_Expression) -> (
 		class_decl := get_class_decl(c.current, class_info.type_id)
 		#partial switch a in e.selector {
 		case ^Parsed_Identifier_Expression:
-			checked_dot.selector = a.name
-			for field, i in class_decl.field_names {
-				if field.text == a.name.text {
-					info = class_def.fields[i]
-					break
+			if checked_dot.kind != .Class {
+				checked_dot.selector = a.name
+				for field, i in class_decl.field_names {
+					if field.text == a.name.text {
+						info = class_def.fields[i]
+						break
+					}
+				}
+			} else {
+				err = Semantic_Error {
+					kind    = .Invalid_Class_Field_Access,
+					token   = e.token,
+					details = fmt.tprintf(
+						"Cannot access fields of %s. %s is a class and not an instance of class",
+						name,
+						name,
+					),
 				}
 			}
+
+
 		case ^Parsed_Call_Expression:
 			call_identifier := a.func.(^Parsed_Identifier_Expression)
 			checked_dot.selector = call_identifier.name

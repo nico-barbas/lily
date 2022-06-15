@@ -27,6 +27,7 @@ Semantic_Error :: struct {
 		Invalid_Arg_Count,
 		Invalid_Type_Operation,
 		Invalid_Class_Constructor_Usage,
+		Invalid_Class_Field_Access,
 	},
 	token:   Token,
 	details: string,

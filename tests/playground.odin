@@ -9,27 +9,27 @@ main :: proc() {
 }
 
 playground :: proc() {using lily
-	// input: string = `
-	// 	type Foo is class
-	// 		x: number
+	input: string = `
+		type Foo is class
+			x: number
 
-	// 		constructor new(_x: number):
-	// 			self.x = _x
-	// 		end
+			constructor new(_x: number):
+				self.x = _x
+			end
 
-	// 		fn add(n: number):
-	// 			self.x = self.x + n
-	// 		end
-	// 	end
-
-	//     var a = Foo.new(1)
-	// 	a.add(2)
-	// `
-	input := `
-		fn add(a: number, b: number):
-			var c = a + b
+			fn add(n: number):
+				self.x = self.x + n
+			end
 		end
+
+	    var a = Foo.new(1)
+		a.add(2)
 	`
+	// input := `
+	// 	fn add(a: number, b: number): number
+	// 		result = a + b
+	// 	end
+	// `
 
 	parsed_module := make_module()
 	defer delete_module(parsed_module)
@@ -45,14 +45,14 @@ playground :: proc() {using lily
 	assert(check_err == nil, fmt.tprint("Failed, Error raised ->", check_err))
 	print_checked_ast(checked_module, checker)
 
-	// compiler := new_compiler()
-	// compiled_module := compile_module(compiler, checked_module)
-	// // for class in compiled_module.
-	// for fn in compiled_module.functions {
-	// 	print_chunk(fn.chunk)
-	// }
-	// print_chunk(compiled_module.main)
-	// fmt.println()
+	compiler := new_compiler()
+	compiled_module := compile_module(compiler, checked_module)
+	// for class in compiled_module.
+	for fn in compiled_module.functions {
+		print_chunk(fn.chunk)
+	}
+	print_chunk(compiled_module.main)
+	fmt.println()
 	// vm := Vm{}
 	// run_module(&vm, compiled_module)
 	// fmt.println()
