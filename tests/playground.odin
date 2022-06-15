@@ -13,20 +13,24 @@ main :: proc() {
 }
 
 playground :: proc() {using lily
-	// input: string = `
-	// 	type Foo is class
-	// 		x: number
+	input: string = `
+		type Foo is class
+			x: number
 
-	// 		constructor new(_x: number):
-	// 			self.x = _x
-	// 		end
-	// 	end
+			constructor new(_x: number):
+				self.x = _x
+			end
 
-	//     var a = Foo.new(1)
-	// `
-	input := `
-		var a = 10
+			fn add(n: number):
+				self.x = self.x + n
+			end
+		end
+
+	    var a = Foo.new(1)
 	`
+	// input := `
+	// 	var a = 10
+	// `
 
 	parsed_module := make_module()
 	defer delete_module(parsed_module)
@@ -34,7 +38,6 @@ playground :: proc() {using lily
 	err := parse_module(input, parsed_module)
 
 	assert(err == nil, fmt.tprint("Failed, Error raised ->", err))
-	fmt.println(input)
 	print_parsed_ast(parsed_module)
 
 	checker := new_checker()

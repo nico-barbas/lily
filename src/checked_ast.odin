@@ -18,8 +18,13 @@ Checked_Module :: struct {
 	type_count:   int,
 
 	// symbols
-	class_scopes: map[Scope_ID]^Semantic_Scope,
+	class_scopes: map[string]struct {
+		name:       string,
+		scope_id:   Scope_ID,
+		root_index: int,
+	},
 	scope:        ^Semantic_Scope,
+	root:         ^Semantic_Scope,
 	scope_depth:  int,
 }
 
@@ -250,7 +255,7 @@ Checked_Class_Declaration :: struct {
 Semantic_Scope :: struct {
 	id:                Scope_ID,
 	symbols:           [dynamic]Symbol,
-	var_symbol_lookup: map[string]^Symbol,
+	var_symbol_lookup: map[string]int,
 	parent:            ^Semantic_Scope,
 	children:          [dynamic]^Semantic_Scope,
 }
@@ -264,7 +269,7 @@ Symbol :: union {
 // For classes, constructors, methods and functions
 Scope_Ref_Symbol :: struct {
 	name:     string,
-	scope_ip: Scope_ID,
+	scope_id: Scope_ID,
 }
 
 Var_Symbol :: struct {
@@ -275,7 +280,7 @@ Var_Symbol :: struct {
 new_scope :: proc() -> ^Semantic_Scope {
 	scope := new(Semantic_Scope)
 	scope.symbols = make([dynamic]Symbol)
-	scope.var_symbol_lookup = make(map[string]^Symbol)
+	scope.var_symbol_lookup = make(map[string]int)
 	scope.children = make([dynamic]^Semantic_Scope)
 	return scope
 }
@@ -314,7 +319,7 @@ add_scope_ref_symbol_to_scope :: proc(
 		}
 	}
 
-	append(&s.symbols, Scope_Ref_Symbol{name = token.text, scope_ip = scope_id})
+	append(&s.symbols, Scope_Ref_Symbol{name = token.text, scope_id = scope_id})
 	return
 }
 
@@ -327,7 +332,7 @@ add_var_symbol_to_scope :: proc(s: ^Semantic_Scope, t: Token, shadow := false) -
 		}
 	}
 	append(&s.symbols, Var_Symbol{name = t.text})
-	s.var_symbol_lookup[t.text] = &s.symbols[len(s.symbols) - 1]
+	s.var_symbol_lookup[t.text] = len(s.symbols) - 1
 	return nil
 }
 
@@ -352,8 +357,13 @@ contain_scoped_symbol :: proc(s: ^Semantic_Scope, name: string) -> bool {
 }
 
 init_symbol_table :: proc(c: ^Checked_Module) {
-	c.class_scopes = make(map[Scope_ID]^Semantic_Scope)
+	c.class_scopes = make(map[string]struct {
+			name:       string,
+			scope_id:   Scope_ID,
+			root_index: int,
+		})
 	c.scope = new_scope()
+	c.root = c.scope
 	c.scope_depth = 0
 }
 
@@ -381,45 +391,31 @@ push_scope :: proc(c: ^Checked_Module, name: Token) -> Scope_ID {
 	return scope.id
 }
 
-// push_existing_scope :: proc(c: ^Checked_Module, scope: ^Semantic_Scope) {
-// 	for child in scope.children {
-// 		if child.id == scope.id {
-// 			return
-// 		}
-// 	}
-// 	append(&c.scope.children, scope)
-// 	c.scope = scope
-// 	c.scope_depth += 1
-// }
-
-add_class_scope :: proc(c: ^Checked_Module, scope_id: Scope_ID) {
-	get_child_scope :: proc(s: ^Semantic_Scope, scope_id: Scope_ID) -> ^Semantic_Scope {
-		for child in s.children {
-			if child.id == scope_id {
-				return child
-			}
-			scope := get_child_scope(child, scope_id)
-			if scope != nil {
-				return scope
-			}
-		}
-		return nil
+push_class_scope :: proc(c: ^Checked_Module, name: Token) {
+	assert(c.scope.id == c.root.id, "Can only declare Class at the root of a module")
+	class_scope := new_scope()
+	class_scope.id = hash_scope_id(c, name)
+	class_scope.parent = c.scope
+	add_scope_ref_symbol(c.scope, name, class_scope.id)
+	add_scope_ref_symbol(class_scope, Token{text = "self"}, class_scope.id)
+	append(&c.scope.children, class_scope)
+	c.class_scopes[name.text] = {
+		name       = name.text,
+		scope_id   = class_scope.id,
+		root_index = len(c.scope.children) - 1,
 	}
-
-	current := c.scope
-	for current.parent != nil {
-		current = current.parent
-	}
-
-	class_scope := get_child_scope(current, scope_id)
-	c.class_scopes[scope_id] = class_scope
+	c.scope = class_scope
+	c.scope_depth += 1
 }
 
-enter_child_scope :: proc(c: ^Checked_Module, name: Token) -> (err: Error) {
+enter_child_scope :: proc(c: ^Checked_Module, name: Token, loc := #caller_location) -> (
+	err: Error,
+) {
 	scope_name := strings.concatenate(
 		{c.name, name.text, fmt.tprint(name.line, name.start)},
 		context.temp_allocator,
 	)
+
 	defer delete(scope_name)
 	scope_id := Scope_ID(hash.fnv32(transmute([]u8)scope_name))
 	for scope in c.scope.children {
@@ -429,42 +425,41 @@ enter_child_scope :: proc(c: ^Checked_Module, name: Token) -> (err: Error) {
 		}
 	}
 	err = Internal_Error {
-		kind    = .Unknown_Scope_Name,
-		details = fmt.tprintf("Scope #%i not known", scope_id),
+		kind         = .Unknown_Scope_Name,
+		details      = fmt.tprintf("Scope #%i not known", scope_id),
+		compiler_loc = loc,
 	}
 	return
 }
 
-// enter_child_scope_by_id :: proc(c: ^Checked_Module, scope_id: Scope_ID) -> (err: Error) {
-// 	for scope in c.scope.children {
-// 		if scope.id == scope_id {
-// 			c.scope = scope
-// 			return
-// 		}
-// 	}
-// 	err = Internal_Error {
-// 		kind    = .Unknown_Scope_Name,
-// 		details = fmt.tprintf("Scope #%i not known", scope_id),
-// 	}
-// 	return
-// }
+enter_class_scope :: proc(c: ^Checked_Module, name: Token) -> (err: Error) {
+	scope_info := c.class_scopes[name.text]
+	c.scope = c.root.children[scope_info.root_index]
+	c.scope_depth = 1
+	return
+}
 
-// enter_parent_scope_by_id :: proc(c: ^Checked_Module, scope_id: Scope_ID) -> (err: Error) {
-// 	scope := c.scope
-// 	find: for scope != nil {
-// 		if scope.id == scope_id {
-// 			push_existing_scope(c, scope)
-// 			return
-// 		}
-// 		scope = scope.parent
-// 	}
-// 	err = Internal_Error {
-// 		kind    = .Unknown_Scope_Name,
-// 		details = fmt.tprintf("Scope #%i not known", scope_id),
-// 	}
-// 	return
-// }
-
+enter_class_scope_by_id :: proc(
+	c: ^Checked_Module,
+	scope_id: Scope_ID,
+	loc := #caller_location,
+) -> (
+	err: Error,
+) {
+	for _, class_scope in c.class_scopes {
+		if class_scope.scope_id == scope_id {
+			c.scope = c.root.children[class_scope.root_index]
+			c.scope_depth = 1
+			return
+		}
+	}
+	err = Internal_Error {
+		kind         = .Unknown_Scope_Name,
+		details      = fmt.tprintf("Scope #%i not known", scope_id),
+		compiler_loc = loc,
+	}
+	return
+}
 
 pop_scope :: proc(c: ^Checked_Module) {
 	scope := c.scope
@@ -473,5 +468,10 @@ pop_scope :: proc(c: ^Checked_Module) {
 }
 
 get_class_scope :: proc(c: ^Checked_Module, scope_id: Scope_ID) -> ^Semantic_Scope {
-	return c.class_scopes[scope_id]
+	for _, class_scope in c.class_scopes {
+		if class_scope.scope_id == scope_id {
+			return c.root.children[class_scope.root_index]
+		}
+	}
+	return nil
 }

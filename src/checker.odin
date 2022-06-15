@@ -162,10 +162,19 @@ add_class_type :: proc(c: ^Checker, decl: ^Parsed_Type_Declaration) {
 	c.current.type_count += 1
 }
 
-set_variable_type :: proc(c: ^Checker, name: string, t: Type_Info) {
-	symbol := c.current.scope.var_symbol_lookup[name]
-	var_symbol := symbol.(Var_Symbol)
-	var_symbol.type_info = t
+set_variable_type :: proc(c: ^Checker, name: string, t: Type_Info, loc := #caller_location) {
+	index := c.current.scope.var_symbol_lookup[name]
+	symbol, ok := c.current.scope.symbols[index].(Var_Symbol)
+	if !ok {
+		fmt.println("FAIL UP STACK: ", loc, "Current scope id: ", c.current.scope.id)
+		fmt.println("culprit: ", name, t)
+		fmt.println("real: ", c.current.scope.symbols[index])
+		fmt.println(c.current.scope)
+		print_symbol_table(c, c.current)
+		assert(false)
+	}
+	symbol.type_info = t
+	c.current.scope.symbols[index] = symbol
 }
 
 
@@ -220,8 +229,8 @@ get_type_from_identifier :: proc(c: ^Checker, i: Token) -> (result: Type_Info) {
 get_variable_type :: proc(c: ^Checker, name: string) -> (result: Type_Info, exist: bool) {
 	current := c.current.scope
 	for current != nil {
-		if symbol, contains := current.var_symbol_lookup[name]; contains {
-			var_symbol := symbol.(Var_Symbol)
+		if index, contains := current.var_symbol_lookup[name]; contains {
+			var_symbol := current.symbols[index].(Var_Symbol)
 			result = var_symbol.type_info
 			contains = true
 			break
@@ -260,20 +269,20 @@ check_module :: proc(c: ^Checker, m: ^Parsed_Module) -> (module: ^Checked_Module
 			case .Alias:
 				add_symbol(c, n.identifier) or_return
 			case .Class:
-				scope_id := hash_scope_id(c.current, n.identifier)
-				add_scope_ref_symbol(c, n.identifier, scope_id) or_return
-				push_scope(c.current, n.identifier)
+				push_class_scope(c.current, n.identifier)
 				defer pop_scope(c.current)
-				add_class_scope(c.current, scope_id)
-				add_scope_ref_symbol(c, Token{text = "self"}, scope_id, true) or_return
 				for field in n.fields {
-					add_symbol(c, field.name) or_return
+					add_var_symbol(c, field.name) or_return
 				}
 				for constructor in n.constructors {
 					add_symbol(c, constructor.identifier) or_return
+					push_scope(c.current, constructor.identifier)
+					defer pop_scope(c.current)
 				}
 				for method in n.methods {
 					add_symbol(c, method.identifier) or_return
+					push_scope(c.current, method.identifier)
+					defer pop_scope(c.current)
 				}
 			}
 		}
@@ -340,7 +349,7 @@ check_module :: proc(c: ^Checker, m: ^Parsed_Module) -> (module: ^Checked_Module
 					constructors = make([]Type_Info, len(n.constructors)),
 					methods      = make([]Type_Info, len(n.methods)),
 				}
-				enter_child_scope(c.current, n.identifier) or_return
+				enter_class_scope(c.current, n.identifier) or_return
 				defer pop_scope(c.current)
 				for field, i in n.fields {
 					field_expr, field_info := check_expr_types(c, field.type_expr) or_return
@@ -410,7 +419,7 @@ check_module :: proc(c: ^Checker, m: ^Parsed_Module) -> (module: ^Checked_Module
 				class_decl.type_info = t
 				module.type_lookup[name] = t
 
-				set_variable_type(c, "self", t)
+				// set_variable_type(c, "self", t)
 				for constructor, i in n.constructors {
 					enter_child_scope(c.current, constructor.identifier) or_return
 					defer pop_scope(c.current)
@@ -525,9 +534,9 @@ check_node_symbols :: proc(c: ^Checker, node: Parsed_Node) -> (err: Error) {
 		// functions can only be declared at the file scope
 		enter_child_scope(c.current, n.identifier)
 		defer pop_scope(c.current)
-		add_symbol(c, Token{text = "result"}) or_return
+		add_var_symbol(c, Token{text = "result"}) or_return
 		for param in n.parameters {
-			add_symbol(c, param.name, true) or_return
+			add_var_symbol(c, param.name, true) or_return
 			check_expr_symbols(c, param.type_expr) or_return
 		}
 		check_expr_symbols(c, n.return_type_expr) or_return
@@ -537,7 +546,7 @@ check_node_symbols :: proc(c: ^Checker, node: Parsed_Node) -> (err: Error) {
 		if n.type_kind == .Alias {
 			check_expr_symbols(c, n.type_expr) or_return
 		} else {
-			enter_child_scope(c.current, n.identifier) or_return
+			enter_class_scope(c.current, n.identifier) or_return
 			defer pop_scope(c.current)
 			for field in n.fields {
 				check_expr_symbols(c, field.type_expr) or_return
@@ -595,7 +604,7 @@ check_expr_symbols :: proc(c: ^Checker, expr: Parsed_Expression) -> (err: Error)
 		left_identifier := e.left.(^Parsed_Identifier_Expression)
 		l := get_symbol(c, left_identifier.name) or_return
 		left_symbol := l.(Scope_Ref_Symbol)
-		class_scope := get_class_scope(c.current, left_symbol.scope_ip)
+		class_scope := get_class_scope(c.current, left_symbol.scope_id)
 
 		#partial switch a in e.selector {
 		case ^Parsed_Identifier_Expression:
@@ -656,6 +665,7 @@ check_node_types :: proc(c: ^Checker, node: Parsed_Node) -> (result: Checked_Nod
 		left, left_info := check_expr_types(c, n.left) or_return
 		right, right_info := check_expr_types(c, n.right) or_return
 		if !type_equal(c, left_info, right_info) {
+			fmt.println(n.right)
 			err = Semantic_Error {
 				kind    = .Mismatched_Types,
 				token   = n.token,
@@ -737,9 +747,7 @@ check_node_types :: proc(c: ^Checker, node: Parsed_Node) -> (result: Checked_Nod
 	case ^Parsed_Var_Declaration:
 		var_expr, var_info := check_expr_types(c, n.type_expr) or_return
 		value_expr, value_info := check_expr_types(c, n.expr) or_return
-		if var_expr != nil {
-			free_checked_expression(var_expr)
-		}
+		defer free_checked_expression(var_expr)
 
 		// we check if the type needs to be infered
 		if type_equal(c, var_info, c.builtin_types[UNTYPED_ID]) {
@@ -754,7 +762,6 @@ check_node_types :: proc(c: ^Checker, node: Parsed_Node) -> (result: Checked_Nod
 			case:
 				var_info = value_info
 			}
-			set_variable_type(c, n.identifier.text, var_info)
 		} else {
 			if !type_equal(c, var_info, value_info) {
 				err = Semantic_Error {
@@ -762,6 +769,7 @@ check_node_types :: proc(c: ^Checker, node: Parsed_Node) -> (result: Checked_Nod
 					token   = n.token,
 					details = fmt.tprintf("Expected %s, got %s", var_info.name, value_info.name),
 				}
+				return
 			}
 		}
 		set_variable_type(c, n.identifier.text, var_info)
@@ -811,7 +819,6 @@ check_expr_types :: proc(c: ^Checker, expr: Parsed_Expression) -> (
 		_, lit_type := check_expr_types(c, e.type_expr) or_return
 		generic_id := lit_type.type_id_data.(Generic_Type_Info)
 		inner_type := get_type_from_id(c, generic_id.spec_type_id)
-		fmt.println(inner_type)
 		info = lit_type
 
 		checked_arr := new_clone(
@@ -955,18 +962,20 @@ check_expr_types :: proc(c: ^Checker, expr: Parsed_Expression) -> (
 
 	case ^Parsed_Dot_Expression:
 		left_identifier := e.left.(^Parsed_Identifier_Expression)
-		selector_identifier := e.selector.(^Parsed_Identifier_Expression)
-		checked_dot := new_clone(
-			Checked_Dot_Expression{
-				token = e.token,
-				left = left_identifier.name,
-				selector = selector_identifier.name,
-			},
-		)
+		checked_dot := new_clone(Checked_Dot_Expression{token = e.token, left = left_identifier.name})
 
 		class_info: Type_Info
 		name := left_identifier.name.text
-		if t, exist := c.current.type_lookup[name]; exist {
+		if name == "self" {
+			symbol := get_symbol(c, left_identifier.name) or_return
+			self_symbol := symbol.(Scope_Ref_Symbol)
+			for class_name, scope_info in c.current.class_scopes {
+				if self_symbol.scope_id == scope_info.scope_id {
+					class_info = c.current.type_lookup[class_name]
+					break
+				}
+			}
+		} else if t, exist := c.current.type_lookup[name]; exist {
 			class_info = t
 			checked_dot.kind = .Class
 		} else {
@@ -984,11 +993,15 @@ check_expr_types :: proc(c: ^Checker, expr: Parsed_Expression) -> (
 				checked_dot.kind = .Instance
 			}
 		}
-		// class_info := check_expr_types(c, e.left) or_return
+		if class_info.type_id_data == nil {
+			fmt.println(class_info)
+		}
+
 		class_def := class_info.type_id_data.(Class_Definition_Info)
 		class_decl := get_class_decl(c.current, class_info.type_id)
 		#partial switch a in e.selector {
 		case ^Parsed_Identifier_Expression:
+			checked_dot.selector = a.name
 			for field, i in class_decl.field_names {
 				if field.text == a.name.text {
 					info = class_def.fields[i]
@@ -996,16 +1009,17 @@ check_expr_types :: proc(c: ^Checker, expr: Parsed_Expression) -> (
 				}
 			}
 		case ^Parsed_Call_Expression:
+			call_identifier := a.func.(^Parsed_Identifier_Expression)
+			checked_dot.selector = call_identifier.name
 			is_constructor := false
 			for constructor, i in class_decl.constructors {
-				call_name := a.func.(^Parsed_Identifier_Expression)
-				if constructor.identifier.text == call_name.name.text {
+				if constructor.identifier.text == call_identifier.name.text {
 					info = class_info
 					is_constructor = true
 					break
 				}
 			}
-			if is_constructor && checked_dot.kind != .Instance {
+			if is_constructor && checked_dot.kind == .Instance {
 				err = Semantic_Error {
 					kind    = .Invalid_Class_Constructor_Usage,
 					token   = e.token,
@@ -1014,8 +1028,7 @@ check_expr_types :: proc(c: ^Checker, expr: Parsed_Expression) -> (
 				return
 			} else {
 				for method, i in class_decl.methods {
-					call_name := a.func.(^Parsed_Identifier_Expression)
-					if method.identifier.text == call_name.name.text {
+					if method.identifier.text == call_identifier.name.text {
 						info = class_def.methods[i]
 						break
 					}

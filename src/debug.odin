@@ -243,6 +243,13 @@ print_parsed_node :: proc(p: ^Debug_Printer, node: Parsed_Node) {
 					print_parsed_node(p, constructor)
 				}
 				decrement(p)
+
+				write_line(p, "Methods: ")
+				increment(p)
+				for method in n.methods {
+					print_parsed_node(p, method)
+				}
+				decrement(p)
 			}
 		}
 		decrement(p)
@@ -488,6 +495,20 @@ print_checked_node :: proc(p: ^Debug_Printer, c: ^Checker, node: Checked_Node) {
 				print_type_info(p, c, class_info.fields[i])
 			}
 			decrement(p)
+
+			write_line(p, "Constructors: ")
+			increment(p)
+			for constructor in n.constructors {
+				print_checked_node(p, c, constructor)
+			}
+			decrement(p)
+
+			write_line(p, "Methods: ")
+			increment(p)
+			for method in n.methods {
+				print_checked_node(p, c, method)
+			}
+			decrement(p)
 		}
 		decrement(p)
 	}
@@ -529,11 +550,11 @@ print_symbol_table :: proc(c: ^Checker, m: ^Checked_Module) {
 
 	write_line(&printer, "================= \n")
 	write(&printer, "== SYMBOL TABLE ==")
-	print_semantic_scope(&printer, scope)
+	print_semantic_scope(&printer, c, scope)
 	fmt.println(strings.to_string(printer.builder))
 }
 
-print_semantic_scope :: proc(p: ^Debug_Printer, s: ^Semantic_Scope) {
+print_semantic_scope :: proc(p: ^Debug_Printer, c: ^Checker, s: ^Semantic_Scope) {
 	write_line(p, "Scope: ")
 	fmt.sbprintf(&p.builder, "%d", s.id)
 	increment(p)
@@ -546,9 +567,10 @@ print_semantic_scope :: proc(p: ^Debug_Printer, s: ^Semantic_Scope) {
 			case string:
 				fmt.sbprintf(&p.builder, "Name: %s", smbl)
 			case Scope_Ref_Symbol:
-				fmt.sbprintf(&p.builder, "Name: %s, Referred Scope: %d", smbl.name, smbl.scope_ip)
+				fmt.sbprintf(&p.builder, "Name: %s, Referred Scope: %d", smbl.name, smbl.scope_id)
 			case Var_Symbol:
-				fmt.sbprintf(&p.builder, "Name: %s", smbl.name)
+				fmt.sbprintf(&p.builder, "Name: %s, Type: ", smbl.name)
+				print_type_info(p, c, smbl.type_info)
 			}
 		}
 		decrement(p)
@@ -556,7 +578,7 @@ print_semantic_scope :: proc(p: ^Debug_Printer, s: ^Semantic_Scope) {
 			write_line(p, "Inner Scopes: ")
 			increment(p)
 			for child in s.children {
-				print_semantic_scope(p, child)
+				print_semantic_scope(p, c, child)
 			}
 			decrement(p)
 		}

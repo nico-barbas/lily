@@ -1,5 +1,7 @@
 package lily
 
+import "core:runtime"
+
 Error :: union {
 	Parsing_Error,
 	Semantic_Error,
@@ -31,8 +33,9 @@ Semantic_Error :: struct {
 }
 
 Internal_Error :: struct {
-	kind:    enum {
+	kind:         enum {
 		Unknown_Scope_Name,
 	},
-	details: string,
+	details:      string,
+	compiler_loc: runtime.Source_Code_Location,
 }
