@@ -79,6 +79,7 @@ Compiler :: struct {
 	cursor:          int,
 	write_at_cursor: bool,
 	fn_names:        [dynamic]string,
+	class_names:     [dynamic]string,
 	bytecode:        [dynamic]byte,
 	constants:       [dynamic]Value,
 	variables:       [dynamic]Variable,
@@ -88,8 +89,10 @@ Compiler :: struct {
 }
 
 Compiled_Module :: struct {
-	functions: [dynamic]Fn_Object,
-	main:      Chunk,
+	classe_prototypes: []Class_Object,
+	class_vtables:     []Class_Vtable,
+	functions:         [dynamic]Fn_Object,
+	main:              Chunk,
 }
 
 Chunk :: struct {
@@ -265,7 +268,49 @@ reset_compiler :: proc(c: ^Compiler) {
 }
 
 compile_module :: proc(c: ^Compiler, module: ^Checked_Module) -> ^Compiled_Module {
-	m := new_clone(Compiled_Module{functions = make([dynamic]Fn_Object)})
+	m := new_clone(
+		Compiled_Module{
+			classe_prototypes = make([]Class_Object, len(module.classes)),
+			class_vtables = make([]Class_Vtable, len(module.classes)),
+			functions = make([dynamic]Fn_Object),
+		},
+	)
+
+	for class_decl, i in module.classes {
+		class := class_decl.(^Checked_Class_Declaration)
+		prototype := Class_Object {
+			base = Object{kind = .Class},
+			fields = make([]Class_Field, len(class.field_names)),
+		}
+		for field, i in class.field_names {
+			prototype.fields[i] = Class_Field {
+				name = field.text,
+				value = Value{},
+			}
+		}
+
+		vtable := Class_Vtable {
+			constructors = make([]Chunk, len(class.constructors)),
+			methods      = make([]Chunk, len(class.methods)),
+		}
+
+		for constructor, i in class.constructors {
+			constructor_chunk := compile_chunk_node(c, constructor)
+			vtable.constructors[i] = constructor_chunk
+			reset_compiler(c)
+		}
+
+		for method, i in class.methods {
+			method_chunk := compile_chunk_node(c, method)
+			vtable.methods[i] = method_chunk
+			reset_compiler(c)
+		}
+
+		m.class_vtables[i] = vtable
+		prototype.vtable = &m.class_vtables[i]
+		m.classe_prototypes[i] = prototype
+		c.class_names[i] = class.identifier.text
+	}
 
 	for fn_decl, i in module.functions {
 		fn := fn_decl.(^Checked_Fn_Declaration)
@@ -284,6 +329,19 @@ compile_chunk :: proc(c: ^Compiler, nodes: []Checked_Node) -> (result: Chunk) {
 		compile_node(c, node)
 	}
 
+	result = Chunk {
+		bytecode  = make([]byte, len(c.bytecode)),
+		constants = make([]Value, len(c.constants)),
+		variables = make([]Variable, len(c.variables)),
+	}
+	copy(result.bytecode[:], c.bytecode[:])
+	copy(result.constants[:], c.constants[:])
+	copy(result.variables[:], c.variables[:])
+	return
+}
+
+compile_chunk_node :: proc(c: ^Compiler, node: Checked_Node) -> (result: Chunk) {
+	compile_node(c, node)
 	result = Chunk {
 		bytecode  = make([]byte, len(c.bytecode)),
 		constants = make([]Value, len(c.constants)),

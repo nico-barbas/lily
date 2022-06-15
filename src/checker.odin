@@ -41,7 +41,7 @@ contain_symbol :: proc(c: ^Checker, token: Token) -> bool {
 		}
 	}
 
-	scope := c.current.symbol_table.scope
+	scope := c.current.scope
 	find: for scope != nil {
 		if contain_scoped_symbol(scope, token.text) {
 			return true
@@ -60,7 +60,7 @@ get_symbol :: proc(c: ^Checker, token: Token) -> (result: Symbol, err: Error) {
 		}
 	}
 
-	scope := c.current.symbol_table.scope
+	scope := c.current.scope
 	find: for scope != nil {
 		for name in scope.symbols {
 			switch n in name {
@@ -89,7 +89,7 @@ get_symbol :: proc(c: ^Checker, token: Token) -> (result: Symbol, err: Error) {
 }
 
 add_symbol :: proc(c: ^Checker, token: Token, shadow := false) -> Error {
-	return add_scoped_symbol(c.current.symbol_table.scope, token, shadow)
+	return add_scoped_symbol(c.current.scope, token, shadow)
 }
 
 add_composite_symbol :: proc(
@@ -98,11 +98,11 @@ add_composite_symbol :: proc(
 	scope_id: Scope_ID,
 	shadow := false,
 ) -> Error {
-	return add_scoped_composite_symbol(c.current.symbol_table.scope, token, scope_id, shadow)
+	return add_scoped_composite_symbol(c.current.scope, token, scope_id, shadow)
 }
 
 set_variable_type :: proc(c: ^Checker, name: string, t: Type_Info) {
-	c.current.symbol_table.scope.variable_types[name] = t
+	c.current.scope.variable_types[name] = t
 }
 
 
@@ -195,7 +195,7 @@ get_type_from_identifier :: proc(c: ^Checker, i: Token) -> (result: Type_Info) {
 }
 
 get_variable_type :: proc(c: ^Checker, name: string) -> (result: Type_Info, exist: bool) {
-	current := c.current.symbol_table.scope
+	current := c.current.scope
 	for current != nil {
 		if info, contains := current.variable_types[name]; contains {
 			result = info
@@ -236,11 +236,11 @@ check_module :: proc(c: ^Checker, m: ^Parsed_Module) -> (module: ^Checked_Module
 			case .Alias:
 				add_symbol(c, n.identifier) or_return
 			case .Class:
-				scope_id := hash_scope_id(&c.current.symbol_table, n.identifier)
+				scope_id := hash_scope_id(c.current, n.identifier)
 				add_composite_symbol(c, n.identifier, scope_id) or_return
-				push_scope(&c.current.symbol_table, n.identifier)
-				defer pop_scope(&c.current.symbol_table)
-				add_class_scope(&c.current.symbol_table, scope_id)
+				push_scope(c.current, n.identifier)
+				defer pop_scope(c.current)
+				add_class_scope(c.current, scope_id)
 				add_composite_symbol(c, Token{text = "self"}, scope_id, true) or_return
 				for field in n.fields {
 					add_symbol(c, field.name) or_return
@@ -314,8 +314,8 @@ check_module :: proc(c: ^Checker, m: ^Parsed_Module) -> (module: ^Checked_Module
 					constructors = make([]Type_Info, len(n.constructors)),
 					methods      = make([]Type_Info, len(n.methods)),
 				}
-				enter_child_scope(&c.current.symbol_table, n.identifier) or_return
-				defer pop_scope(&c.current.symbol_table)
+				enter_child_scope(c.current, n.identifier) or_return
+				defer pop_scope(c.current)
 				for field, i in n.fields {
 					field_type := check_expr_types(c, field.type_expr) or_return
 					class_info.fields[i] = field_type
@@ -335,8 +335,8 @@ check_module :: proc(c: ^Checker, m: ^Parsed_Module) -> (module: ^Checked_Module
 						parameters     = make([]Type_Info, len(constructor.parameters)),
 						return_type_id = class_decl.type_info.type_id,
 					}
-					enter_child_scope(&c.current.symbol_table, constructor.identifier) or_return
-					defer pop_scope(&c.current.symbol_table)
+					enter_child_scope(c.current, constructor.identifier) or_return
+					defer pop_scope(c.current)
 					for param, i in constructor.parameters {
 						constr_decl.param_names[i] = param.name
 						param_type := check_expr_types(c, param.type_expr) or_return
@@ -361,8 +361,8 @@ check_module :: proc(c: ^Checker, m: ^Parsed_Module) -> (module: ^Checked_Module
 						parameters     = make([]Type_Info, len(method.parameters)),
 						return_type_id = class_decl.type_info.type_id,
 					}
-					enter_child_scope(&c.current.symbol_table, method.identifier) or_return
-					defer pop_scope(&c.current.symbol_table)
+					enter_child_scope(c.current, method.identifier) or_return
+					defer pop_scope(c.current)
 					for param, i in method.parameters {
 						method_decl.param_names[i] = param.name
 						param_type := check_expr_types(c, param.type_expr) or_return
@@ -383,13 +383,13 @@ check_module :: proc(c: ^Checker, m: ^Parsed_Module) -> (module: ^Checked_Module
 
 				set_variable_type(c, "self", t)
 				for constructor, i in n.constructors {
-					enter_child_scope(&c.current.symbol_table, constructor.identifier) or_return
-					defer pop_scope(&c.current.symbol_table)
+					enter_child_scope(c.current, constructor.identifier) or_return
+					defer pop_scope(c.current)
 					class_decl.constructors[i].body = check_node_types(c, constructor.body) or_return
 				}
 				for method, i in n.methods {
-					enter_child_scope(&c.current.symbol_table, method.identifier) or_return
-					defer pop_scope(&c.current.symbol_table)
+					enter_child_scope(c.current, method.identifier) or_return
+					defer pop_scope(c.current)
 					class_decl.methods[i].body = check_node_types(c, method.body) or_return
 				}
 			}
@@ -411,8 +411,8 @@ check_module :: proc(c: ^Checker, m: ^Parsed_Module) -> (module: ^Checked_Module
 				parameters = make([]Type_Info, len(n.parameters)),
 			}
 
-			enter_child_scope(&c.current.symbol_table, n.identifier) or_return
-			defer pop_scope(&c.current.symbol_table)
+			enter_child_scope(c.current, n.identifier) or_return
+			defer pop_scope(c.current)
 
 			return_type := check_expr_types(c, n.return_type_expr) or_return
 			set_variable_type(c, "result", return_type)
@@ -459,9 +459,9 @@ check_node_symbols :: proc(c: ^Checker, node: Parsed_Node) -> (err: Error) {
 
 	case ^Parsed_If_Statement:
 		check_expr_symbols(c, n.condition) or_return
-		push_scope(&c.current.symbol_table, n.token)
+		push_scope(c.current, n.token)
 		check_node_symbols(c, n.body) or_return
-		pop_scope(&c.current.symbol_table)
+		pop_scope(c.current)
 		if n.next_branch != nil {
 			check_node_symbols(c, n.next_branch) or_return
 		}
@@ -477,12 +477,12 @@ check_node_symbols :: proc(c: ^Checker, node: Parsed_Node) -> (err: Error) {
 		}
 		check_expr_symbols(c, n.low) or_return
 		check_expr_symbols(c, n.high) or_return
-		push_scope(&c.current.symbol_table, n.token)
-		defer pop_scope(&c.current.symbol_table)
+		push_scope(c.current, n.token)
+		defer pop_scope(c.current)
 		check_node_symbols(c, n.body) or_return
 
 	case ^Parsed_Var_Declaration:
-		if c.current.symbol_table.scope_depth > 0 {
+		if c.current.scope_depth > 0 {
 			// if contain_symbol(c, m, n.identifier) {
 			// 	err = Semantic_Error {
 			// 		kind    = .Redeclared_Symbol,
@@ -499,8 +499,8 @@ check_node_symbols :: proc(c: ^Checker, node: Parsed_Node) -> (err: Error) {
 	case ^Parsed_Fn_Declaration:
 		// No need to check for function symbol declaration since 
 		// functions can only be declared at the file scope
-		push_scope(&c.current.symbol_table, n.identifier)
-		defer pop_scope(&c.current.symbol_table)
+		push_scope(c.current, n.identifier)
+		defer pop_scope(c.current)
 		add_symbol(c, Token{text = "result"}) or_return
 		for param in n.parameters {
 			// if contain_symbol(c, m, param.name) {
@@ -521,8 +521,8 @@ check_node_symbols :: proc(c: ^Checker, node: Parsed_Node) -> (err: Error) {
 		if n.type_kind == .Alias {
 			check_expr_symbols(c, n.type_expr) or_return
 		} else {
-			enter_child_scope(&c.current.symbol_table, n.identifier) or_return
-			defer pop_scope(&c.current.symbol_table)
+			enter_child_scope(c.current, n.identifier) or_return
+			defer pop_scope(c.current)
 			for field in n.fields {
 				check_expr_symbols(c, field.type_expr) or_return
 			}
@@ -579,7 +579,7 @@ check_expr_symbols :: proc(c: ^Checker, expr: Expression) -> (err: Error) {
 		left_identifier := e.left.(^Identifier_Expression)
 		l := get_symbol(c, left_identifier.name) or_return
 		left_symbol := l.(Composite_Symbol)
-		class_scope := get_class_scope(&c.current.symbol_table, left_symbol.scope_ip)
+		class_scope := get_class_scope(c.current, left_symbol.scope_ip)
 
 		#partial switch a in e.accessor {
 		case ^Identifier_Expression:

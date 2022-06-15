@@ -18,7 +18,9 @@ Checked_Module :: struct {
 	type_count:   int,
 
 	// symbols
-	symbol_table: Symbol_Table,
+	class_scopes: map[Scope_ID]^Semantic_Scope,
+	scope:        ^Semantic_Scope,
+	scope_depth:  int,
 }
 
 new_checked_module :: proc() -> ^Checked_Module {
@@ -30,7 +32,7 @@ new_checked_module :: proc() -> ^Checked_Module {
 			type_lookup = make(map[string]Type_Info),
 		},
 	)
-	init_symbol_table(&m.symbol_table, m.name)
+	init_symbol_table(m)
 	return m
 }
 
@@ -209,56 +211,48 @@ contain_scoped_symbol :: proc(s: ^Semantic_Scope, name: string) -> bool {
 	return false
 }
 
-Symbol_Table :: struct {
-	module_name:  string,
-	class_scopes: map[Scope_ID]^Semantic_Scope,
-	scope:        ^Semantic_Scope,
-	scope_depth:  int,
+init_symbol_table :: proc(c: ^Checked_Module) {
+	c.class_scopes = make(map[Scope_ID]^Semantic_Scope)
+	c.scope = new_scope()
+	c.scope_depth = 0
 }
 
-init_symbol_table :: proc(s: ^Symbol_Table, name: string) {
-	s.module_name = name
-	s.class_scopes = make(map[Scope_ID]^Semantic_Scope)
-	s.scope = new_scope()
-	s.scope_depth = 0
-}
-
-format_scope_name :: proc(s: ^Symbol_Table, name: Token) -> (result: string) {
+format_scope_name :: proc(c: ^Checked_Module, name: Token) -> (result: string) {
 	result = strings.concatenate(
-		{s.module_name, name.text, fmt.tprint(name.line, name.start)},
+		{c.name, name.text, fmt.tprint(name.line, name.start)},
 		context.temp_allocator,
 	)
 	return
 }
 
-hash_scope_id :: proc(s: ^Symbol_Table, name: Token) -> Scope_ID {
-	scope_name := format_scope_name(s, name)
+hash_scope_id :: proc(c: ^Checked_Module, name: Token) -> Scope_ID {
+	scope_name := format_scope_name(c, name)
 	defer delete(scope_name)
 	return Scope_ID(hash.fnv32(transmute([]u8)scope_name))
 }
 
-push_scope :: proc(s: ^Symbol_Table, name: Token) -> Scope_ID {
+push_scope :: proc(c: ^Checked_Module, name: Token) -> Scope_ID {
 	scope := new_scope()
-	scope.id = hash_scope_id(s, name)
-	append(&s.scope.children, scope)
-	scope.parent = s.scope
-	s.scope = scope
-	s.scope_depth += 1
+	scope.id = hash_scope_id(c, name)
+	append(&c.scope.children, scope)
+	scope.parent = c.scope
+	c.scope = scope
+	c.scope_depth += 1
 	return scope.id
 }
 
-push_existing_scope :: proc(s: ^Symbol_Table, scope: ^Semantic_Scope) {
+push_existing_scope :: proc(c: ^Checked_Module, scope: ^Semantic_Scope) {
 	for child in scope.children {
 		if child.id == scope.id {
 			return
 		}
 	}
-	append(&s.scope.children, scope)
-	s.scope = scope
-	s.scope_depth += 1
+	append(&c.scope.children, scope)
+	c.scope = scope
+	c.scope_depth += 1
 }
 
-add_class_scope :: proc(s: ^Symbol_Table, scope_id: Scope_ID) {
+add_class_scope :: proc(c: ^Checked_Module, scope_id: Scope_ID) {
 	get_child_scope :: proc(s: ^Semantic_Scope, scope_id: Scope_ID) -> ^Semantic_Scope {
 		for child in s.children {
 			if child.id == scope_id {
@@ -272,20 +266,20 @@ add_class_scope :: proc(s: ^Symbol_Table, scope_id: Scope_ID) {
 		return nil
 	}
 
-	current := s.scope
+	current := c.scope
 	for current.parent != nil {
 		current = current.parent
 	}
 
 	class_scope := get_child_scope(current, scope_id)
-	s.class_scopes[scope_id] = class_scope
+	c.class_scopes[scope_id] = class_scope
 }
 
-enter_child_scope :: proc(s: ^Symbol_Table, name: Token) -> (err: Error) {
-	scope_id := hash_scope_id(s, name)
-	for scope in s.scope.children {
+enter_child_scope :: proc(c: ^Checked_Module, name: Token) -> (err: Error) {
+	scope_id := hash_scope_id(c, name)
+	for scope in c.scope.children {
 		if scope.id == scope_id {
-			s.scope = scope
+			c.scope = scope
 			return
 		}
 	}
@@ -296,10 +290,10 @@ enter_child_scope :: proc(s: ^Symbol_Table, name: Token) -> (err: Error) {
 	return
 }
 
-enter_child_scope_by_id :: proc(s: ^Symbol_Table, scope_id: Scope_ID) -> (err: Error) {
-	for scope in s.scope.children {
+enter_child_scope_by_id :: proc(c: ^Checked_Module, scope_id: Scope_ID) -> (err: Error) {
+	for scope in c.scope.children {
 		if scope.id == scope_id {
-			s.scope = scope
+			c.scope = scope
 			return
 		}
 	}
@@ -310,11 +304,11 @@ enter_child_scope_by_id :: proc(s: ^Symbol_Table, scope_id: Scope_ID) -> (err: E
 	return
 }
 
-enter_parent_scope_by_id :: proc(s: ^Symbol_Table, scope_id: Scope_ID) -> (err: Error) {
-	scope := s.scope
+enter_parent_scope_by_id :: proc(c: ^Checked_Module, scope_id: Scope_ID) -> (err: Error) {
+	scope := c.scope
 	find: for scope != nil {
 		if scope.id == scope_id {
-			push_existing_scope(s, scope)
+			push_existing_scope(c, scope)
 			return
 		}
 		scope = scope.parent
@@ -327,12 +321,12 @@ enter_parent_scope_by_id :: proc(s: ^Symbol_Table, scope_id: Scope_ID) -> (err: 
 }
 
 
-pop_scope :: proc(s: ^Symbol_Table) {
-	scope := s.scope
-	s.scope = scope.parent
-	s.scope_depth -= 1
+pop_scope :: proc(c: ^Checked_Module) {
+	scope := c.scope
+	c.scope = scope.parent
+	c.scope_depth -= 1
 }
 
-get_class_scope :: proc(s: ^Symbol_Table, scope_id: Scope_ID) -> ^Semantic_Scope {
-	return s.class_scopes[scope_id]
+get_class_scope :: proc(c: ^Checked_Module, scope_id: Scope_ID) -> ^Semantic_Scope {
+	return c.class_scopes[scope_id]
 }

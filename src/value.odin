@@ -29,6 +29,7 @@ Object_Kind :: enum {
 	Array,
 	// Map,
 	Fn,
+	Class,
 }
 
 Object :: struct {
@@ -53,7 +54,22 @@ Map_Object :: struct {
 Fn_Object :: struct {
 	using base: Object,
 	chunk:      Chunk,
-	// params:     [dynamic]Variable,
+}
+
+Class_Object :: struct {
+	using base: Object,
+	fields:     []Class_Field,
+	vtable:     ^Class_Vtable,
+}
+
+Class_Field :: struct {
+	name:  string,
+	value: Value,
+}
+
+Class_Vtable :: struct {
+	constructors: []Chunk,
+	methods:      []Chunk,
 }
 
 token_to_operator :: proc(kind: Token_Kind) -> Operator {

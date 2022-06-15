@@ -430,7 +430,7 @@ print_symbol_table :: proc(c: ^Checker, m: ^Checked_Module) {
 		indent_width = 2,
 	}
 	defer strings.destroy_builder(&printer.builder)
-	scope := m.symbol_table.scope
+	scope := m.scope
 	for scope.parent != nil {
 		scope = scope.parent
 	}
@@ -695,6 +695,7 @@ print_value :: proc(p: ^AST_Printer, value: Value) {
 			}
 			write(p, `]`)
 		case .Fn:
+		case .Class:
 		}
 	}
 }
