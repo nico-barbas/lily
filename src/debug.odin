@@ -662,6 +662,7 @@ print_chunk :: proc(c: Chunk) {
 		.Op_Index_Array  = "Op_Index_Array",
 		.Op_Index_Array  = "Op_Index_Array",
 		.Op_Append_Array = "Op_Append_Array",
+		.Op_Make_Class   = "Op_Make_Class",
 	}
 	max_str := -1
 	for k, v in op_code_str {
@@ -755,6 +756,12 @@ print_chunk :: proc(c: Chunk) {
 			write(&printer, op_code_str[op])
 			format(&printer, op_code_str[op], max_str)
 			fmt.sbprintf(&printer.builder, " ||")
+
+		case .Op_Make_Class:
+			write(&printer, op_code_str[op])
+			format(&printer, op_code_str[op], max_str)
+			fmt.sbprintf(&printer.builder, " ||")
+
 		}
 		if vm.ip >= len(vm.chunk.bytecode) {
 			break

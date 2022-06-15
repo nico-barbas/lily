@@ -35,6 +35,8 @@ Op_Code :: enum byte {
 	Op_Assign_Array,
 	Op_Index_Array,
 	Op_Append_Array,
+
+	Op_Make_Class,
 }
 //odinfmt: enable
 
@@ -71,6 +73,7 @@ instruction_lengths := map[Op_Code]int {
 	.Op_Assign_Array = 1,
 	.Op_Index_Array  = 1,
 	.Op_Append_Array = 1,
+	.Op_Make_Class   = 1,
 }
 
 RANGE_HIGH_SLOT :: 1
@@ -342,6 +345,29 @@ compile_chunk :: proc(c: ^Compiler, nodes: []Checked_Node) -> (result: Chunk) {
 
 compile_chunk_node :: proc(c: ^Compiler, node: Checked_Node) -> (result: Chunk) {
 	compile_node(c, node)
+	result = Chunk {
+		bytecode  = make([]byte, len(c.bytecode)),
+		constants = make([]Value, len(c.constants)),
+		variables = make([]Variable, len(c.variables)),
+	}
+	copy(result.bytecode[:], c.bytecode[:])
+	copy(result.constants[:], c.constants[:])
+	copy(result.variables[:], c.variables[:])
+	return
+}
+
+compile_class_constructor :: proc(
+	c: ^Compiler,
+	class: ^Checked_Class_Declaration,
+	constr: ^Checked_Fn_Declaration,
+) -> (
+	result: Chunk,
+) {
+
+	compile_constructor: {
+
+	}
+
 	result = Chunk {
 		bytecode  = make([]byte, len(c.bytecode)),
 		constants = make([]Value, len(c.constants)),
