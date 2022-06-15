@@ -3,34 +3,33 @@ package tests
 import "core:fmt"
 import lily "../src"
 
-// vm: ^lily.Vm
-
 main :: proc() {
-	// vm = lily.new_vm()
-	// defer lily.delete_vm(vm)
 
 	playground()
 }
 
 playground :: proc() {using lily
-	input: string = `
-		type Foo is class
-			x: number
+	// input: string = `
+	// 	type Foo is class
+	// 		x: number
 
-			constructor new(_x: number):
-				self.x = _x
-			end
+	// 		constructor new(_x: number):
+	// 			self.x = _x
+	// 		end
 
-			fn add(n: number):
-				self.x = self.x + n
-			end
-		end
+	// 		fn add(n: number):
+	// 			self.x = self.x + n
+	// 		end
+	// 	end
 
-	    var a = Foo.new(1)
-	`
-	// input := `
-	// 	var a = 10
+	//     var a = Foo.new(1)
+	// 	a.add(2)
 	// `
+	input := `
+		fn add(a: number, b: number):
+			var c = a + b
+		end
+	`
 
 	parsed_module := make_module()
 	defer delete_module(parsed_module)
@@ -38,7 +37,7 @@ playground :: proc() {using lily
 	err := parse_module(input, parsed_module)
 
 	assert(err == nil, fmt.tprint("Failed, Error raised ->", err))
-	// print_parsed_ast(parsed_module)
+	print_parsed_ast(parsed_module)
 
 	checker := new_checker()
 	checked_module, check_err := check_module(checker, parsed_module)
@@ -59,5 +58,4 @@ playground :: proc() {using lily
 	// fmt.println()
 	// fmt.println(vm.chunk.variables)
 
-	// fmt.println(array.data)
 }

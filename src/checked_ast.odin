@@ -421,6 +421,7 @@ enter_child_scope :: proc(c: ^Checked_Module, name: Token, loc := #caller_locati
 	for scope in c.scope.children {
 		if scope.id == scope_id {
 			c.scope = scope
+			c.scope_depth += 1
 			return
 		}
 	}
@@ -467,7 +468,12 @@ pop_scope :: proc(c: ^Checked_Module) {
 	c.scope_depth -= 1
 }
 
-get_class_scope :: proc(c: ^Checked_Module, scope_id: Scope_ID) -> ^Semantic_Scope {
+get_class_scope_from_name :: proc(c: ^Checked_Module, name: string) -> ^Semantic_Scope {
+	scope_info := c.class_scopes[name]
+	return c.root.children[scope_info.root_index]
+}
+
+get_class_scope_from_id :: proc(c: ^Checked_Module, scope_id: Scope_ID) -> ^Semantic_Scope {
 	for _, class_scope in c.class_scopes {
 		if class_scope.scope_id == scope_id {
 			return c.root.children[class_scope.root_index]

@@ -465,15 +465,24 @@ compile_node :: proc(c: ^Compiler, node: Checked_Node) {
 
 	case ^Checked_Fn_Declaration:
 		// Bind all the variable to stack slot
+		param_ptr: i16 = 0
+		result_addr: i16
+		is_void := n.type_info.type_id == UNTYPED_ID
+		if !is_void {
+			result_addr = add_variable(c, "result")
+			push_op_bind_code(c, result_addr, param_ptr)
+			param_ptr += 1
+		}
 		for name, i in n.param_names {
 			param_addr := add_variable(c, name.text)
-			push_op_bind_code(c, param_addr, i16(i))
+			push_op_bind_code(c, param_addr, param_ptr + i16(i))
 		}
-		result_addr := add_variable(c, "result")
-		push_op_set_code(c, result_addr, false)
+
 
 		compile_node(c, n.body)
-		push_op_return_code(c, result_addr)
+		if !is_void {
+			push_op_return_code(c, result_addr)
+		}
 
 	case ^Checked_Type_Declaration:
 	case ^Checked_Class_Declaration:

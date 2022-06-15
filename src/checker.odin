@@ -293,7 +293,9 @@ check_module :: proc(c: ^Checker, m: ^Parsed_Module) -> (module: ^Checked_Module
 		case ^Parsed_Var_Declaration:
 			add_var_symbol(c, n.identifier) or_return
 		case ^Parsed_Fn_Declaration:
-			add_symbol(c, n.identifier) or_return
+			fn_scope_id := push_scope(c.current, n.identifier)
+			pop_scope(c.current)
+			add_scope_ref_symbol(c, n.identifier, fn_scope_id) or_return
 		}
 	}
 
@@ -395,9 +397,18 @@ check_module :: proc(c: ^Checker, m: ^Parsed_Module) -> (module: ^Checked_Module
 						},
 					)
 					method_signature := Fn_Signature_Info {
-						parameters     = make([]Type_Info, len(method.parameters)),
-						return_type_id = class_decl.type_info.type_id,
+						parameters = make([]Type_Info, len(method.parameters)),
 					}
+
+					if method.return_type_expr != nil {
+						return_expr, return_info := check_expr_types(c, method.return_type_expr) or_return
+						defer free_checked_expression(return_expr)
+						method_signature.return_type_id = return_info.type_id
+						set_variable_type(c, "result", return_info)
+					} else {
+						method_signature.return_type_id = UNTYPED_ID
+					}
+
 					enter_child_scope(c.current, method.identifier) or_return
 					defer pop_scope(c.current)
 					for param, i in method.parameters {
@@ -452,9 +463,15 @@ check_module :: proc(c: ^Checker, m: ^Parsed_Module) -> (module: ^Checked_Module
 			enter_child_scope(c.current, n.identifier) or_return
 			defer pop_scope(c.current)
 
-			return_expr, return_info := check_expr_types(c, n.return_type_expr) or_return
-			defer free_checked_expression(return_expr)
-			set_variable_type(c, "result", return_info)
+			if n.return_type_expr != nil {
+				return_expr, return_info := check_expr_types(c, n.return_type_expr) or_return
+				defer free_checked_expression(return_expr)
+				fn_signature.return_type_id = return_info.type_id
+				set_variable_type(c, "result", return_info)
+			} else {
+				fn_signature.return_type_id = UNTYPED_ID
+			}
+
 			for param, i in n.parameters {
 				fn_decl.param_names[i] = param.name
 				param_expr, param_info := check_expr_types(c, param.type_expr) or_return
@@ -464,7 +481,6 @@ check_module :: proc(c: ^Checker, m: ^Parsed_Module) -> (module: ^Checked_Module
 				set_variable_type(c, param.name.text, param_info)
 			}
 			fn_decl.body = check_node_types(c, n.body) or_return
-			fn_signature.return_type_id = return_info.type_id
 			fn_decl.type_info.type_id_data = fn_signature
 
 			append(&module.functions, fn_decl)
@@ -524,7 +540,7 @@ check_node_symbols :: proc(c: ^Checker, node: Parsed_Node) -> (err: Error) {
 
 	case ^Parsed_Var_Declaration:
 		if c.current.scope_depth > 0 {
-			add_symbol(c, n.identifier) or_return
+			add_var_symbol(c, n.identifier) or_return
 		}
 		check_expr_symbols(c, n.type_expr) or_return
 		check_expr_symbols(c, n.expr) or_return
@@ -534,12 +550,15 @@ check_node_symbols :: proc(c: ^Checker, node: Parsed_Node) -> (err: Error) {
 		// functions can only be declared at the file scope
 		enter_child_scope(c.current, n.identifier)
 		defer pop_scope(c.current)
-		add_var_symbol(c, Token{text = "result"}) or_return
+		if n.return_type_expr != nil {
+			check_expr_symbols(c, n.return_type_expr) or_return
+			add_var_symbol(c, Token{text = "result"}) or_return
+		}
 		for param in n.parameters {
 			add_var_symbol(c, param.name, true) or_return
 			check_expr_symbols(c, param.type_expr) or_return
 		}
-		check_expr_symbols(c, n.return_type_expr) or_return
+
 		check_node_symbols(c, n.body) or_return
 
 	case ^Parsed_Type_Declaration:
@@ -603,8 +622,18 @@ check_expr_symbols :: proc(c: ^Checker, expr: Parsed_Expression) -> (err: Error)
 	case ^Parsed_Dot_Expression:
 		left_identifier := e.left.(^Parsed_Identifier_Expression)
 		l := get_symbol(c, left_identifier.name) or_return
-		left_symbol := l.(Scope_Ref_Symbol)
-		class_scope := get_class_scope(c.current, left_symbol.scope_id)
+
+		class_scope: ^Semantic_Scope
+		switch left_symbol in l {
+		case string:
+			assert(false)
+		case Scope_Ref_Symbol:
+			class_scope = get_class_scope_from_id(c.current, left_symbol.scope_id)
+		case Var_Symbol:
+			class_scope = get_class_scope_from_name(c.current, left_symbol.type_info.name)
+		}
+		// left_symbol := l.(Scope_Ref_Symbol)
+		// class_scope := get_class_scope(c.current, left_symbol.scope_id)
 
 		#partial switch a in e.selector {
 		case ^Parsed_Identifier_Expression:
@@ -643,9 +672,6 @@ check_expr_symbols :: proc(c: ^Checker, expr: Parsed_Expression) -> (err: Error)
 	return
 }
 
-
-// FIXME: Need a way to extract the token from an expression, either at an
-// Parser level or at a Checker level
 // Checked nodes take ownership of the Parsed Expressions and produce a Checked_Node
 check_node_types :: proc(c: ^Checker, node: Parsed_Node) -> (result: Checked_Node, err: Error) {
 	switch n in node {
@@ -748,12 +774,6 @@ check_node_types :: proc(c: ^Checker, node: Parsed_Node) -> (result: Checked_Nod
 		var_expr, var_info := check_expr_types(c, n.type_expr) or_return
 		value_expr, value_info := check_expr_types(c, n.expr) or_return
 		defer free_checked_expression(var_expr)
-		when VM_DEBUG_VIEW {
-			call := n.expr.(^Parsed_Call_Expression)
-			fmt.printf("%#v\n", n)
-			fmt.printf("%#v\n", call.func)
-			fmt.println(value_expr, value_info)
-		}
 
 		// we check if the type needs to be infered
 		if type_equal(c, var_info, c.builtin_types[UNTYPED_ID]) {
@@ -995,12 +1015,9 @@ check_expr_types :: proc(c: ^Checker, expr: Parsed_Expression) -> (
 			if is_module {
 				assert(false, "Module support not implemented yet")
 			} else {
-				class_info, _ := get_variable_type(c, name)
+				class_info, _ = get_variable_type(c, name)
 				checked_dot.kind = .Instance
 			}
-		}
-		if class_info.type_id_data == nil {
-			fmt.println(class_info)
 		}
 
 		class_def := class_info.type_id_data.(Class_Definition_Info)
