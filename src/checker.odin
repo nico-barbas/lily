@@ -61,11 +61,17 @@ get_symbol :: proc(c: ^Checker, token: Token) -> (result: Symbol, err: Error) {
 		for name in scope.symbols {
 			switch n in name {
 			case string:
-				if name == token.text {
+				if n == token.text {
 					result = name
 					return
 				}
-			case Composite_Symbol:
+			case Scope_Ref_Symbol:
+				if n.name == token.text {
+					result = name
+					return
+				}
+
+			case Var_Symbol:
 				if n.name == token.text {
 					result = name
 					return
@@ -84,23 +90,37 @@ get_symbol :: proc(c: ^Checker, token: Token) -> (result: Symbol, err: Error) {
 	return
 }
 
-add_symbol :: proc(c: ^Checker, token: Token, shadow := false) -> Error {
-	return add_scoped_symbol(c.current.scope, token, shadow)
+add_symbol :: proc {
+	add_symbol_to_current_module,
+	add_symbol_to_scope,
 }
 
-add_composite_symbol :: proc(
+add_symbol_to_current_module :: proc(c: ^Checker, token: Token, shadow := false) -> Error {
+	return add_symbol_to_scope(c.current.scope, token, shadow)
+}
+
+add_scope_ref_symbol :: proc {
+	add_scope_ref_symbol_to_scope,
+	add_scope_ref_symbol_to_current_module,
+}
+
+add_scope_ref_symbol_to_current_module :: proc(
 	c: ^Checker,
 	token: Token,
 	scope_id: Scope_ID,
 	shadow := false,
 ) -> Error {
-	return add_scoped_composite_symbol(c.current.scope, token, scope_id, shadow)
+	return add_scope_ref_symbol_to_scope(c.current.scope, token, scope_id, shadow)
 }
 
-set_variable_type :: proc(c: ^Checker, name: string, t: Type_Info) {
-	c.current.scope.variable_types[name] = t
+add_var_symbol :: proc {
+	add_var_symbol_to_scope,
+	add_var_symbol_to_current_module,
 }
 
+add_var_symbol_to_current_module :: proc(c: ^Checker, t: Token, shadow := false) -> Error {
+	return add_var_symbol_to_scope(c.current.scope, t, shadow)
+}
 
 add_type_alias :: proc(c: ^Checker, name: Token, parent_type: Type_ID) {
 	c.current.type_lookup[name.text] = Type_Info {
@@ -142,8 +162,15 @@ add_class_type :: proc(c: ^Checker, decl: ^Parsed_Type_Declaration) {
 	c.current.type_count += 1
 }
 
+set_variable_type :: proc(c: ^Checker, name: string, t: Type_Info) {
+	symbol := c.current.scope.var_symbol_lookup[name]
+	var_symbol := symbol.(Var_Symbol)
+	var_symbol.type_info = t
+}
+
 
 // FIXME: Needs a code review. Does not check all the available modules
+
 get_type :: proc(c: ^Checker, name: string) -> (result: Type_Info, exist: bool) {
 	for info in c.builtin_types {
 		if info.name == name {
@@ -193,8 +220,9 @@ get_type_from_identifier :: proc(c: ^Checker, i: Token) -> (result: Type_Info) {
 get_variable_type :: proc(c: ^Checker, name: string) -> (result: Type_Info, exist: bool) {
 	current := c.current.scope
 	for current != nil {
-		if info, contains := current.variable_types[name]; contains {
-			result = info
+		if symbol, contains := current.var_symbol_lookup[name]; contains {
+			var_symbol := symbol.(Var_Symbol)
+			result = var_symbol.type_info
 			contains = true
 			break
 		}
@@ -233,11 +261,11 @@ check_module :: proc(c: ^Checker, m: ^Parsed_Module) -> (module: ^Checked_Module
 				add_symbol(c, n.identifier) or_return
 			case .Class:
 				scope_id := hash_scope_id(c.current, n.identifier)
-				add_composite_symbol(c, n.identifier, scope_id) or_return
+				add_scope_ref_symbol(c, n.identifier, scope_id) or_return
 				push_scope(c.current, n.identifier)
 				defer pop_scope(c.current)
 				add_class_scope(c.current, scope_id)
-				add_composite_symbol(c, Token{text = "self"}, scope_id, true) or_return
+				add_scope_ref_symbol(c, Token{text = "self"}, scope_id, true) or_return
 				for field in n.fields {
 					add_symbol(c, field.name) or_return
 				}
@@ -254,7 +282,7 @@ check_module :: proc(c: ^Checker, m: ^Parsed_Module) -> (module: ^Checked_Module
 	for node in m.nodes {
 		#partial switch n in node {
 		case ^Parsed_Var_Declaration:
-			add_symbol(c, n.identifier) or_return
+			add_var_symbol(c, n.identifier) or_return
 		case ^Parsed_Fn_Declaration:
 			add_symbol(c, n.identifier) or_return
 		}
@@ -487,14 +515,6 @@ check_node_symbols :: proc(c: ^Checker, node: Parsed_Node) -> (err: Error) {
 
 	case ^Parsed_Var_Declaration:
 		if c.current.scope_depth > 0 {
-			// if contain_symbol(c, m, n.identifier) {
-			// 	err = Semantic_Error {
-			// 		kind    = .Redeclared_Symbol,
-			// 		token   = n.identifier,
-			// 		details = fmt.tprintf("Redeclaration of '%s'", n.identifier.text),
-			// 	}
-			// 	return
-			// }
 			add_symbol(c, n.identifier) or_return
 		}
 		check_expr_symbols(c, n.type_expr) or_return
@@ -503,18 +523,10 @@ check_node_symbols :: proc(c: ^Checker, node: Parsed_Node) -> (err: Error) {
 	case ^Parsed_Fn_Declaration:
 		// No need to check for function symbol declaration since 
 		// functions can only be declared at the file scope
-		push_scope(c.current, n.identifier)
+		enter_child_scope(c.current, n.identifier)
 		defer pop_scope(c.current)
 		add_symbol(c, Token{text = "result"}) or_return
 		for param in n.parameters {
-			// if contain_symbol(c, m, param.name) {
-			// 	err = Semantic_Error {
-			// 		kind    = .Redeclared_Symbol,
-			// 		token   = param.name,
-			// 		details = fmt.tprintf("Redeclaration of '%s'", param.name.text),
-			// 	}
-			// 	return
-			// }
 			add_symbol(c, param.name, true) or_return
 			check_expr_symbols(c, param.type_expr) or_return
 		}
@@ -582,7 +594,7 @@ check_expr_symbols :: proc(c: ^Checker, expr: Parsed_Expression) -> (err: Error)
 	case ^Parsed_Dot_Expression:
 		left_identifier := e.left.(^Parsed_Identifier_Expression)
 		l := get_symbol(c, left_identifier.name) or_return
-		left_symbol := l.(Composite_Symbol)
+		left_symbol := l.(Scope_Ref_Symbol)
 		class_scope := get_class_scope(c.current, left_symbol.scope_ip)
 
 		#partial switch a in e.selector {

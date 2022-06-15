@@ -13,20 +13,20 @@ main :: proc() {
 }
 
 playground :: proc() {using lily
-	input: string = `
-		type Foo is class
-			x: number
+	// input: string = `
+	// 	type Foo is class
+	// 		x: number
 
-			constructor new(_x: number):
-				self.x = _x
-			end
-		end
+	// 		constructor new(_x: number):
+	// 			self.x = _x
+	// 		end
+	// 	end
 
-        var a = Foo.new(1)
-	`
-	// input := `
-	// 	a.x = 10
+	//     var a = Foo.new(1)
 	// `
+	input := `
+		var a = 10
+	`
 
 	parsed_module := make_module()
 	defer delete_module(parsed_module)

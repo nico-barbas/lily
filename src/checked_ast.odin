@@ -248,27 +248,34 @@ Checked_Class_Declaration :: struct {
 // Symbol table stuff
 
 Semantic_Scope :: struct {
-	id:             Scope_ID,
-	symbols:        [dynamic]Symbol,
-	variable_types: map[string]Type_Info,
-	parent:         ^Semantic_Scope,
-	children:       [dynamic]^Semantic_Scope,
+	id:                Scope_ID,
+	symbols:           [dynamic]Symbol,
+	var_symbol_lookup: map[string]^Symbol,
+	parent:            ^Semantic_Scope,
+	children:          [dynamic]^Semantic_Scope,
 }
 
 Symbol :: union {
 	string,
-	Composite_Symbol,
+	Scope_Ref_Symbol,
+	Var_Symbol,
 }
 
-Composite_Symbol :: struct {
+// For classes, constructors, methods and functions
+Scope_Ref_Symbol :: struct {
 	name:     string,
 	scope_ip: Scope_ID,
+}
+
+Var_Symbol :: struct {
+	name:      string,
+	type_info: Type_Info,
 }
 
 new_scope :: proc() -> ^Semantic_Scope {
 	scope := new(Semantic_Scope)
 	scope.symbols = make([dynamic]Symbol)
-	scope.variable_types = make(map[string]Type_Info)
+	scope.var_symbol_lookup = make(map[string]^Symbol)
 	scope.children = make([dynamic]^Semantic_Scope)
 	return scope
 }
@@ -278,7 +285,7 @@ delete_scope :: proc(s: ^Semantic_Scope) {
 	free(s)
 }
 
-add_scoped_symbol :: proc(s: ^Semantic_Scope, token: Token, shadow := false) -> (err: Error) {
+add_symbol_to_scope :: proc(s: ^Semantic_Scope, token: Token, shadow := false) -> (err: Error) {
 	if !shadow && contain_scoped_symbol(s, token.text) {
 		return Semantic_Error{
 			kind = .Redeclared_Symbol,
@@ -291,7 +298,7 @@ add_scoped_symbol :: proc(s: ^Semantic_Scope, token: Token, shadow := false) -> 
 	return
 }
 
-add_scoped_composite_symbol :: proc(
+add_scope_ref_symbol_to_scope :: proc(
 	s: ^Semantic_Scope,
 	token: Token,
 	scope_id: Scope_ID,
@@ -307,8 +314,21 @@ add_scoped_composite_symbol :: proc(
 		}
 	}
 
-	append(&s.symbols, Composite_Symbol{name = token.text, scope_ip = scope_id})
+	append(&s.symbols, Scope_Ref_Symbol{name = token.text, scope_ip = scope_id})
 	return
+}
+
+add_var_symbol_to_scope :: proc(s: ^Semantic_Scope, t: Token, shadow := false) -> Error {
+	if !shadow && contain_scoped_symbol(s, t.text) {
+		return Semantic_Error{
+			kind = .Redeclared_Symbol,
+			token = t,
+			details = fmt.tprintf("Redeclared symbol: %s", t.text),
+		}
+	}
+	append(&s.symbols, Var_Symbol{name = t.text})
+	s.var_symbol_lookup[t.text] = &s.symbols[len(s.symbols) - 1]
+	return nil
 }
 
 contain_scoped_symbol :: proc(s: ^Semantic_Scope, name: string) -> bool {
@@ -318,7 +338,11 @@ contain_scoped_symbol :: proc(s: ^Semantic_Scope, name: string) -> bool {
 			if smbl == name {
 				return true
 			}
-		case Composite_Symbol:
+		case Scope_Ref_Symbol:
+			if smbl.name == name {
+				return true
+			}
+		case Var_Symbol:
 			if smbl.name == name {
 				return true
 			}
@@ -357,16 +381,16 @@ push_scope :: proc(c: ^Checked_Module, name: Token) -> Scope_ID {
 	return scope.id
 }
 
-push_existing_scope :: proc(c: ^Checked_Module, scope: ^Semantic_Scope) {
-	for child in scope.children {
-		if child.id == scope.id {
-			return
-		}
-	}
-	append(&c.scope.children, scope)
-	c.scope = scope
-	c.scope_depth += 1
-}
+// push_existing_scope :: proc(c: ^Checked_Module, scope: ^Semantic_Scope) {
+// 	for child in scope.children {
+// 		if child.id == scope.id {
+// 			return
+// 		}
+// 	}
+// 	append(&c.scope.children, scope)
+// 	c.scope = scope
+// 	c.scope_depth += 1
+// }
 
 add_class_scope :: proc(c: ^Checked_Module, scope_id: Scope_ID) {
 	get_child_scope :: proc(s: ^Semantic_Scope, scope_id: Scope_ID) -> ^Semantic_Scope {
@@ -392,7 +416,12 @@ add_class_scope :: proc(c: ^Checked_Module, scope_id: Scope_ID) {
 }
 
 enter_child_scope :: proc(c: ^Checked_Module, name: Token) -> (err: Error) {
-	scope_id := hash_scope_id(c, name)
+	scope_name := strings.concatenate(
+		{c.name, name.text, fmt.tprint(name.line, name.start)},
+		context.temp_allocator,
+	)
+	defer delete(scope_name)
+	scope_id := Scope_ID(hash.fnv32(transmute([]u8)scope_name))
 	for scope in c.scope.children {
 		if scope.id == scope_id {
 			c.scope = scope
@@ -406,35 +435,35 @@ enter_child_scope :: proc(c: ^Checked_Module, name: Token) -> (err: Error) {
 	return
 }
 
-enter_child_scope_by_id :: proc(c: ^Checked_Module, scope_id: Scope_ID) -> (err: Error) {
-	for scope in c.scope.children {
-		if scope.id == scope_id {
-			c.scope = scope
-			return
-		}
-	}
-	err = Internal_Error {
-		kind    = .Unknown_Scope_Name,
-		details = fmt.tprintf("Scope #%i not known", scope_id),
-	}
-	return
-}
+// enter_child_scope_by_id :: proc(c: ^Checked_Module, scope_id: Scope_ID) -> (err: Error) {
+// 	for scope in c.scope.children {
+// 		if scope.id == scope_id {
+// 			c.scope = scope
+// 			return
+// 		}
+// 	}
+// 	err = Internal_Error {
+// 		kind    = .Unknown_Scope_Name,
+// 		details = fmt.tprintf("Scope #%i not known", scope_id),
+// 	}
+// 	return
+// }
 
-enter_parent_scope_by_id :: proc(c: ^Checked_Module, scope_id: Scope_ID) -> (err: Error) {
-	scope := c.scope
-	find: for scope != nil {
-		if scope.id == scope_id {
-			push_existing_scope(c, scope)
-			return
-		}
-		scope = scope.parent
-	}
-	err = Internal_Error {
-		kind    = .Unknown_Scope_Name,
-		details = fmt.tprintf("Scope #%i not known", scope_id),
-	}
-	return
-}
+// enter_parent_scope_by_id :: proc(c: ^Checked_Module, scope_id: Scope_ID) -> (err: Error) {
+// 	scope := c.scope
+// 	find: for scope != nil {
+// 		if scope.id == scope_id {
+// 			push_existing_scope(c, scope)
+// 			return
+// 		}
+// 		scope = scope.parent
+// 	}
+// 	err = Internal_Error {
+// 		kind    = .Unknown_Scope_Name,
+// 		details = fmt.tprintf("Scope #%i not known", scope_id),
+// 	}
+// 	return
+// }
 
 
 pop_scope :: proc(c: ^Checked_Module) {

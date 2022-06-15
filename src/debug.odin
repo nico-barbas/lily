@@ -545,8 +545,10 @@ print_semantic_scope :: proc(p: ^Debug_Printer, s: ^Semantic_Scope) {
 			switch smbl in symbol {
 			case string:
 				fmt.sbprintf(&p.builder, "Name: %s", smbl)
-			case Composite_Symbol:
+			case Scope_Ref_Symbol:
 				fmt.sbprintf(&p.builder, "Name: %s, Referred Scope: %d", smbl.name, smbl.scope_ip)
+			case Var_Symbol:
+				fmt.sbprintf(&p.builder, "Name: %s", smbl.name)
 			}
 		}
 		decrement(p)
