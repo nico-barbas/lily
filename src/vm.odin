@@ -377,7 +377,7 @@ run_bytecode :: proc(vm: ^Vm) {
 // 		case ^Parsed_Var_Declaration:
 // 			value: Value
 // 			#partial switch t in n.type_expr {
-// 			case ^Identifier_Expression:
+// 			case ^Parsed_Identifier_Expression:
 // 				switch t.name {
 // 				case "number":
 // 					value = Value {
@@ -396,7 +396,7 @@ run_bytecode :: proc(vm: ^Vm) {
 // 					}
 // 				}
 
-// 			case ^Array_Type_Expression:
+// 			case ^Parsed_Array_Type_Expression:
 // 				assert(false, "Array not implemented yet")
 // 			}
 // 			push_stack_value(vm, n.identifier)
@@ -450,12 +450,12 @@ run_bytecode :: proc(vm: ^Vm) {
 // 	vm.stack_depth -= 1
 // }
 
-// eval_expr :: proc(vm: ^Vm, expr: Expression) -> (result: Value, err: Error) {
+// eval_expr :: proc(vm: ^Vm, expr: Parsed_Expression) -> (result: Value, err: Error) {
 // 	switch e in expr {
-// 	case ^Literal_Expression:
+// 	case ^Parsed_Literal_Expression:
 // 		result = e.value
 
-// 	case ^String_Literal_Expression:
+// 	case ^Parsed_String_Literal_Expression:
 // 		// FIXME: Very naive approach. No reuse of constant strings or stack allocation
 // 		str := make([]rune, len(e.value))
 // 		for r, i in e.value {
@@ -467,7 +467,7 @@ run_bytecode :: proc(vm: ^Vm) {
 // 			data = cast(^Object)obj,
 // 		}
 
-// 	case ^Array_Literal_Expression:
+// 	case ^Parsed_Array_Literal_Expression:
 // 		array := make([dynamic]Value)
 // 		for element_expr, i in e.values {
 // 			value := eval_expr(vm, element_expr) or_return
@@ -479,7 +479,7 @@ run_bytecode :: proc(vm: ^Vm) {
 // 			data = cast(^Object)obj,
 // 		}
 
-// 	case ^Unary_Expression:
+// 	case ^Parsed_Unary_Expression:
 // 		result = eval_expr(vm, e.expr) or_return
 // 		#partial switch e.op {
 // 		case .Minus_Op:
@@ -488,7 +488,7 @@ run_bytecode :: proc(vm: ^Vm) {
 // 			result.data = !(result.data.(bool))
 // 		}
 
-// 	case ^Binary_Expression:
+// 	case ^Parsed_Binary_Expression:
 // 		// FIXME: Boolean operator needs to eval expr sequentially depending on
 // 		// the result of the first
 // 		left := eval_expr(vm, e.left) or_return
@@ -535,20 +535,20 @@ run_bytecode :: proc(vm: ^Vm) {
 // 			}
 // 		}
 
-// 	case ^Identifier_Expression:
+// 	case ^Parsed_Identifier_Expression:
 // 		result = get_stack_value(vm, e.name)
 
-// 	case ^Index_Expression:
-// 		obj := get_stack_value(vm, e.left.(^Identifier_Expression).name)
+// 	case ^Parsed_Index_Expression:
+// 		obj := get_stack_value(vm, e.left.(^Parsed_Identifier_Expression).name)
 // 		array := cast(^Array_Object)obj.data.(^Object)
 // 		index_value := eval_expr(vm, e.index) or_return
 // 		result = array.data[int(index_value.data.(f64))]
 // 	// e.
 
-// 	case ^Array_Type_Expression:
+// 	case ^Parsed_Array_Type_Expression:
 // 		assert(false, "Invalid branch")
 
-// 	case ^Call_Expression:
+// 	case ^Parsed_Call_Expression:
 // 		value := eval_expr(vm, e.func) or_return
 // 		fn := cast(^Fn_Object)value.data.(^Object)
 // 		push_stack(vm)
@@ -578,10 +578,10 @@ run_bytecode :: proc(vm: ^Vm) {
 // 	case ^Parsed_Assignment_Statement:
 // 		result := eval_expr(vm, n.right) or_return
 // 		#partial switch left in n.left {
-// 		case ^Identifier_Expression:
+// 		case ^Parsed_Identifier_Expression:
 // 			set_stack_value(vm, left.name, result)
-// 		case ^Index_Expression:
-// 			obj := get_stack_value(vm, left.left.(^Identifier_Expression).name)
+// 		case ^Parsed_Index_Expression:
+// 			obj := get_stack_value(vm, left.left.(^Parsed_Identifier_Expression).name)
 // 			array := cast(^Array_Object)obj.data.(^Object)
 // 			index_value := eval_expr(vm, left.index) or_return
 // 			array.data[int(index_value.data.(f64))] = result

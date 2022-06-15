@@ -543,15 +543,15 @@ check_node_symbols :: proc(c: ^Checker, node: Parsed_Node) -> (err: Error) {
 	return
 }
 
-check_expr_symbols :: proc(c: ^Checker, expr: Expression) -> (err: Error) {
+check_expr_symbols :: proc(c: ^Checker, expr: Parsed_Expression) -> (err: Error) {
 	switch e in expr {
-	case ^Literal_Expression:
+	case ^Parsed_Literal_Expression:
 	// No symbols to check
 
-	case ^String_Literal_Expression:
+	case ^Parsed_String_Literal_Expression:
 	// No symbols to check
 
-	case ^Array_Literal_Expression:
+	case ^Parsed_Array_Literal_Expression:
 		// Check that the array specialization is of a known type
 		check_expr_symbols(c, e.type_expr) or_return
 		// Check all the inlined elements of the array
@@ -559,14 +559,14 @@ check_expr_symbols :: proc(c: ^Checker, expr: Expression) -> (err: Error) {
 			check_expr_symbols(c, value) or_return
 		}
 
-	case ^Unary_Expression:
+	case ^Parsed_Unary_Expression:
 		check_expr_symbols(c, e.expr) or_return
 
-	case ^Binary_Expression:
+	case ^Parsed_Binary_Expression:
 		check_expr_symbols(c, e.left) or_return
 		check_expr_symbols(c, e.right) or_return
 
-	case ^Identifier_Expression:
+	case ^Parsed_Identifier_Expression:
 		if !contain_symbol(c, e.name) {
 			err = Semantic_Error {
 				kind    = .Unknown_Symbol,
@@ -575,18 +575,18 @@ check_expr_symbols :: proc(c: ^Checker, expr: Expression) -> (err: Error) {
 			}
 		}
 
-	case ^Index_Expression:
+	case ^Parsed_Index_Expression:
 		check_expr_symbols(c, e.left) or_return
 		check_expr_symbols(c, e.index) or_return
 
-	case ^Dot_Expression:
-		left_identifier := e.left.(^Identifier_Expression)
+	case ^Parsed_Dot_Expression:
+		left_identifier := e.left.(^Parsed_Identifier_Expression)
 		l := get_symbol(c, left_identifier.name) or_return
 		left_symbol := l.(Composite_Symbol)
 		class_scope := get_class_scope(c.current, left_symbol.scope_ip)
 
 		#partial switch a in e.selector {
-		case ^Identifier_Expression:
+		case ^Parsed_Identifier_Expression:
 			if !contain_scoped_symbol(class_scope, a.name.text) {
 				err = Semantic_Error {
 					kind    = .Unknown_Symbol,
@@ -594,9 +594,9 @@ check_expr_symbols :: proc(c: ^Checker, expr: Expression) -> (err: Error) {
 					details = fmt.tprintf("Unknown Class field: %s", a.name.text),
 				}
 			}
-		case ^Call_Expression:
+		case ^Parsed_Call_Expression:
 			// FIXME: Does not support Function literals
-			fn_identifier := a.func.(^Identifier_Expression)
+			fn_identifier := a.func.(^Parsed_Identifier_Expression)
 			if !contain_scoped_symbol(class_scope, fn_identifier.name.text) {
 				err = Semantic_Error {
 					kind    = .Unknown_Symbol,
@@ -609,13 +609,13 @@ check_expr_symbols :: proc(c: ^Checker, expr: Expression) -> (err: Error) {
 			}
 		}
 
-	case ^Call_Expression:
+	case ^Parsed_Call_Expression:
 		check_expr_symbols(c, e.func) or_return
 		for arg in e.args {
 			check_expr_symbols(c, arg) or_return
 		}
 
-	case ^Array_Type_Expression:
+	case ^Parsed_Array_Type_Expression:
 		check_expr_symbols(c, e.elem_type) or_return
 
 	}
@@ -771,28 +771,31 @@ check_node_types :: proc(c: ^Checker, node: Parsed_Node) -> (result: Checked_Nod
 	return
 }
 
-check_expr_types :: proc(c: ^Checker, expr: Expression) -> (
+check_expr_types :: proc(c: ^Checker, expr: Parsed_Expression) -> (
 	result: Checked_Expression,
 	info: Type_Info,
 	err: Error,
 ) {
 	switch e in expr {
-	case ^Literal_Expression:
+	case ^Parsed_Literal_Expression:
 		#partial switch e.value.kind {
 		case .Number:
 			info = c.builtin_types[UNTYPED_NUMBER_ID]
 		case .Boolean:
 			info = c.builtin_types[UNTYPED_BOOL_ID]
 		case:
-			assert(false, "Probably erroneous path for Literal_Expression in  check_expr_types procedure")
+			assert(
+				false,
+				"Probably erroneous path for Parsed_Literal_Expression in  check_expr_types procedure",
+			)
 		}
 		result = new_clone(Checked_Literal_Expression{type_info = info, value = e.value})
 
-	case ^String_Literal_Expression:
+	case ^Parsed_String_Literal_Expression:
 		info = c.builtin_types[UNTYPED_STRING_ID]
 		result = new_clone(Checked_String_Literal_Expression{type_info = info, value = e.value})
 
-	case ^Array_Literal_Expression:
+	case ^Parsed_Array_Literal_Expression:
 		_, lit_type := check_expr_types(c, e.type_expr) or_return
 		generic_id := lit_type.type_id_data.(Generic_Type_Info)
 		inner_type := get_type_from_id(c, generic_id.spec_type_id)
@@ -819,12 +822,12 @@ check_expr_types :: proc(c: ^Checker, expr: Expression) -> (
 		}
 		result = checked_arr
 
-	case ^Unary_Expression:
+	case ^Parsed_Unary_Expression:
 		checked_unary := new_clone(Checked_Unary_Expression{token = e.token, op = e.op})
 		checked_unary.expr, info = check_expr_types(c, e.expr) or_return
 		checked_unary.type_info = info
 		#partial switch e.op {
-		// Expression must be of "truthy" type
+		// Parsed_Expression must be of "truthy" type
 		case .Not_Op:
 			if !is_truthy_type(info) {
 				err = Semantic_Error {
@@ -834,7 +837,7 @@ check_expr_types :: proc(c: ^Checker, expr: Expression) -> (
 				}
 			}
 
-		// Expression must be of numerical type
+		// Parsed_Expression must be of numerical type
 		case .Minus_Op:
 			if !is_numerical_type(info) {
 				err = Semantic_Error {
@@ -848,7 +851,7 @@ check_expr_types :: proc(c: ^Checker, expr: Expression) -> (
 		}
 		result = checked_unary
 
-	case ^Binary_Expression:
+	case ^Parsed_Binary_Expression:
 		checked_binary := new_clone(Checked_Binary_Expression{token = e.token, op = e.op})
 		left, left_info := check_expr_types(c, e.left) or_return
 		right, right_info := check_expr_types(c, e.right) or_return
@@ -901,11 +904,11 @@ check_expr_types :: proc(c: ^Checker, expr: Expression) -> (
 		checked_binary.type_info = info
 		result = checked_binary
 
-	case ^Identifier_Expression:
+	case ^Parsed_Identifier_Expression:
 		info = get_type_from_identifier(c, e.name)
 		result = new_clone(Checked_Identifier_Expression{name = e.name, type_info = info})
 
-	case ^Index_Expression:
+	case ^Parsed_Index_Expression:
 		checked_index := new_clone(Checked_Index_Expression{token = e.token})
 		left, left_info := check_expr_types(c, e.left) or_return
 		defer free_checked_expression(left)
@@ -930,7 +933,7 @@ check_expr_types :: proc(c: ^Checker, expr: Expression) -> (
 			checked_index.type_info = info
 			result = checked_index
 		} else {
-			identifier := e.left.(^Identifier_Expression)
+			identifier := e.left.(^Parsed_Identifier_Expression)
 			err = Semantic_Error {
 				kind    = .Mismatched_Types,
 				token   = e.token,
@@ -938,9 +941,9 @@ check_expr_types :: proc(c: ^Checker, expr: Expression) -> (
 			}
 		}
 
-	case ^Dot_Expression:
-		left_identifier := e.left.(^Identifier_Expression)
-		selector_identifier := e.selector.(^Identifier_Expression)
+	case ^Parsed_Dot_Expression:
+		left_identifier := e.left.(^Parsed_Identifier_Expression)
+		selector_identifier := e.selector.(^Parsed_Identifier_Expression)
 		checked_dot := new_clone(
 			Checked_Dot_Expression{
 				token = e.token,
@@ -973,17 +976,17 @@ check_expr_types :: proc(c: ^Checker, expr: Expression) -> (
 		class_def := class_info.type_id_data.(Class_Definition_Info)
 		class_decl := get_class_decl(c.current, class_info.type_id)
 		#partial switch a in e.selector {
-		case ^Identifier_Expression:
+		case ^Parsed_Identifier_Expression:
 			for field, i in class_decl.field_names {
 				if field.text == a.name.text {
 					info = class_def.fields[i]
 					break
 				}
 			}
-		case ^Call_Expression:
+		case ^Parsed_Call_Expression:
 			is_constructor := false
 			for constructor, i in class_decl.constructors {
-				call_name := a.func.(^Identifier_Expression)
+				call_name := a.func.(^Parsed_Identifier_Expression)
 				if constructor.identifier.text == call_name.name.text {
 					info = class_info
 					is_constructor = true
@@ -999,7 +1002,7 @@ check_expr_types :: proc(c: ^Checker, expr: Expression) -> (
 				return
 			} else {
 				for method, i in class_decl.methods {
-					call_name := a.func.(^Identifier_Expression)
+					call_name := a.func.(^Parsed_Identifier_Expression)
 					if method.identifier.text == call_name.name.text {
 						info = class_def.methods[i]
 						break
@@ -1010,7 +1013,7 @@ check_expr_types :: proc(c: ^Checker, expr: Expression) -> (
 		checked_dot.type_info = info
 		result = checked_dot
 
-	case ^Call_Expression:
+	case ^Parsed_Call_Expression:
 		checked_call := new_clone(
 			Checked_Call_Expression{token = e.token, args = make([]Checked_Expression, len(e.args))},
 		)
@@ -1057,7 +1060,7 @@ check_expr_types :: proc(c: ^Checker, expr: Expression) -> (
 			// FIXME: return an error
 		}
 
-	case ^Array_Type_Expression:
+	case ^Parsed_Array_Type_Expression:
 		// FIXME: Probably does not support multi-dimensional arrays
 		inner_expr, inner_info := check_expr_types(c, e.elem_type) or_return
 		if inner_expr != nil {

@@ -7,8 +7,8 @@ import "core:fmt"
 //odinfmt: disable
 parser_rules := map[Token_Kind]struct {
 	prec:      Precedence,
-	prefix_fn: proc(p: ^Parser) -> (Expression, Error),
-	infix_fn:  proc(p: ^Parser, left: Expression) -> (Expression, Error),
+	prefix_fn: proc(p: ^Parser) -> (Parsed_Expression, Error),
+	infix_fn:  proc(p: ^Parser, left: Parsed_Expression) -> (Parsed_Expression, Error),
 } {
 	.Identifier =      {prec = .Lowest,  prefix_fn = parse_identifier, infix_fn = nil},
 	.Self=             {prec = .Lowest,  prefix_fn = parse_identifier, infix_fn = nil},
@@ -150,7 +150,7 @@ parse_node :: proc(p: ^Parser) -> (result: Parsed_Node, err: Error) {
 	case .For:
 		result, err = parse_range_stmt(p)
 	case:
-		// Expression statement most likely
+		// Parsed_Expression statement most likely
 		result, err = parse_expression_stmt(p)
 	}
 	return
@@ -162,7 +162,7 @@ parse_expression_stmt :: proc(p: ^Parser) -> (result: ^Parsed_Expression_Stateme
 	return
 }
 
-parse_assign_stmt :: proc(p: ^Parser, lhs: Expression) -> (
+parse_assign_stmt :: proc(p: ^Parser, lhs: Parsed_Expression) -> (
 	result: ^Parsed_Assignment_Statement,
 	err: Error,
 ) {
@@ -182,7 +182,9 @@ parse_if_stmt :: proc(p: ^Parser) -> (result: ^Parsed_If_Statement, err: Error) 
 		result = new(Parsed_If_Statement)
 		switch is_end_branch {
 		case true:
-			result.condition = new_clone(Literal_Expression{value = Value{kind = .Boolean, data = true}})
+			result.condition = new_clone(
+				Parsed_Literal_Expression{value = Value{kind = .Boolean, data = true}},
+			)
 			result.body = new_clone(Parsed_Block_Statement{nodes = make([dynamic]Parsed_Node)})
 			else_body: for {
 				body_node := parse_node(p) or_return
@@ -529,7 +531,7 @@ parse_type_decl :: proc(p: ^Parser) -> (result: ^Parsed_Type_Declaration, err: E
 
 				case .Constructor:
 					constructor := parse_fn_decl(p) or_return
-					constructor.return_type_expr = new_clone(Identifier_Expression{name = name_token})
+					constructor.return_type_expr = new_clone(Parsed_Identifier_Expression{name = name_token})
 					append(&result.constructors, constructor)
 
 
@@ -557,7 +559,7 @@ parse_type_decl :: proc(p: ^Parser) -> (result: ^Parsed_Type_Declaration, err: E
 	return
 }
 
-parse_expr :: proc(p: ^Parser, prec: Precedence) -> (result: Expression, err: Error) {
+parse_expr :: proc(p: ^Parser, prec: Precedence) -> (result: Parsed_Expression, err: Error) {
 	consume_token(p)
 	if rule, exist := parser_rules[p.previous.kind]; exist {
 		result = rule.prefix_fn(p) or_return
@@ -571,16 +573,16 @@ parse_expr :: proc(p: ^Parser, prec: Precedence) -> (result: Expression, err: Er
 	return
 }
 
-parse_identifier :: proc(p: ^Parser) -> (result: Expression, err: Error) {
+parse_identifier :: proc(p: ^Parser) -> (result: Parsed_Expression, err: Error) {
 	err = nil
-	result = new_clone(Identifier_Expression{name = p.previous})
+	result = new_clone(Parsed_Identifier_Expression{name = p.previous})
 	return
 }
 
-parse_number :: proc(p: ^Parser) -> (result: Expression, err: Error) {
+parse_number :: proc(p: ^Parser) -> (result: Parsed_Expression, err: Error) {
 	num, ok := strconv.parse_f64(p.previous.text)
 	if ok {
-		result = new_clone(Literal_Expression{value = Value{kind = .Number, data = num}})
+		result = new_clone(Parsed_Literal_Expression{value = Value{kind = .Number, data = num}})
 	} else {
 		err = Parsing_Error {
 			kind  = .Malformed_Number,
@@ -590,40 +592,45 @@ parse_number :: proc(p: ^Parser) -> (result: Expression, err: Error) {
 	return
 }
 
-parse_boolean :: proc(p: ^Parser) -> (result: Expression, err: Error) {
+parse_boolean :: proc(p: ^Parser) -> (result: Parsed_Expression, err: Error) {
 	b := false if p.previous.kind == .False else true
-	result = new_clone(Literal_Expression{value = Value{kind = .Boolean, data = b}})
+	result = new_clone(Parsed_Literal_Expression{value = Value{kind = .Boolean, data = b}})
 	return
 }
 
-parse_string :: proc(p: ^Parser) -> (result: Expression, err: Error) {
-	result = new_clone(String_Literal_Expression{value = p.previous.text[1:len(p.previous.text) - 1]})
+parse_string :: proc(p: ^Parser) -> (result: Parsed_Expression, err: Error) {
+	result = new_clone(
+		Parsed_String_Literal_Expression{value = p.previous.text[1:len(p.previous.text) - 1]},
+	)
 	return
 }
 
-parse_unary :: proc(p: ^Parser) -> (result: Expression, err: Error) {
-	unary := new_clone(Unary_Expression{op = token_to_operator(p.previous.kind)})
+parse_unary :: proc(p: ^Parser) -> (result: Parsed_Expression, err: Error) {
+	unary := new_clone(Parsed_Unary_Expression{op = token_to_operator(p.previous.kind)})
 	unary.expr, err = parse_expr(p, parser_rules[p.previous.kind].prec)
 	result = unary
 	return
 }
 
-parse_binary :: proc(p: ^Parser, left: Expression) -> (result: Expression, err: Error) {
-	binary := new_clone(Binary_Expression{left = left, op = token_to_operator(p.previous.kind)})
+parse_binary :: proc(p: ^Parser, left: Parsed_Expression) -> (
+	result: Parsed_Expression,
+	err: Error,
+) {
+	binary := new_clone(Parsed_Binary_Expression{left = left, op = token_to_operator(p.previous.kind)})
 	binary.right, err = parse_expr(p, parser_rules[p.previous.kind].prec)
 	result = binary
 	return
 }
 
-parse_group :: proc(p: ^Parser) -> (result: Expression, err: Error) {
+parse_group :: proc(p: ^Parser) -> (result: Parsed_Expression, err: Error) {
 	result = parse_expr(p, .Lowest) or_return
 	match_token_kind_next(p, .Close_Paren) or_return
 	return
 }
 
 
-parse_call :: proc(p: ^Parser, left: Expression) -> (result: Expression, err: Error) {
-	call := new_clone(Call_Expression{func = left, args = make([dynamic]Expression)})
+parse_call :: proc(p: ^Parser, left: Parsed_Expression) -> (result: Parsed_Expression, err: Error) {
+	call := new_clone(Parsed_Call_Expression{func = left, args = make([dynamic]Parsed_Expression)})
 
 	if p.current.kind != .Close_Paren {
 		args: for {
@@ -656,18 +663,26 @@ parse_call :: proc(p: ^Parser, left: Expression) -> (result: Expression, err: Er
 	return
 }
 
-parse_infix_open_bracket :: proc(p: ^Parser, left: Expression) -> (result: Expression, err: Error) {
+parse_infix_open_bracket :: proc(p: ^Parser, left: Parsed_Expression) -> (
+	result: Parsed_Expression,
+	err: Error,
+) {
 	#partial switch l in left {
-	case ^Array_Type_Expression:
+	case ^Parsed_Array_Type_Expression:
 		result = parse_array(p, left) or_return
-	case ^Identifier_Expression:
+	case ^Parsed_Identifier_Expression:
 		result = parse_index(p, left) or_return
 	}
 	return
 }
 
-parse_array :: proc(p: ^Parser, left: Expression) -> (result: Expression, err: Error) {
-	array := new_clone(Array_Literal_Expression{type_expr = left, values = make([dynamic]Expression)})
+parse_array :: proc(p: ^Parser, left: Parsed_Expression) -> (
+	result: Parsed_Expression,
+	err: Error,
+) {
+	array := new_clone(
+		Parsed_Array_Literal_Expression{type_expr = left, values = make([dynamic]Parsed_Expression)},
+	)
 	array_elements: for {
 		element := parse_expr(p, .Lowest) or_return
 		append(&array.values, element)
@@ -695,8 +710,8 @@ parse_array :: proc(p: ^Parser, left: Expression) -> (result: Expression, err: E
 	return
 }
 
-parse_array_type :: proc(p: ^Parser) -> (result: Expression, err: Error) {
-	array_type := new(Array_Type_Expression)
+parse_array_type :: proc(p: ^Parser) -> (result: Parsed_Expression, err: Error) {
+	array_type := new(Parsed_Array_Type_Expression)
 	array_type.token = p.previous
 	match_token_kind(p, .Of) or_return
 	array_type.of_token = p.current
@@ -706,8 +721,11 @@ parse_array_type :: proc(p: ^Parser) -> (result: Expression, err: Error) {
 	return
 }
 
-parse_index :: proc(p: ^Parser, left: Expression) -> (result: Expression, err: Error) {
-	index_expr := new_clone(Index_Expression{token = p.previous, left = left})
+parse_index :: proc(p: ^Parser, left: Parsed_Expression) -> (
+	result: Parsed_Expression,
+	err: Error,
+) {
+	index_expr := new_clone(Parsed_Index_Expression{token = p.previous, left = left})
 	index_expr.index = parse_expr(p, .Lowest) or_return
 	match_token_kind(p, .Close_Bracket) or_return
 	consume_token(p)
@@ -715,8 +733,8 @@ parse_index :: proc(p: ^Parser, left: Expression) -> (result: Expression, err: E
 	return
 }
 
-parse_dot :: proc(p: ^Parser, left: Expression) -> (result: Expression, err: Error) {
-	dot_expr := new_clone(Dot_Expression{token = p.previous, left = left})
+parse_dot :: proc(p: ^Parser, left: Parsed_Expression) -> (result: Parsed_Expression, err: Error) {
+	dot_expr := new_clone(Parsed_Dot_Expression{token = p.previous, left = left})
 	dot_expr.selector = parse_expr(p, .Lowest) or_return
 	result = dot_expr
 	return
