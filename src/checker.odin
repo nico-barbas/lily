@@ -992,6 +992,7 @@ check_expr_types :: proc(c: ^Checker, expr: Parsed_Expression) -> (
 
 		class_info: Type_Info
 		name := left_identifier.name.text
+		is_instance := false
 		if name == "self" {
 			symbol := get_symbol(c, left_identifier.name) or_return
 			self_symbol := symbol.(Scope_Ref_Symbol)
@@ -1016,7 +1017,7 @@ check_expr_types :: proc(c: ^Checker, expr: Parsed_Expression) -> (
 				assert(false, "Module support not implemented yet")
 			} else {
 				class_info, _ = get_variable_type(c, name)
-				checked_dot.kind = .Instance
+				is_instance = true
 			}
 		}
 
@@ -1026,6 +1027,7 @@ check_expr_types :: proc(c: ^Checker, expr: Parsed_Expression) -> (
 		case ^Parsed_Identifier_Expression:
 			if checked_dot.kind != .Class {
 				checked_dot.selector = a.name
+				checked_dot.kind = .Instance_Field
 				for field, i in class_decl.field_names {
 					if field.text == a.name.text {
 						info = class_def.fields[i]
@@ -1056,7 +1058,7 @@ check_expr_types :: proc(c: ^Checker, expr: Parsed_Expression) -> (
 					break
 				}
 			}
-			if is_constructor && checked_dot.kind == .Instance {
+			if is_constructor && is_instance {
 				err = Semantic_Error {
 					kind    = .Invalid_Class_Constructor_Usage,
 					token   = e.token,
@@ -1067,6 +1069,7 @@ check_expr_types :: proc(c: ^Checker, expr: Parsed_Expression) -> (
 				for method, i in class_decl.methods {
 					if method.identifier.text == call_identifier.name.text {
 						info = class_def.methods[i]
+						checked_dot.kind = .Instance_Call
 						break
 					}
 				}

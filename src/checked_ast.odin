@@ -116,7 +116,8 @@ Checked_Dot_Expression :: struct {
 	kind:      enum {
 		Module,
 		Class,
-		Instance,
+		Instance_Field,
+		Instance_Call,
 	},
 	left:      Token,
 	selector:  Token,
