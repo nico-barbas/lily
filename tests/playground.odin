@@ -47,11 +47,7 @@ playground :: proc() {using lily
 
 	compiler := new_compiler()
 	compiled_module := compile_module(compiler, checked_module)
-	// for class in compiled_module.
-	for fn in compiled_module.functions {
-		print_chunk(fn.chunk)
-	}
-	print_chunk(compiled_module.main)
+	print_compiled_module(compiled_module)
 	fmt.println()
 	// vm := Vm{}
 	// run_module(&vm, compiled_module)

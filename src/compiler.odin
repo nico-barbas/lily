@@ -1,5 +1,7 @@
 package lily
 
+LILY_DEBUG :: true
+
 //odinfmt: disable
 Op_Code :: enum byte {
 	Op_Begin,      // Mark the begining of a stack scope, used for book keeping in the Vm
@@ -36,44 +38,45 @@ Op_Code :: enum byte {
 	Op_Index_Array,
 	Op_Append_Array,
 
-	Op_Make_Class,
+	Op_Make_Instance, // Allocate a class instance and leave a reference at the top of the stack
+    Op_Call_Method,
 }
 //odinfmt: enable
 
 instruction_lengths := map[Op_Code]int {
-	.Op_Begin        = 1,
-	.Op_End          = 1,
-	.Op_Pop          = 1,
-	.Op_Const        = 3,
-	.Op_Set          = 4,
-	.Op_Bind         = 5,
-	.Op_Set_Scoped   = 3,
-	.Op_Get          = 3,
-	.Op_Get_Scoped   = 3,
-	.Op_Inc          = 1,
-	.Op_Dec          = 1,
-	.Op_Neg          = 1,
-	.Op_Not          = 1,
-	.Op_Add          = 1,
-	.Op_Mul          = 1,
-	.Op_Div          = 1,
-	.Op_Rem          = 1,
-	.Op_And          = 1,
-	.Op_Or           = 1,
-	.Op_Eq           = 1,
-	.Op_Greater      = 1,
-	.Op_Greater_Eq   = 1,
-	.Op_Lesser       = 1,
-	.Op_Lesser_Eq    = 1,
-	.Op_Jump         = 3,
-	.Op_Jump_False   = 3,
-	.Op_Call         = 3,
-	.Op_Return       = 3,
-	.Op_Make_Array   = 1,
-	.Op_Assign_Array = 1,
-	.Op_Index_Array  = 1,
-	.Op_Append_Array = 1,
-	.Op_Make_Class   = 1,
+	.Op_Begin         = 1,
+	.Op_End           = 1,
+	.Op_Pop           = 1,
+	.Op_Const         = 3,
+	.Op_Set           = 4,
+	.Op_Bind          = 5,
+	.Op_Set_Scoped    = 3,
+	.Op_Get           = 3,
+	.Op_Get_Scoped    = 3,
+	.Op_Inc           = 1,
+	.Op_Dec           = 1,
+	.Op_Neg           = 1,
+	.Op_Not           = 1,
+	.Op_Add           = 1,
+	.Op_Mul           = 1,
+	.Op_Div           = 1,
+	.Op_Rem           = 1,
+	.Op_And           = 1,
+	.Op_Or            = 1,
+	.Op_Eq            = 1,
+	.Op_Greater       = 1,
+	.Op_Greater_Eq    = 1,
+	.Op_Lesser        = 1,
+	.Op_Lesser_Eq     = 1,
+	.Op_Jump          = 3,
+	.Op_Jump_False    = 3,
+	.Op_Call          = 3,
+	.Op_Return        = 3,
+	.Op_Make_Array    = 1,
+	.Op_Assign_Array  = 1,
+	.Op_Index_Array   = 1,
+	.Op_Append_Array  = 1,
+	.Op_Make_Instance = 3,
 }
 
 RANGE_HIGH_SLOT :: 1
@@ -82,7 +85,11 @@ Compiler :: struct {
 	cursor:          int,
 	write_at_cursor: bool,
 	fn_names:        [dynamic]string,
-	class_names:     [dynamic]string,
+	class_names:     [dynamic]struct {
+		name:              string,
+		constructor_names: [dynamic]string,
+		method_names:      [dynamic]string,
+	},
 	bytecode:        [dynamic]byte,
 	constants:       [dynamic]Value,
 	variables:       [dynamic]Variable,
@@ -92,8 +99,10 @@ Compiler :: struct {
 }
 
 Compiled_Module :: struct {
+	class_names:       []string,
 	classe_prototypes: []Class_Object,
 	class_vtables:     []Class_Vtable,
+	function_names:    []string,
 	functions:         [dynamic]Fn_Object,
 	main:              Chunk,
 }
@@ -136,6 +145,15 @@ get_variable_addr :: proc(c: ^Compiler, name: string) -> (ptr: i16) {
 get_fn_addr :: proc(c: ^Compiler, name: string) -> (ptr: i16) {
 	for fn_name, i in c.fn_names {
 		if fn_name == name {
+			return i16(i)
+		}
+	}
+	return -1
+}
+
+get_class_addr :: proc(c: ^Compiler, name: string) -> (ptr: i16) {
+	for class_name, i in c.class_names {
+		if class_name.name == name {
 			return i16(i)
 		}
 	}
@@ -254,6 +272,14 @@ push_op_return_code :: proc(c: ^Compiler, result_addr: i16) {
 	push_byte(c, upper_addr)
 }
 
+push_op_make_instance_code :: proc(c: ^Compiler, class_addr: i16) {
+	push_byte(c, byte(Op_Code.Op_Make_Instance))
+	lower_addr := byte(class_addr)
+	upper_addr := byte(class_addr >> 8)
+	push_byte(c, lower_addr)
+	push_byte(c, upper_addr)
+}
+
 new_compiler :: proc() -> ^Compiler {
 	return new_clone(
 		Compiler{cursor = -1, bytecode = make([dynamic]byte), constants = make([dynamic]Value)},
@@ -279,13 +305,13 @@ compile_module :: proc(c: ^Compiler, module: ^Checked_Module) -> ^Compiled_Modul
 		},
 	)
 
-	for class_decl, i in module.classes {
-		class := class_decl.(^Checked_Class_Declaration)
+	for class, i in module.classes {
+		class_decl := class.(^Checked_Class_Declaration)
 		prototype := Class_Object {
 			base = Object{kind = .Class},
-			fields = make([]Class_Field, len(class.field_names)),
+			fields = make([]Class_Field, len(class_decl.field_names)),
 		}
-		for field, i in class.field_names {
+		for field, i in class_decl.field_names {
 			prototype.fields[i] = Class_Field {
 				name = field.text,
 				value = Value{},
@@ -293,18 +319,18 @@ compile_module :: proc(c: ^Compiler, module: ^Checked_Module) -> ^Compiled_Modul
 		}
 
 		vtable := Class_Vtable {
-			constructors = make([]Chunk, len(class.constructors)),
-			methods      = make([]Chunk, len(class.methods)),
+			constructors = make([]Chunk, len(class_decl.constructors)),
+			methods      = make([]Chunk, len(class_decl.methods)),
 		}
 
-		for constructor, i in class.constructors {
-			constructor_chunk := compile_chunk_node(c, constructor)
+		for constructor, i in class_decl.constructors {
+			constructor_chunk := compile_class_constructor(c, constructor, i16(i))
 			vtable.constructors[i] = constructor_chunk
 			reset_compiler(c)
 		}
 
-		for method, i in class.methods {
-			method_chunk := compile_chunk_node(c, method)
+		for method, i in class_decl.methods {
+			method_chunk := compile_class_method(c, method, i16(i))
 			vtable.methods[i] = method_chunk
 			reset_compiler(c)
 		}
@@ -312,7 +338,7 @@ compile_module :: proc(c: ^Compiler, module: ^Checked_Module) -> ^Compiled_Modul
 		m.class_vtables[i] = vtable
 		prototype.vtable = &m.class_vtables[i]
 		m.classe_prototypes[i] = prototype
-		c.class_names[i] = class.identifier.text
+		append(&c.class_names, class_decl.identifier.text)
 	}
 
 	for fn_decl, i in module.functions {
@@ -324,6 +350,14 @@ compile_module :: proc(c: ^Compiler, module: ^Checked_Module) -> ^Compiled_Modul
 	}
 
 	m.main = compile_chunk(c, module.nodes[:])
+	when LILY_DEBUG {
+		m.class_names = make([]string, len(c.class_names))
+		m.function_names = make([]string, len(c.fn_names))
+		copy(m.class_names[:], c.class_names[:])
+		copy(m.function_names[:], c.fn_names[:])
+	}
+	clear(&c.class_names)
+	clear(&c.fn_names)
 	return m
 }
 
@@ -358,14 +392,66 @@ compile_chunk_node :: proc(c: ^Compiler, node: Checked_Node) -> (result: Chunk) 
 
 compile_class_constructor :: proc(
 	c: ^Compiler,
-	class: ^Checked_Class_Declaration,
 	constr: ^Checked_Fn_Declaration,
+	class_addr: i16,
 ) -> (
 	result: Chunk,
 ) {
 
 	compile_constructor: {
+		// 1. Allocate a new class instance
+		// 2. bind "self" to the new class
+		push_op_make_instance_code(c, class_addr)
+		self_addr := add_variable(c, "self")
+		push_op_bind_code(c, self_addr, 0)
+		for name, i in constr.param_names {
+			param_addr := add_variable(c, name.text)
+			push_op_bind_code(c, param_addr, i16(i + 1))
+		}
+		compile_node(c, constr.body)
+		push_op_return_code(c, self_addr)
+	}
 
+	result = Chunk {
+		bytecode  = make([]byte, len(c.bytecode)),
+		constants = make([]Value, len(c.constants)),
+		variables = make([]Variable, len(c.variables)),
+	}
+	copy(result.bytecode[:], c.bytecode[:])
+	copy(result.constants[:], c.constants[:])
+	copy(result.variables[:], c.variables[:])
+	return
+}
+
+compile_class_method :: proc(c: ^Compiler, method: ^Checked_Fn_Declaration, class_addr: i16) -> (
+	result: Chunk,
+) {
+
+	compile_method: {
+		// 1. Allocate a new class instance
+		// 2. bind "self" to the new class
+		self_addr := add_variable(c, "self")
+		push_op_bind_code(c, self_addr, 0)
+
+		param_ptr: i16 = 0
+		result_addr: i16
+		fn_signature := method.type_info.type_id_data.(Fn_Signature_Info)
+		is_void := fn_signature.return_type_id == UNTYPED_ID
+		if !is_void {
+			result_addr = add_variable(c, "result")
+			push_op_bind_code(c, result_addr, param_ptr)
+			param_ptr += 1
+		}
+
+		for name, i in method.param_names {
+			param_addr := add_variable(c, name.text)
+			push_op_bind_code(c, param_addr, i16(i + 1))
+		}
+
+		compile_node(c, method.body)
+		if !is_void {
+			push_op_return_code(c, result_addr)
+		}
 	}
 
 	result = Chunk {
@@ -602,7 +688,15 @@ compile_expr :: proc(c: ^Compiler, expr: Checked_Expression) {
 		push_op_code(c, .Op_Index_Array)
 
 	case ^Checked_Dot_Expression:
+		switch e.kind {
+		case .Module:
+			assert(false, "Module not implemented yet")
+		case .Class:
+			class_addr := get_class_addr(c, e.left.text)
+			class := c
+		case .Instance:
 
+		}
 
 	case ^Checked_Call_Expression:
 		push_op_code(c, .Op_Begin)
