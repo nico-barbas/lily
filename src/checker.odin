@@ -369,10 +369,8 @@ check_module :: proc(c: ^Checker, m: ^Parsed_Module) -> (module: ^Checked_Module
 							param_names = make([]Token, len(constructor.parameters)),
 						},
 					)
-					constr_signature := Fn_Signature_Info {
-						parameters     = make([]Type_Info, len(constructor.parameters)),
-						return_type_id = class_decl.type_info.type_id,
-					}
+					constr_signature := make_fn_signature_info(len(constructor.parameters))
+
 					enter_child_scope(c.current, constructor.identifier) or_return
 					defer pop_scope(c.current)
 					for param, i in constructor.parameters {
@@ -382,7 +380,6 @@ check_module :: proc(c: ^Checker, m: ^Parsed_Module) -> (module: ^Checked_Module
 						set_variable_type(c, param.name.text, param_info)
 						free_checked_expression(param_expr)
 					}
-					// constr_decl.body = check_node_types(c, constructor.body) or_return
 					constr_decl.type_info.type_id_data = constr_signature
 					class_decl.constructors[i] = constr_decl
 					class_info.constructors[i] = constr_decl.type_info
@@ -396,17 +393,15 @@ check_module :: proc(c: ^Checker, m: ^Parsed_Module) -> (module: ^Checked_Module
 							param_names = make([]Token, len(method.parameters)),
 						},
 					)
-					method_signature := Fn_Signature_Info {
-						parameters = make([]Type_Info, len(method.parameters)),
-					}
+					method_signature := make_fn_signature_info(len(method.parameters))
 
 					if method.return_type_expr != nil {
 						return_expr, return_info := check_expr_types(c, method.return_type_expr) or_return
 						defer free_checked_expression(return_expr)
-						method_signature.return_type_id = return_info.type_id
+						set_fn_return_type_info(&method_signature, return_info)
 						set_variable_type(c, "result", return_info)
 					} else {
-						method_signature.return_type_id = UNTYPED_ID
+						set_fn_return_type_info(&method_signature, UNTYPED_INFO)
 					}
 
 					enter_child_scope(c.current, method.identifier) or_return
@@ -432,6 +427,12 @@ check_module :: proc(c: ^Checker, m: ^Parsed_Module) -> (module: ^Checked_Module
 
 				// set_variable_type(c, "self", t)
 				for constructor, i in n.constructors {
+					// Update the constructor signature
+					constr_signature := class_info.constructors[i].type_id_data.(Fn_Signature_Info)
+					set_fn_return_type_info(&constr_signature, class_decl.type_info)
+					class_info.constructors[i].type_id_data = constr_signature
+					class_decl.constructors[i].type_info.type_id_data = constr_signature
+
 					enter_child_scope(c.current, constructor.identifier) or_return
 					defer pop_scope(c.current)
 					class_decl.constructors[i].body = check_node_types(c, constructor.body) or_return
@@ -466,10 +467,10 @@ check_module :: proc(c: ^Checker, m: ^Parsed_Module) -> (module: ^Checked_Module
 			if n.return_type_expr != nil {
 				return_expr, return_info := check_expr_types(c, n.return_type_expr) or_return
 				defer free_checked_expression(return_expr)
-				fn_signature.return_type_id = return_info.type_id
+				set_fn_return_type_info(&fn_signature, return_info)
 				set_variable_type(c, "result", return_info)
 			} else {
-				fn_signature.return_type_id = UNTYPED_ID
+				set_fn_return_type_info(&fn_signature, UNTYPED_INFO)
 			}
 
 			for param, i in n.parameters {
@@ -691,7 +692,9 @@ check_node_types :: proc(c: ^Checker, node: Parsed_Node) -> (result: Checked_Nod
 		left, left_info := check_expr_types(c, n.left) or_return
 		right, right_info := check_expr_types(c, n.right) or_return
 		if !type_equal(c, left_info, right_info) {
-			fmt.println(n.right)
+			fmt.println(n.left, left_info)
+			fmt.println(n.right, right_info)
+			fmt.println(c.current.scope.id)
 			err = Semantic_Error {
 				kind    = .Mismatched_Types,
 				token   = n.token,
@@ -950,6 +953,9 @@ check_expr_types :: proc(c: ^Checker, expr: Parsed_Expression) -> (
 		result = checked_binary
 
 	case ^Parsed_Identifier_Expression:
+		if e.name.text == "_x" {
+			fmt.println("_x: ", c.current.scope.id)
+		}
 		info = get_type_from_identifier(c, e.name)
 		result = new_clone(Checked_Identifier_Expression{name = e.name, type_info = info})
 
@@ -990,10 +996,16 @@ check_expr_types :: proc(c: ^Checker, expr: Parsed_Expression) -> (
 		left_identifier := e.left.(^Parsed_Identifier_Expression)
 		checked_dot := new_clone(Checked_Dot_Expression{token = e.token, left = left_identifier.name})
 
+		// RULES:
+		// 1. accessing fields on Class not allowed
+		// 2. calling constructors from instance not allowed
+
 		class_info: Type_Info
 		name := left_identifier.name.text
 		is_instance := false
-		if name == "self" {
+		switch {
+		case name == "self":
+			is_instance = true
 			symbol := get_symbol(c, left_identifier.name) or_return
 			self_symbol := symbol.(Scope_Ref_Symbol)
 			for class_name, scope_info in c.current.class_scopes {
@@ -1002,38 +1014,36 @@ check_expr_types :: proc(c: ^Checker, expr: Parsed_Expression) -> (
 					break
 				}
 			}
-		} else if t, exist := c.current.type_lookup[name]; exist {
-			class_info = t
-			checked_dot.kind = .Class
-		} else {
-			is_module := false
-			for module in c.modules {
-				if name == module.name {
-					is_module = true
-					break
-				}
-			}
-			if is_module {
-				assert(false, "Module support not implemented yet")
+
+		case:
+			if t, exist := c.current.type_lookup[name]; exist {
+				class_info = t
+				// checked_dot.kind = .Class
+				// enter_class_scope(c.current, left_identifier.name)
 			} else {
-				class_info, _ = get_variable_type(c, name)
 				is_instance = true
+				class_info, _ = get_variable_type(c, name)
+				// enter_class_scope(c.current, Token{text = class_info.name})
 			}
 		}
 
 		class_def := class_info.type_id_data.(Class_Definition_Info)
 		class_decl := get_class_decl(c.current, class_info.type_id)
-		#partial switch a in e.selector {
+
+		#partial switch selector in e.selector {
 		case ^Parsed_Identifier_Expression:
-			if checked_dot.kind != .Class {
-				checked_dot.selector = a.name
+			// Rule 1 check
+			if is_instance {
 				checked_dot.kind = .Instance_Field
 				for field, i in class_decl.field_names {
-					if field.text == a.name.text {
+					if field.text == selector.name.text {
 						info = class_def.fields[i]
 						break
 					}
 				}
+				checked_dot.selector = new_clone(
+					Checked_Identifier_Expression{name = selector.name, type_info = info},
+				)
 			} else {
 				err = Semantic_Error {
 					kind    = .Invalid_Class_Field_Access,
@@ -1044,38 +1054,207 @@ check_expr_types :: proc(c: ^Checker, expr: Parsed_Expression) -> (
 						name,
 					),
 				}
+				return
 			}
 
 
 		case ^Parsed_Call_Expression:
-			call_identifier := a.func.(^Parsed_Identifier_Expression)
-			checked_dot.selector = call_identifier.name
-			is_constructor := false
-			for constructor, i in class_decl.constructors {
-				if constructor.identifier.text == call_identifier.name.text {
-					info = class_info
-					is_constructor = true
-					break
-				}
+			call_identifier := selector.func.(^Parsed_Identifier_Expression)
+			fn_decl, is_constructor := find_checked_constructor(class_decl, call_identifier.name)
+			if !is_constructor {
+				fn_decl, _ = find_checked_method(class_decl, call_identifier.name)
 			}
-			if is_constructor && is_instance {
+
+			// Rule 2 check
+			if is_instance {
+				checked_dot.kind = .Instance_Call
+				if is_constructor {
+					err = Semantic_Error {
+						kind    = .Invalid_Class_Constructor_Usage,
+						token   = e.token,
+						details = fmt.tprintf("%s is an instance of Class %s", name, class_info.name),
+					}
+					return
+				}
+			} else {
+				checked_dot.kind = .Class
+			}
+
+
+			signature_info := fn_decl.type_info.type_id_data.(Fn_Signature_Info)
+			// info = get_type_from_id(c, signature_info.return_type_id)
+			info = signature_info.return_type_info^
+
+			checked_call := new_clone(
+				Checked_Call_Expression{
+					token = selector.token,
+					type_info = info,
+					func = new_clone(
+						Checked_Identifier_Expression{name = call_identifier.name, type_info = fn_decl.type_info},
+					),
+					args = make([]Checked_Expression, len(selector.args)),
+				},
+			)
+
+			if len(signature_info.parameters) != len(selector.args) {
 				err = Semantic_Error {
-					kind    = .Invalid_Class_Constructor_Usage,
+					kind    = .Invalid_Arg_Count,
 					token   = e.token,
-					details = fmt.tprintf("%s is an instance of Class %s", name, class_info.name),
+					details = fmt.tprintf(
+						"Invalid Argument count, expected %i, got %i",
+						len(signature_info.parameters),
+						len(selector.args),
+					),
 				}
 				return
-			} else {
-				for method, i in class_decl.methods {
-					if method.identifier.text == call_identifier.name.text {
-						info = class_def.methods[i]
-						checked_dot.kind = .Instance_Call
-						break
-					}
-				}
 			}
+			for arg, i in selector.args {
+				arg_expr, arg_info := check_expr_types(c, arg) or_return
+				if !type_equal(c, arg_info, signature_info.parameters[i]) {
+					err = Semantic_Error {
+						kind    = .Mismatched_Types,
+						token   = e.token,
+						details = fmt.tprintf(
+							"Expected %s, got %s",
+							arg_info.name,
+							signature_info.parameters[i].name,
+						),
+					}
+					return
+				}
+				checked_call.args[i] = arg_expr
+			}
+
+			checked_dot.selector = checked_call
 		}
-		checked_dot.type_info = info
+
+		// checked_dot.selector, info = check_expr_types(c, e.selector) or_return
+
+
+		// #partial switch selector in checked_dot.selector {
+		// case ^Checked_Identifier_Expression:
+		// 	if is_instance {
+		// 		checked_dot.kind = .Instance_Field
+		// 	} else {
+		// 		err = Semantic_Error {
+		// 			kind    = .Invalid_Class_Field_Access,
+		// 			token   = e.token,
+		// 			details = fmt.tprintf(
+		// 				"Cannot access fields of %s. %s is a class and not an instance of class",
+		// 				name,
+		// 				name,
+		// 			),
+		// 		}
+		// 		return
+		// 	}
+
+		// case ^Checked_Call_Expression:
+		// 	class_decl := get_class_decl(c.current, class_info.type_id)
+		// 	call_identifier := selector.func.(^Checked_Identifier_Expression)
+		// 	is_constructor := contain_checked_constructor(class_decl, call_identifier.name)
+
+		// 	if is_constructor && is_instance {
+		// 		err = Semantic_Error {
+		// 			kind    = .Invalid_Class_Constructor_Usage,
+		// 			token   = e.token,
+		// 			details = fmt.tprintf("%s is an instance of Class %s", name, class_info.name),
+		// 		}
+		// 		return
+		// 	} else {
+		// 		checked_dot.kind = .Instance_Call
+		// 	}
+		// }
+
+		// class_info: Type_Info
+		// name := left_identifier.name.text
+		// is_instance := false
+		// if name == "self" {
+		// 	symbol := get_symbol(c, left_identifier.name) or_return
+		// 	self_symbol := symbol.(Scope_Ref_Symbol)
+		// 	for class_name, scope_info in c.current.class_scopes {
+		// 		if self_symbol.scope_id == scope_info.scope_id {
+		// 			class_info = c.current.type_lookup[class_name]
+		// 			break
+		// 		}
+		// 	}
+		// } else if t, exist := c.current.type_lookup[name]; exist {
+		// 	class_info = t
+		// 	checked_dot.kind = .Class
+		// } else {
+		// 	is_module := false
+		// 	for module in c.modules {
+		// 		if name == module.name {
+		// 			is_module = true
+		// 			break
+		// 		}
+		// 	}
+		// 	if is_module {
+		// 		assert(false, "Module support not implemented yet")
+		// 	} else {
+		// 		class_info, _ = get_variable_type(c, name)
+		// 		is_instance = true
+		// 	}
+		// }
+
+
+		// class_def := class_info.type_id_data.(Class_Definition_Info)
+		// class_decl := get_class_decl(c.current, class_info.type_id)
+		// #partial switch a in e.selector {
+		// case ^Parsed_Identifier_Expression:
+		// 	if checked_dot.kind != .Class {
+		// 		checked_dot.selector = a.name
+		// 		checked_dot.kind = .Instance_Field
+		// 		for field, i in class_decl.field_names {
+		// 			if field.text == a.name.text {
+		// 				info = class_def.fields[i]
+		// 				break
+		// 			}
+		// 		}
+		// 	} else {
+		// 		err = Semantic_Error {
+		// 			kind    = .Invalid_Class_Field_Access,
+		// 			token   = e.token,
+		// 			details = fmt.tprintf(
+		// 				"Cannot access fields of %s. %s is a class and not an instance of class",
+		// 				name,
+		// 				name,
+		// 			),
+		// 		}
+		// 	}
+
+
+		// case ^Parsed_Call_Expression:
+		// 	call_identifier := a.func.(^Parsed_Identifier_Expression)
+		// 	checked_dot.selector = call_identifier.name
+		// 	is_constructor := false
+		// 	for constructor, i in class_decl.constructors {
+		// 		if constructor.identifier.text == call_identifier.name.text {
+		// 			info = class_info
+		// 			is_constructor = true
+		// 			break
+		// 		}
+		// 	}
+		// 	if is_constructor && is_instance {
+		// 		err = Semantic_Error {
+		// 			kind    = .Invalid_Class_Constructor_Usage,
+		// 			token   = e.token,
+		// 			details = fmt.tprintf("%s is an instance of Class %s", name, class_info.name),
+		// 		}
+		// 		return
+		// 	} else {
+		// 		for method, i in class_decl.methods {
+		// 			if method.identifier.text == call_identifier.name.text {
+		// 				info = class_def.methods[i]
+		// 				checked_dot.kind = .Instance_Call
+		// 				break
+		// 			}
+		// 		}
+		// 	}
+		// }
+
+		// checked_dot.type_info = info
+
+
 		result = checked_dot
 
 	case ^Parsed_Call_Expression:
@@ -1117,12 +1296,14 @@ check_expr_types :: proc(c: ^Checker, expr: Parsed_Expression) -> (
 				}
 				checked_call.args[i] = arg_expr
 			}
-			info = get_type_from_id(c, signature_info.return_type_id)
+			info = signature_info.return_type_info^
 
 			checked_call.type_info = info
 			checked_call.func = fn_expr
+			result = checked_call
 		} else {
 			// FIXME: return an error
+			return
 		}
 
 	case ^Parsed_Array_Type_Expression:

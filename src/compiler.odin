@@ -1,11 +1,19 @@
 package lily
 
+import "core:fmt"
+
 LILY_DEBUG :: true
+
+// FIXME: Remove all string comparisons from the compiler if possible
+// Most of them can be done during the semantic analysis.
+// All the functions, classes (methods and constr) lands at the same index from checker to compiler
+// Meaning we can just store it during semantic analysis.
 
 //odinfmt: disable
 Op_Code :: enum byte {
 	Op_Begin,      // Mark the begining of a stack scope, used for book keeping in the Vm
 	Op_End,        // Mark the end of a stack scope, used for book keeping in the Vm
+	Op_Push,       // Increment the stack counter
 	Op_Pop,        // Get the last element from the stack and decrement its counter
 	Op_Const,      // Take the constant from the associated constant pool and load it on to stack
 	Op_Bind,       // Bind the variable name to the given stack id
@@ -39,13 +47,17 @@ Op_Code :: enum byte {
 	Op_Append_Array,
 
 	Op_Make_Instance, // Allocate a class instance and leave a reference at the top of the stack
-    Op_Call_Method,
+    Op_Call_Constr,
+	Op_Call_Method,
+	Op_Get_Field,
+	Op_Set_Field,
 }
 //odinfmt: enable
 
 instruction_lengths := map[Op_Code]int {
 	.Op_Begin         = 1,
 	.Op_End           = 1,
+	.Op_Push          = 1,
 	.Op_Pop           = 1,
 	.Op_Const         = 3,
 	.Op_Set           = 4,
@@ -77,6 +89,10 @@ instruction_lengths := map[Op_Code]int {
 	.Op_Index_Array   = 1,
 	.Op_Append_Array  = 1,
 	.Op_Make_Instance = 3,
+	.Op_Call_Constr   = 5,
+	.Op_Call_Method   = 5,
+	.Op_Get_Field     = 5,
+	.Op_Set_Field     = 5,
 }
 
 RANGE_HIGH_SLOT :: 1
@@ -85,11 +101,7 @@ Compiler :: struct {
 	cursor:          int,
 	write_at_cursor: bool,
 	fn_names:        [dynamic]string,
-	class_names:     [dynamic]struct {
-		name:              string,
-		constructor_names: [dynamic]string,
-		method_names:      [dynamic]string,
-	},
+	class_info:      [dynamic]^Checked_Class_Declaration,
 	bytecode:        [dynamic]byte,
 	constants:       [dynamic]Value,
 	variables:       [dynamic]Variable,
@@ -115,6 +127,7 @@ Chunk :: struct {
 
 Variable :: struct {
 	name:              string,
+	type_info:         Type_Info,
 	scope_depth:       int,
 	stack_id:          int,
 	relative_stack_id: int,
@@ -126,14 +139,14 @@ add_constant :: proc(c: ^Compiler, constant: Value) -> (ptr: i16) {
 	return c.const_count - 1
 }
 
-add_variable :: proc(c: ^Compiler, name: string) -> (ptr: i16) {
+add_variable :: proc(c: ^Compiler, name: string, type_info: Type_Info) -> (ptr: i16) {
 	// TODO: keep track of the scope depth
 	append(&c.variables, Variable{name = name, scope_depth = c.scope_depth, stack_id = -1})
 	c.var_count += 1
 	return c.var_count - 1
 }
 
-get_variable_addr :: proc(c: ^Compiler, name: string) -> (ptr: i16) {
+get_variable_addr :: proc(c: ^Compiler, name: string) -> i16 {
 	for var, i in c.variables {
 		if var.name == name {
 			return i16(i)
@@ -142,7 +155,7 @@ get_variable_addr :: proc(c: ^Compiler, name: string) -> (ptr: i16) {
 	return -1
 }
 
-get_fn_addr :: proc(c: ^Compiler, name: string) -> (ptr: i16) {
+get_fn_addr :: proc(c: ^Compiler, name: string) -> i16 {
 	for fn_name, i in c.fn_names {
 		if fn_name == name {
 			return i16(i)
@@ -151,9 +164,46 @@ get_fn_addr :: proc(c: ^Compiler, name: string) -> (ptr: i16) {
 	return -1
 }
 
-get_class_addr :: proc(c: ^Compiler, name: string) -> (ptr: i16) {
-	for class_name, i in c.class_names {
-		if class_name.name == name {
+get_class_addr :: proc(c: ^Compiler, name: string) -> i16 {
+	for class, i in c.class_info {
+		if class.identifier.text == name {
+			return i16(i)
+		}
+	}
+	return -1
+}
+
+get_constructor_addr :: proc(c: ^Compiler, class_addr: i16, name: string) -> i16 {
+	class := c.class_info[class_addr]
+	for constructor, i in class.constructors {
+		if constructor.identifier.text == name {
+			return i16(i)
+		}
+	}
+	return -1
+}
+
+get_field_addr :: proc(c: ^Compiler, instance_addr: i16, name: string) -> i16 {
+	instance := c.variables[instance_addr]
+	class_addr := get_class_addr(c, instance.type_info.name)
+	if class_addr == -1 {
+		fmt.println(instance)
+	}
+	class := c.class_info[class_addr]
+	for field, i in class.field_names {
+		if field.text == name {
+			return i16(i)
+		}
+	}
+	return -1
+}
+
+get_method_addr :: proc(c: ^Compiler, instance_addr: i16, name: string) -> i16 {
+	instance := c.variables[instance_addr]
+	class_addr := get_class_addr(c, instance.type_info.name)
+	class := c.class_info[class_addr]
+	for method, i in class.methods {
+		if method.identifier.text == name {
 			return i16(i)
 		}
 	}
@@ -280,6 +330,58 @@ push_op_make_instance_code :: proc(c: ^Compiler, class_addr: i16) {
 	push_byte(c, upper_addr)
 }
 
+push_op_call_constr_code :: proc(c: ^Compiler, class_addr: i16, constr_addr: i16) {
+	push_byte(c, byte(Op_Code.Op_Call_Constr))
+	lower_addr := byte(class_addr)
+	upper_addr := byte(class_addr >> 8)
+	push_byte(c, lower_addr)
+	push_byte(c, upper_addr)
+
+	lower_addr = byte(constr_addr)
+	upper_addr = byte(constr_addr >> 8)
+	push_byte(c, lower_addr)
+	push_byte(c, upper_addr)
+}
+
+push_op_call_method_code :: proc(c: ^Compiler, instance_addr, method_addr: i16) {
+	push_byte(c, byte(Op_Code.Op_Call_Method))
+	lower_addr := byte(instance_addr)
+	upper_addr := byte(instance_addr >> 8)
+	push_byte(c, lower_addr)
+	push_byte(c, upper_addr)
+
+	lower_addr = byte(method_addr)
+	upper_addr = byte(method_addr >> 8)
+	push_byte(c, lower_addr)
+	push_byte(c, upper_addr)
+}
+
+push_op_get_field_code :: proc(c: ^Compiler, instance_addr, field_addr: i16) {
+	push_byte(c, byte(Op_Code.Op_Get_Field))
+	lower_addr := byte(instance_addr)
+	upper_addr := byte(instance_addr >> 8)
+	push_byte(c, lower_addr)
+	push_byte(c, upper_addr)
+
+	lower_addr = byte(field_addr)
+	upper_addr = byte(field_addr >> 8)
+	push_byte(c, lower_addr)
+	push_byte(c, upper_addr)
+}
+
+push_op_set_field_code :: proc(c: ^Compiler, instance_addr, field_addr: i16) {
+	push_byte(c, byte(Op_Code.Op_Set_Field))
+	lower_addr := byte(instance_addr)
+	upper_addr := byte(instance_addr >> 8)
+	push_byte(c, lower_addr)
+	push_byte(c, upper_addr)
+
+	lower_addr = byte(field_addr)
+	upper_addr = byte(field_addr >> 8)
+	push_byte(c, lower_addr)
+	push_byte(c, upper_addr)
+}
+
 new_compiler :: proc() -> ^Compiler {
 	return new_clone(
 		Compiler{cursor = -1, bytecode = make([dynamic]byte), constants = make([dynamic]Value)},
@@ -307,6 +409,7 @@ compile_module :: proc(c: ^Compiler, module: ^Checked_Module) -> ^Compiled_Modul
 
 	for class, i in module.classes {
 		class_decl := class.(^Checked_Class_Declaration)
+		append(&c.class_info, class_decl)
 		prototype := Class_Object {
 			base = Object{kind = .Class},
 			fields = make([]Class_Field, len(class_decl.field_names)),
@@ -338,7 +441,6 @@ compile_module :: proc(c: ^Compiler, module: ^Checked_Module) -> ^Compiled_Modul
 		m.class_vtables[i] = vtable
 		prototype.vtable = &m.class_vtables[i]
 		m.classe_prototypes[i] = prototype
-		append(&c.class_names, class_decl.identifier.text)
 	}
 
 	for fn_decl, i in module.functions {
@@ -351,12 +453,12 @@ compile_module :: proc(c: ^Compiler, module: ^Checked_Module) -> ^Compiled_Modul
 
 	m.main = compile_chunk(c, module.nodes[:])
 	when LILY_DEBUG {
-		m.class_names = make([]string, len(c.class_names))
+		// m.class_names = make([]string, len(c.class_names))
 		m.function_names = make([]string, len(c.fn_names))
-		copy(m.class_names[:], c.class_names[:])
+		// copy(m.class_names[:], c.class_names[:])
 		copy(m.function_names[:], c.fn_names[:])
 	}
-	clear(&c.class_names)
+	clear(&c.class_info)
 	clear(&c.fn_names)
 	return m
 }
@@ -401,11 +503,15 @@ compile_class_constructor :: proc(
 	compile_constructor: {
 		// 1. Allocate a new class instance
 		// 2. bind "self" to the new class
+		class_info := c.class_info[class_addr].type_info
+		constr_signature := constr.type_info.type_id_data.(Fn_Signature_Info)
+
 		push_op_make_instance_code(c, class_addr)
-		self_addr := add_variable(c, "self")
+		self_addr := add_variable(c, "self", class_info)
 		push_op_bind_code(c, self_addr, 0)
 		for name, i in constr.param_names {
-			param_addr := add_variable(c, name.text)
+			param_type := constr_signature.parameters[i]
+			param_addr := add_variable(c, name.text, param_type)
 			push_op_bind_code(c, param_addr, i16(i + 1))
 		}
 		compile_node(c, constr.body)
@@ -430,21 +536,24 @@ compile_class_method :: proc(c: ^Compiler, method: ^Checked_Fn_Declaration, clas
 	compile_method: {
 		// 1. Allocate a new class instance
 		// 2. bind "self" to the new class
-		self_addr := add_variable(c, "self")
+		class_info := c.class_info[class_addr].type_info
+
+
+		self_addr := add_variable(c, "self", class_info)
 		push_op_bind_code(c, self_addr, 0)
 
 		param_ptr: i16 = 0
 		result_addr: i16
 		fn_signature := method.type_info.type_id_data.(Fn_Signature_Info)
-		is_void := fn_signature.return_type_id == UNTYPED_ID
+		is_void := fn_signature.return_type_info.type_id == UNTYPED_ID
 		if !is_void {
-			result_addr = add_variable(c, "result")
+			result_addr = add_variable(c, "result", fn_signature.return_type_info^)
 			push_op_bind_code(c, result_addr, param_ptr)
 			param_ptr += 1
 		}
 
 		for name, i in method.param_names {
-			param_addr := add_variable(c, name.text)
+			param_addr := add_variable(c, name.text, fn_signature.parameters[i])
 			push_op_bind_code(c, param_addr, i16(i + 1))
 		}
 
@@ -488,6 +597,12 @@ compile_node :: proc(c: ^Compiler, node: Checked_Node) {
 			compile_expr(c, e.index)
 			push_op_get_code(c, var_addr)
 			push_op_code(c, .Op_Assign_Array)
+		case ^Checked_Dot_Expression:
+			// FIXME: Doesn't support multi modules
+			instance_addr := get_variable_addr(c, e.left.text)
+			field_identifier := e.selector.(^Checked_Identifier_Expression)
+			field_addr := get_field_addr(c, instance_addr, field_identifier.name.text)
+			push_op_set_field_code(c, instance_addr, field_addr)
 		}
 
 	case ^Checked_If_Statement:
@@ -538,7 +653,7 @@ compile_node :: proc(c: ^Compiler, node: Checked_Node) {
 	case ^Checked_Range_Statement:
 		push_op_code(c, .Op_Begin)
 		defer push_op_code(c, .Op_End)
-		iterator_addr := add_variable(c, n.iterator_name.text)
+		iterator_addr := add_variable(c, n.iterator_name.text, n.iterator_type_info)
 		compile_expr(c, n.low)
 		push_op_set_code(c, iterator_addr, true)
 		compile_expr(c, n.high)
@@ -571,7 +686,7 @@ compile_node :: proc(c: ^Compiler, node: Checked_Node) {
 
 	case ^Checked_Var_Declaration:
 		// Handle the case of uninitialized variables
-		var_addr := add_variable(c, n.identifier.text)
+		var_addr := add_variable(c, n.identifier.text, n.type_info)
 		compile_expr(c, n.expr)
 		push_op_set_code(c, var_addr, true)
 
@@ -580,14 +695,14 @@ compile_node :: proc(c: ^Compiler, node: Checked_Node) {
 		param_ptr: i16 = 0
 		result_addr: i16
 		fn_signature := n.type_info.type_id_data.(Fn_Signature_Info)
-		is_void := fn_signature.return_type_id == UNTYPED_ID
+		is_void := fn_signature.return_type_info.type_id == UNTYPED_ID
 		if !is_void {
-			result_addr = add_variable(c, "result")
+			result_addr = add_variable(c, "result", fn_signature.return_type_info^)
 			push_op_bind_code(c, result_addr, param_ptr)
 			param_ptr += 1
 		}
 		for name, i in n.param_names {
-			param_addr := add_variable(c, name.text)
+			param_addr := add_variable(c, name.text, fn_signature.parameters[i])
 			push_op_bind_code(c, param_addr, param_ptr + i16(i))
 		}
 
@@ -692,20 +807,53 @@ compile_expr :: proc(c: ^Compiler, expr: Checked_Expression) {
 		case .Module:
 			assert(false, "Module not implemented yet")
 		case .Class:
+			call_expr := e.selector.(^Checked_Call_Expression)
+			call_identifier := call_expr.func.(^Checked_Identifier_Expression)
 			class_addr := get_class_addr(c, e.left.text)
-			class := c
-		case .Instance:
+			constr_addr := get_constructor_addr(c, class_addr, call_identifier.name.text)
 
+
+			push_op_code(c, .Op_Begin)
+			push_op_code(c, .Op_Push) // Save a slot for "self" ref
+			for arg_expr in call_expr.args {
+				compile_expr(c, arg_expr)
+			}
+			push_op_call_constr_code(c, class_addr, constr_addr)
+
+		case .Instance_Field:
+			field_identifier := e.selector.(^Checked_Identifier_Expression)
+			// 1. Get the instance ref at the top of the stack
+			// 2. Extract the field value and push it on the stack
+
+			instance_addr := get_variable_addr(c, e.left.text)
+			field_addr := get_field_addr(c, instance_addr, field_identifier.name.text)
+			push_op_get_field_code(c, instance_addr, field_addr)
+
+		case .Instance_Call:
+			call_expr := e.selector.(^Checked_Call_Expression)
+			call_identifier := call_expr.func.(^Checked_Identifier_Expression)
+			method_signature := call_expr.type_info.type_id_data.(Fn_Signature_Info)
+			instance_addr := get_variable_addr(c, e.left.text)
+			method_addr := get_method_addr(c, instance_addr, call_identifier.name.text)
+
+			push_op_code(c, .Op_Begin)
+			push_op_code(c, .Op_Push) // Slot for "self"
+
+			is_void := method_signature.return_type_info.type_id == UNTYPED_ID
+			if !is_void {
+				push_op_code(c, .Op_Push) // 
+			}
+			push_op_call_method_code(c, instance_addr, method_addr)
 		}
 
 	case ^Checked_Call_Expression:
 		push_op_code(c, .Op_Begin)
+		push_op_code(c, .Op_Push)
 		for arg_expr in e.args {
 			compile_expr(c, arg_expr)
 		}
 		fn_identifier := e.func.(^Checked_Identifier_Expression)
 		fn_addr := get_fn_addr(c, fn_identifier.name.text)
 		push_op_call_code(c, fn_addr)
-
 	}
 }

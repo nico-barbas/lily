@@ -363,8 +363,18 @@ print_checked_expr :: proc(p: ^Debug_Printer, c: ^Checker, checked_expr: Checked
 		{
 			write_line(p, "Left: ")
 			write(p, e.left.text)
+			write_line(p, "Kind: ")
+			switch e.kind {
+			case .Module:
+			case .Class:
+				write(p, "Class Constructor")
+			case .Instance_Field:
+				write(p, "Instance Field")
+			case .Instance_Call:
+				write(p, "Instance Call")
+			}
 			write_line(p, "Selector: ")
-			write(p, e.selector.text)
+			print_checked_expr(p, c, e.selector)
 		}
 		decrement(p)
 
@@ -531,7 +541,7 @@ print_type_info :: proc(p: ^Debug_Printer, c: ^Checker, t: Type_Info) {
 			write(p, ", ")
 		}
 		write_line(p, "Returns: ")
-		return_type := get_type_from_id(c, fn_signature.return_type_id)
+		return_type := fn_signature.return_type_info^
 		print_type_info(p, c, return_type)
 		decrement(p)
 	case .Class_Type:
@@ -670,10 +680,17 @@ print_compiled_module :: proc(m: ^Compiled_Module) {
 	}
 	decrement(&printer)
 
+	write_line(&printer, "================= \n")
+	write(&printer, "== FUNCTIONS  ==")
 	for fn in m.functions {
 		print_chunk(&printer, fn.chunk)
 	}
-	// print_chunk(&printer, m.main)
+
+	if len(m.main.bytecode) > 0 {
+		write_line(&printer, "================= \n")
+		write(&printer, "== MAIN  ==")
+		print_chunk(&printer, m.main)
+	}
 
 	fmt.println(strings.to_string(printer.builder))
 }
@@ -780,7 +797,7 @@ print_chunk :: proc(p: ^Debug_Printer, c: Chunk) {
 			format(p, op_code_str[op], max_str)
 			fmt.sbprintf(&p.builder, " || var addr: %d", get_i16(&vm))
 
-		case .Op_Pop, .Op_Neg, .Op_Inc, .Op_Dec, .Op_Not:
+		case .Op_Pop, .Op_Push, .Op_Neg, .Op_Inc, .Op_Dec, .Op_Not:
 			write(p, op_code_str[op])
 			format(p, op_code_str[op], max_str)
 			fmt.sbprintf(&p.builder, " ||")
@@ -815,6 +832,30 @@ print_chunk :: proc(p: ^Debug_Printer, c: Chunk) {
 			format(p, op_code_str[op], max_str)
 			fmt.sbprintf(&p.builder, " || class addr: %04d", get_i16(&vm))
 
+		case .Op_Call_Constr:
+			write(p, op_code_str[op])
+			format(p, op_code_str[op], max_str)
+			fmt.sbprintf(&p.builder, " || class addr: %04d, constr addr: %04d", get_i16(&vm), get_i16(&vm))
+
+		case .Op_Call_Method:
+			write(p, op_code_str[op])
+			format(p, op_code_str[op], max_str)
+			fmt.sbprintf(
+				&p.builder,
+				" || instance addr: %04d, method addr: %04d",
+				get_i16(&vm),
+				get_i16(&vm),
+			)
+
+		case .Op_Get_Field, .Op_Set_Field:
+			write(p, op_code_str[op])
+			format(p, op_code_str[op], max_str)
+			fmt.sbprintf(
+				&p.builder,
+				" || instance addr: %04d, constr addr: %04d",
+				get_i16(&vm),
+				get_i16(&vm),
+			)
 		}
 		if vm.ip >= len(vm.chunk.bytecode) {
 			break

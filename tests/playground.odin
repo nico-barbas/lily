@@ -29,6 +29,8 @@ playground :: proc() {using lily
 	// 	fn add(a: number, b: number): number
 	// 		result = a + b
 	// 	end
+
+	// 	var a = add(2, 4)
 	// `
 
 	parsed_module := make_module()
@@ -48,10 +50,10 @@ playground :: proc() {using lily
 	compiler := new_compiler()
 	compiled_module := compile_module(compiler, checked_module)
 	print_compiled_module(compiled_module)
-	fmt.println()
+	// fmt.println()
 	// vm := Vm{}
 	// run_module(&vm, compiled_module)
-	// fmt.println()
+	// fmt.println("RESULT:")
 	// fmt.println(vm.chunk.variables)
 
 }

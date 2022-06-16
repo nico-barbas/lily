@@ -138,7 +138,7 @@ parse_node :: proc(p: ^Parser) -> (result: Parsed_Node, err: Error) {
 		result, err = parse_fn_decl(p)
 	case .Type:
 		result, err = parse_type_decl(p)
-	case .Identifier, .Self:
+	case .Identifier, .Self, .Result:
 		lhs := parse_expr(p, .Lowest) or_return
 		#partial switch p.current.kind {
 		case .Assign:

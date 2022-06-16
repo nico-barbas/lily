@@ -120,7 +120,7 @@ Checked_Dot_Expression :: struct {
 		Instance_Call,
 	},
 	left:      Token,
-	selector:  Token,
+	selector:  Checked_Expression,
 }
 
 Checked_Call_Expression :: struct {
@@ -249,6 +249,30 @@ Checked_Class_Declaration :: struct {
 	field_names:  []Token,
 	constructors: []^Checked_Fn_Declaration,
 	methods:      []^Checked_Fn_Declaration,
+}
+
+find_checked_constructor :: proc(c: ^Checked_Class_Declaration, name: Token) -> (
+	^Checked_Fn_Declaration,
+	bool,
+) {
+	for constructor in c.constructors {
+		if constructor.identifier.text == name.text {
+			return constructor, true
+		}
+	}
+	return nil, false
+}
+
+find_checked_method :: proc(c: ^Checked_Class_Declaration, name: Token) -> (
+	^Checked_Fn_Declaration,
+	bool,
+) {
+	for method in c.methods {
+		if method.identifier.text == name.text {
+			return method, true
+		}
+	}
+	return nil, false
 }
 
 // Symbol table stuff

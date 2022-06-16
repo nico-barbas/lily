@@ -74,10 +74,31 @@ Generic_Type_Info :: struct {
 	spec_type_id: Type_ID,
 }
 
+RETURN_TYPE_INFO_LOC :: 0
+
+// TODO: This is a bit better as it enables multiple return values
 Fn_Signature_Info :: struct {
-	parameters:     []Type_Info,
-	return_type_id: Type_ID,
+	types_info:       []Type_Info,
+	parameters:       []Type_Info,
+	return_type_info: ^Type_Info,
 }
+
+make_fn_signature_info :: proc(arity: int) -> (result: Fn_Signature_Info) {
+	result = Fn_Signature_Info {
+		types_info = make([]Type_Info, arity + 1),
+	}
+	result.return_type_info = &result.types_info[RETURN_TYPE_INFO_LOC]
+	result.parameters = result.types_info[1:]
+	return
+}
+
+set_fn_return_type_info :: proc(fn: ^Fn_Signature_Info, return_info: Type_Info) {
+	fn.types_info[RETURN_TYPE_INFO_LOC] = return_info
+}
+
+// set_fn_param_type_info :: proc(fn: ^Fn_Signature_Info, at: int, info: Type_Info) {
+// 	fn.
+// }
 
 Class_Definition_Info :: struct {
 	fields:       []Type_Info,

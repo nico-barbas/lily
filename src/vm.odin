@@ -191,6 +191,9 @@ run_bytecode :: proc(vm: ^Vm) {
 		case .Op_Pop:
 			pop_stack_value(vm)
 
+		case .Op_Push:
+			push_stack_value(vm, Value{})
+
 		case .Op_Inc:
 			operand := pop_stack_value(vm)
 			result := (operand.data.(f64)) + 1
@@ -295,7 +298,6 @@ run_bytecode :: proc(vm: ^Vm) {
 		case .Op_Call:
 			fn_addr := get_i16(vm)
 			fn := &vm.module.functions[fn_addr]
-			// fn.chunk.variables
 			push_call(vm, fn)
 
 		case .Op_Return:
@@ -337,7 +339,7 @@ run_bytecode :: proc(vm: ^Vm) {
 			append(&array_object.data, element)
 			push_stack_value(vm, obj)
 
-		case .Op_Make_Instance:
+		case .Op_Make_Instance, .Op_Call_Constr, .Op_Call_Method, .Op_Get_Field, .Op_Set_Field:
 		}
 		when VM_DEBUG_VIEW {
 			print_stack(vm)
