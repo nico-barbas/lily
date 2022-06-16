@@ -663,7 +663,7 @@ print_compiled_module :: proc(m: ^Compiled_Module) {
 			for constructor, i in vtable.constructors {
 				write_line(&printer, "- #")
 				fmt.sbprintf(&printer.builder, "%d: ", i)
-				print_chunk(&printer, constructor)
+				print_chunk(&printer, constructor.chunk)
 			}
 			decrement(&printer)
 
@@ -672,7 +672,7 @@ print_compiled_module :: proc(m: ^Compiled_Module) {
 			for method, i in vtable.methods {
 				write_line(&printer, "- #")
 				fmt.sbprintf(&printer.builder, "%d: ", i)
-				print_chunk(&printer, method)
+				print_chunk(&printer, method.chunk)
 			}
 			decrement(&printer)
 		}
@@ -695,47 +695,52 @@ print_compiled_module :: proc(m: ^Compiled_Module) {
 	fmt.println(strings.to_string(printer.builder))
 }
 
+op_code_str := map[Op_Code]string {
+	.Op_Begin         = "Op_Begin",
+	.Op_End           = "Op_End",
+	.Op_Push          = "Op_Push",
+	.Op_Pop           = "Op_Pop",
+	.Op_Const         = "Op_Const",
+	.Op_Bind          = "Op_Bind",
+	.Op_Set           = "Op_Set",
+	.Op_Set_Scoped    = "Op_Set_Scoped",
+	.Op_Get           = "Op_Get",
+	.Op_Get_Scoped    = "Op_Get_Scoped",
+	.Op_Inc           = "Op_Inc",
+	.Op_Dec           = "Op_Dec",
+	.Op_Neg           = "Op_Neg",
+	.Op_Not           = "Op_Not",
+	.Op_Add           = "Op_Add",
+	.Op_Mul           = "Op_Mul",
+	.Op_Div           = "Op_Div",
+	.Op_Rem           = "Op_Rem",
+	.Op_And           = "Op_And",
+	.Op_Or            = "Op_Or",
+	.Op_Eq            = "Op_Eq",
+	.Op_Greater       = "Op_Greater",
+	.Op_Greater_Eq    = "Op_Greater_Eq",
+	.Op_Lesser        = "Op_Lesser",
+	.Op_Lesser_Eq     = "Op_Lesser_Eq",
+	.Op_Jump          = "Op_Jump",
+	.Op_Jump_False    = "Op_Jump_False",
+	.Op_Return        = "Op_Return",
+	.Op_Call          = "Op_Call",
+	.Op_Make_Array    = "Op_Make_Array",
+	.Op_Index_Array   = "Op_Index_Array",
+	.Op_Index_Array   = "Op_Index_Array",
+	.Op_Append_Array  = "Op_Append_Array",
+	.Op_Make_Instance = "Op_Make_Instance",
+	.Op_Make_Instance = "Op_Make_Instance",
+	.Op_Call_Constr   = "Op_Call_Constr",
+	.Op_Call_Method   = "Op_Call_Method",
+	.Op_Get_Field     = "Op_Get_Field",
+	.Op_Set_Field     = "Op_Set_Field",
+}
+
 print_chunk :: proc(p: ^Debug_Printer, c: Chunk) {
-
-
 	write_line(p, "=======================")
 	write_line(p, "== CHUNK DISASSEMBLY ==")
 	write_line(p)
-	op_code_str := map[Op_Code]string {
-		.Op_Begin         = "Op_Begin",
-		.Op_End           = "Op_End",
-		.Op_Pop           = "Op_Pop",
-		.Op_Const         = "Op_Const",
-		.Op_Bind          = "Op_Bind",
-		.Op_Set           = "Op_Set",
-		.Op_Set_Scoped    = "Op_Set_Scoped",
-		.Op_Get           = "Op_Get",
-		.Op_Get_Scoped    = "Op_Get_Scoped",
-		.Op_Inc           = "Op_Inc",
-		.Op_Dec           = "Op_Dec",
-		.Op_Neg           = "Op_Neg",
-		.Op_Not           = "Op_Not",
-		.Op_Add           = "Op_Add",
-		.Op_Mul           = "Op_Mul",
-		.Op_Div           = "Op_Div",
-		.Op_Rem           = "Op_Rem",
-		.Op_And           = "Op_And",
-		.Op_Or            = "Op_Or",
-		.Op_Eq            = "Op_Eq",
-		.Op_Greater       = "Op_Greater",
-		.Op_Greater_Eq    = "Op_Greater_Eq",
-		.Op_Lesser        = "Op_Lesser",
-		.Op_Lesser_Eq     = "Op_Lesser_Eq",
-		.Op_Jump          = "Op_Jump",
-		.Op_Jump_False    = "Op_Jump_False",
-		.Op_Return        = "Op_Return",
-		.Op_Call          = "Op_Call",
-		.Op_Make_Array    = "Op_Make_Array",
-		.Op_Index_Array   = "Op_Index_Array",
-		.Op_Index_Array   = "Op_Index_Array",
-		.Op_Append_Array  = "Op_Append_Array",
-		.Op_Make_Instance = "Op_Make_Instance",
-	}
 	max_str := -1
 	for k, v in op_code_str {
 		if len(v) > max_str {
@@ -820,7 +825,7 @@ print_chunk :: proc(p: ^Debug_Printer, c: Chunk) {
 		case .Op_Call:
 			write(p, op_code_str[op])
 			format(p, op_code_str[op], max_str)
-			fmt.sbprintf(&p.builder, " || fn addr: %04d", get_i16(&vm))
+			fmt.sbprintf(&p.builder, " || fn addr: %d", get_i16(&vm))
 
 		case .Op_Make_Array, .Op_Assign_Array, .Op_Index_Array, .Op_Append_Array:
 			write(p, op_code_str[op])
@@ -830,32 +835,22 @@ print_chunk :: proc(p: ^Debug_Printer, c: Chunk) {
 		case .Op_Make_Instance:
 			write(p, op_code_str[op])
 			format(p, op_code_str[op], max_str)
-			fmt.sbprintf(&p.builder, " || class addr: %04d", get_i16(&vm))
+			fmt.sbprintf(&p.builder, " || class addr: %d", get_i16(&vm))
 
 		case .Op_Call_Constr:
 			write(p, op_code_str[op])
 			format(p, op_code_str[op], max_str)
-			fmt.sbprintf(&p.builder, " || class addr: %04d, constr addr: %04d", get_i16(&vm), get_i16(&vm))
+			fmt.sbprintf(&p.builder, " || class addr: %d, constr addr: %d", get_i16(&vm), get_i16(&vm))
 
 		case .Op_Call_Method:
 			write(p, op_code_str[op])
 			format(p, op_code_str[op], max_str)
-			fmt.sbprintf(
-				&p.builder,
-				" || instance addr: %04d, method addr: %04d",
-				get_i16(&vm),
-				get_i16(&vm),
-			)
+			fmt.sbprintf(&p.builder, " || instance addr: %d, method addr: %d", get_i16(&vm), get_i16(&vm))
 
 		case .Op_Get_Field, .Op_Set_Field:
 			write(p, op_code_str[op])
 			format(p, op_code_str[op], max_str)
-			fmt.sbprintf(
-				&p.builder,
-				" || instance addr: %04d, constr addr: %04d",
-				get_i16(&vm),
-				get_i16(&vm),
-			)
+			fmt.sbprintf(&p.builder, " || instance addr: %d, field addr: %d", get_i16(&vm), get_i16(&vm))
 		}
 		if vm.ip >= len(vm.chunk.bytecode) {
 			break
@@ -915,6 +910,16 @@ print_value :: proc(p: ^Debug_Printer, value: Value) {
 			write(p, `]`)
 		case .Fn:
 		case .Class:
+			class_object := cast(^Class_Object)data
+			write(p, `[`)
+			for field in class_object.fields {
+				write(p, field.name)
+				write(p, ": ")
+				print_value(p, field.value)
+				fmt.println(value)
+				write(p, `,`)
+			}
+			write(p, `]`)
 		}
 	}
 }

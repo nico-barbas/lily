@@ -953,9 +953,6 @@ check_expr_types :: proc(c: ^Checker, expr: Parsed_Expression) -> (
 		result = checked_binary
 
 	case ^Parsed_Identifier_Expression:
-		if e.name.text == "_x" {
-			fmt.println("_x: ", c.current.scope.id)
-		}
 		info = get_type_from_identifier(c, e.name)
 		result = new_clone(Checked_Identifier_Expression{name = e.name, type_info = info})
 
@@ -1018,12 +1015,9 @@ check_expr_types :: proc(c: ^Checker, expr: Parsed_Expression) -> (
 		case:
 			if t, exist := c.current.type_lookup[name]; exist {
 				class_info = t
-				// checked_dot.kind = .Class
-				// enter_class_scope(c.current, left_identifier.name)
 			} else {
 				is_instance = true
 				class_info, _ = get_variable_type(c, name)
-				// enter_class_scope(c.current, Token{text = class_info.name})
 			}
 		}
 
@@ -1082,7 +1076,6 @@ check_expr_types :: proc(c: ^Checker, expr: Parsed_Expression) -> (
 
 
 			signature_info := fn_decl.type_info.type_id_data.(Fn_Signature_Info)
-			// info = get_type_from_id(c, signature_info.return_type_id)
 			info = signature_info.return_type_info^
 
 			checked_call := new_clone(
@@ -1126,6 +1119,7 @@ check_expr_types :: proc(c: ^Checker, expr: Parsed_Expression) -> (
 			}
 
 			checked_dot.selector = checked_call
+			checked_dot.type_info = info
 		}
 
 		// checked_dot.selector, info = check_expr_types(c, e.selector) or_return

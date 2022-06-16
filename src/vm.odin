@@ -339,7 +339,41 @@ run_bytecode :: proc(vm: ^Vm) {
 			append(&array_object.data, element)
 			push_stack_value(vm, obj)
 
-		case .Op_Make_Instance, .Op_Call_Constr, .Op_Call_Method, .Op_Get_Field, .Op_Set_Field:
+		case .Op_Make_Instance:
+			class_addr := get_i16(vm)
+			new_instance := new_clone(vm.module.classe_prototypes[class_addr])
+			class_object := Value {
+				kind = .Object_Ref,
+				data = cast(^Object)new_instance,
+			}
+			push_stack_value(vm, class_object)
+
+		case .Op_Call_Constr:
+			class_addr := get_i16(vm)
+			constr_addr := get_i16(vm)
+			constr := &vm.module.class_vtables[class_addr].constructors[constr_addr]
+			push_call(vm, constr)
+
+		case .Op_Call_Method:
+			class_addr := get_i16(vm)
+			constr_addr := get_i16(vm)
+			constr := &vm.module.class_vtables[class_addr].methods[constr_addr]
+			push_call(vm, constr)
+
+		case .Op_Get_Field:
+			instance_addr := get_i16(vm)
+			field_addr := get_i16(vm)
+			obj := get_stack_value(vm, get_variable_stack_id(vm, instance_addr))
+			instance := cast(^Class_Object)obj.data.(^Object)
+			push_stack_value(vm, instance.fields[field_addr].value)
+
+		case .Op_Set_Field:
+			instance_addr := get_i16(vm)
+			field_addr := get_i16(vm)
+			value := pop_stack_value(vm)
+			obj := get_stack_value(vm, get_variable_stack_id(vm, instance_addr))
+			instance := cast(^Class_Object)obj.data.(^Object)
+			instance.fields[field_addr].value = value
 		}
 		when VM_DEBUG_VIEW {
 			print_stack(vm)

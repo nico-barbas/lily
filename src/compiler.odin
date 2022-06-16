@@ -141,7 +141,10 @@ add_constant :: proc(c: ^Compiler, constant: Value) -> (ptr: i16) {
 
 add_variable :: proc(c: ^Compiler, name: string, type_info: Type_Info) -> (ptr: i16) {
 	// TODO: keep track of the scope depth
-	append(&c.variables, Variable{name = name, scope_depth = c.scope_depth, stack_id = -1})
+	append(
+		&c.variables,
+		Variable{name = name, type_info = type_info, scope_depth = c.scope_depth, stack_id = -1},
+	)
 	c.var_count += 1
 	return c.var_count - 1
 }
@@ -188,6 +191,7 @@ get_field_addr :: proc(c: ^Compiler, instance_addr: i16, name: string) -> i16 {
 	class_addr := get_class_addr(c, instance.type_info.name)
 	if class_addr == -1 {
 		fmt.println(instance)
+		fmt.println(c.variables)
 	}
 	class := c.class_info[class_addr]
 	for field, i in class.field_names {
@@ -422,19 +426,25 @@ compile_module :: proc(c: ^Compiler, module: ^Checked_Module) -> ^Compiled_Modul
 		}
 
 		vtable := Class_Vtable {
-			constructors = make([]Chunk, len(class_decl.constructors)),
-			methods      = make([]Chunk, len(class_decl.methods)),
+			constructors = make([]Fn_Object, len(class_decl.constructors)),
+			methods      = make([]Fn_Object, len(class_decl.methods)),
 		}
 
 		for constructor, i in class_decl.constructors {
 			constructor_chunk := compile_class_constructor(c, constructor, i16(i))
-			vtable.constructors[i] = constructor_chunk
+			vtable.constructors[i] = Fn_Object {
+				base = Object{kind = .Fn},
+				chunk = constructor_chunk,
+			}
 			reset_compiler(c)
 		}
 
 		for method, i in class_decl.methods {
 			method_chunk := compile_class_method(c, method, i16(i))
-			vtable.methods[i] = method_chunk
+			vtable.methods[i] = Fn_Object {
+				base = Object{kind = .Fn},
+				chunk = method_chunk,
+			}
 			reset_compiler(c)
 		}
 
@@ -453,10 +463,13 @@ compile_module :: proc(c: ^Compiler, module: ^Checked_Module) -> ^Compiled_Modul
 
 	m.main = compile_chunk(c, module.nodes[:])
 	when LILY_DEBUG {
-		// m.class_names = make([]string, len(c.class_names))
+		m.class_names = make([]string, len(c.class_info))
 		m.function_names = make([]string, len(c.fn_names))
-		// copy(m.class_names[:], c.class_names[:])
 		copy(m.function_names[:], c.fn_names[:])
+
+		for class, i in c.class_info {
+			m.class_names[i] = class.identifier.text
+		}
 	}
 	clear(&c.class_info)
 	clear(&c.fn_names)
@@ -508,7 +521,7 @@ compile_class_constructor :: proc(
 
 		push_op_make_instance_code(c, class_addr)
 		self_addr := add_variable(c, "self", class_info)
-		push_op_bind_code(c, self_addr, 0)
+		push_op_set_code(c, self_addr, true)
 		for name, i in constr.param_names {
 			param_type := constr_signature.parameters[i]
 			param_addr := add_variable(c, name.text, param_type)
@@ -814,7 +827,7 @@ compile_expr :: proc(c: ^Compiler, expr: Checked_Expression) {
 
 
 			push_op_code(c, .Op_Begin)
-			push_op_code(c, .Op_Push) // Save a slot for "self" ref
+			// push_op_code(c, .Op_Push) // Save a slot for "self" ref
 			for arg_expr in call_expr.args {
 				compile_expr(c, arg_expr)
 			}
@@ -832,14 +845,13 @@ compile_expr :: proc(c: ^Compiler, expr: Checked_Expression) {
 		case .Instance_Call:
 			call_expr := e.selector.(^Checked_Call_Expression)
 			call_identifier := call_expr.func.(^Checked_Identifier_Expression)
-			method_signature := call_expr.type_info.type_id_data.(Fn_Signature_Info)
 			instance_addr := get_variable_addr(c, e.left.text)
 			method_addr := get_method_addr(c, instance_addr, call_identifier.name.text)
 
 			push_op_code(c, .Op_Begin)
 			push_op_code(c, .Op_Push) // Slot for "self"
 
-			is_void := method_signature.return_type_info.type_id == UNTYPED_ID
+			is_void := call_expr.type_info.type_id == UNTYPED_ID
 			if !is_void {
 				push_op_code(c, .Op_Push) // 
 			}

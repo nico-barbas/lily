@@ -68,8 +68,8 @@ Class_Field :: struct {
 }
 
 Class_Vtable :: struct {
-	constructors: []Chunk,
-	methods:      []Chunk,
+	constructors: []Fn_Object,
+	methods:      []Fn_Object,
 }
 
 token_to_operator :: proc(kind: Token_Kind) -> Operator {
