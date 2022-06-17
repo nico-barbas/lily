@@ -70,7 +70,7 @@ make_module :: proc() -> ^Parsed_Module {
 }
 
 delete_module :: proc(p: ^Parsed_Module) {
-	delete(p.source)
+	// delete(p.source)
 	// FIXME: Free the rest of the ast
 	free(p)
 }

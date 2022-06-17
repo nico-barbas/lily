@@ -2,7 +2,7 @@ package lily
 
 import "core:fmt"
 
-LILY_DEBUG :: true
+LILY_DEBUG :: false
 
 // FIXME: Remove all string comparisons from the compiler if possible
 // Most of them can be done during the semantic analysis.
@@ -39,6 +39,7 @@ Op_Code :: enum byte {
 	Op_Jump,
 	Op_Jump_False,
 	Op_Call,
+	Op_Return_Val,
 	Op_Return,
 
 	Op_Make_Array,
@@ -83,7 +84,8 @@ instruction_lengths := map[Op_Code]int {
 	.Op_Jump          = 3,
 	.Op_Jump_False    = 3,
 	.Op_Call          = 3,
-	.Op_Return        = 3,
+	.Op_Return_Val    = 3,
+	.Op_Return        = 1,
 	.Op_Make_Array    = 1,
 	.Op_Assign_Array  = 1,
 	.Op_Index_Array   = 1,
@@ -319,7 +321,7 @@ push_op_call_code :: proc(c: ^Compiler, fn_addr: i16) {
 }
 
 push_op_return_code :: proc(c: ^Compiler, result_addr: i16) {
-	push_byte(c, byte(Op_Code.Op_Return))
+	push_byte(c, byte(Op_Code.Op_Return_Val))
 	lower_addr := byte(result_addr)
 	upper_addr := byte(result_addr >> 8)
 	push_byte(c, lower_addr)
@@ -519,14 +521,16 @@ compile_class_constructor :: proc(
 		class_info := c.class_info[class_addr].type_info
 		constr_signature := constr.type_info.type_id_data.(Fn_Signature_Info)
 
-		push_op_make_instance_code(c, class_addr)
-		self_addr := add_variable(c, "self", class_info)
-		push_op_set_code(c, self_addr, true)
+
 		for name, i in constr.param_names {
 			param_type := constr_signature.parameters[i]
 			param_addr := add_variable(c, name.text, param_type)
-			push_op_bind_code(c, param_addr, i16(i + 1))
+			push_op_bind_code(c, param_addr, i16(i))
 		}
+		push_op_make_instance_code(c, class_addr)
+		self_addr := add_variable(c, "self", class_info)
+		push_op_set_code(c, self_addr, true)
+
 		compile_node(c, constr.body)
 		push_op_return_code(c, self_addr)
 	}
@@ -573,6 +577,8 @@ compile_class_method :: proc(c: ^Compiler, method: ^Checked_Fn_Declaration, clas
 		compile_node(c, method.body)
 		if !is_void {
 			push_op_return_code(c, result_addr)
+		} else {
+			push_op_code(c, .Op_Return)
 		}
 	}
 
@@ -591,7 +597,6 @@ compile_node :: proc(c: ^Compiler, node: Checked_Node) {
 	switch n in node {
 	case ^Checked_Expression_Statement:
 		compile_expr(c, n.expr)
-		push_op_code(c, .Op_Pop)
 
 	case ^Checked_Block_Statement:
 		for inner in n.nodes {
@@ -723,6 +728,8 @@ compile_node :: proc(c: ^Compiler, node: Checked_Node) {
 		compile_node(c, n.body)
 		if !is_void {
 			push_op_return_code(c, result_addr)
+		} else {
+			push_op_code(c, .Op_Return)
 		}
 
 	case ^Checked_Type_Declaration:
@@ -849,11 +856,14 @@ compile_expr :: proc(c: ^Compiler, expr: Checked_Expression) {
 			method_addr := get_method_addr(c, instance_addr, call_identifier.name.text)
 
 			push_op_code(c, .Op_Begin)
-			push_op_code(c, .Op_Push) // Slot for "self"
+			push_op_get_code(c, instance_addr)
 
 			is_void := call_expr.type_info.type_id == UNTYPED_ID
 			if !is_void {
 				push_op_code(c, .Op_Push) // 
+			}
+			for arg_expr in call_expr.args {
+				compile_expr(c, arg_expr)
 			}
 			push_op_call_method_code(c, instance_addr, method_addr)
 		}

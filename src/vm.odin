@@ -1,8 +1,9 @@
 package lily
 
+
 VM_STACK_SIZE :: 255
 VM_STACK_GROWTH :: 2
-VM_DEBUG_VIEW :: true
+// VM_DEBUG_VIEW :: true
 
 Vm :: struct {
 	module:      ^Compiled_Module,
@@ -300,13 +301,17 @@ run_bytecode :: proc(vm: ^Vm) {
 			fn := &vm.module.functions[fn_addr]
 			push_call(vm, fn)
 
-		case .Op_Return:
+		case .Op_Return_Val:
 			result_addr := get_i16(vm)
 			result_stack_id := get_variable_stack_id(vm, result_addr)
 			result_value := get_stack_value(vm, result_stack_id)
 			pop_call(vm)
 			pop_stack(vm)
 			push_stack_value(vm, result_value)
+
+		case .Op_Return:
+			pop_call(vm)
+			pop_stack(vm)
 
 		case .Op_Make_Array:
 			array := make([dynamic]Value)
@@ -355,10 +360,13 @@ run_bytecode :: proc(vm: ^Vm) {
 			push_call(vm, constr)
 
 		case .Op_Call_Method:
-			class_addr := get_i16(vm)
-			constr_addr := get_i16(vm)
-			constr := &vm.module.class_vtables[class_addr].methods[constr_addr]
-			push_call(vm, constr)
+			instance_addr := get_i16(vm)
+			method_addr := get_i16(vm)
+			obj := get_stack_value(vm, get_variable_stack_id(vm, instance_addr))
+			instance := cast(^Class_Object)obj.data.(^Object)
+			method := &instance.vtable.methods[method_addr]
+			// set_stack_value(vm, )
+			push_call(vm, method)
 
 		case .Op_Get_Field:
 			instance_addr := get_i16(vm)
@@ -375,7 +383,8 @@ run_bytecode :: proc(vm: ^Vm) {
 			instance := cast(^Class_Object)obj.data.(^Object)
 			instance.fields[field_addr].value = value
 		}
-		when VM_DEBUG_VIEW {
+		when LILY_DEBUG {
+			fmt.printf("== %v ==", op)
 			print_stack(vm)
 		}
 		if vm.ip >= len(vm.chunk.bytecode) {
@@ -383,318 +392,3 @@ run_bytecode :: proc(vm: ^Vm) {
 		}
 	}
 }
-
-
-// import "core:strings"
-
-// VM_STACK_SIZE :: 255
-
-// Vm :: struct {
-// 	names:       map[string]Stack_ID,
-// 	stack:       [VM_STACK_SIZE]Value,
-// 	header_ptr:  int,
-// 	stack_ptr:   int,
-// 	stack_depth: int,
-// }
-
-// Stack_ID :: distinct u8
-
-// new_vm :: proc() -> (vm: ^Vm) {
-// 	vm = new(Vm)
-// 	return
-// }
-
-// delete_vm :: proc(vm: ^Vm) {
-// 	free(vm)
-// }
-
-// run_program :: proc(vm: ^Vm, program: []Parsed_Node) {
-// 	// Gather all the declarations
-// 	for node in program {
-// 		#partial switch n in node {
-// 		case ^Parsed_Var_Declaration:
-// 			value: Value
-// 			#partial switch t in n.type_expr {
-// 			case ^Parsed_Identifier_Expression:
-// 				switch t.name {
-// 				case "number":
-// 					value = Value {
-// 						kind = .Number,
-// 						data = 0,
-// 					}
-// 				case "boolean":
-// 					value = Value {
-// 						kind = .Boolean,
-// 						data = false,
-// 					}
-// 				case:
-// 					value = Value {
-// 						kind = .Nil,
-// 						data = nil,
-// 					}
-// 				}
-
-// 			case ^Parsed_Array_Type_Expression:
-// 				assert(false, "Array not implemented yet")
-// 			}
-// 			push_stack_value(vm, n.identifier)
-
-// 		case ^Parsed_Fn_Declaration:
-// 			fn := new(Fn_Object)
-// 			fn.base = Object {
-// 				kind = .Fn,
-// 			}
-// 			for i in 0 ..< n.param_count {
-// 				fn.parameters[i] = strings.clone(n.parameters[i].name)
-// 			}
-// 			fn.param_count = n.param_count
-// 			fn.body = n.body
-// 			push_stack_value(vm, n.identifier, Value{kind = .Object_Ref, data = cast(^Object)fn})
-// 		}
-// 	}
-
-// 	// Run the program
-// 	for node in program {
-// 		eval_node(vm, node)
-// 	}
-// }
-
-// push_stack_value :: proc(vm: ^Vm, name: string, value := Value{kind = .Nil}) {
-// 	vm.names[name] = Stack_ID(vm.stack_ptr)
-// 	vm.stack[vm.stack_ptr] = value
-// 	vm.stack_ptr += 1
-// }
-
-// set_stack_value :: proc(vm: ^Vm, name: string, value: Value) {
-// 	vm.stack[vm.names[name]] = value
-// }
-
-// get_stack_value :: proc(vm: ^Vm, name: string) -> Value {
-// 	return vm.stack[vm.names[name]]
-// }
-
-// push_stack :: proc(vm: ^Vm) {
-// 	vm.stack[vm.stack_ptr] = Value {
-// 		data = f64(vm.header_ptr),
-// 	}
-// 	vm.header_ptr = vm.stack_ptr
-// 	vm.stack_ptr += 1
-// 	vm.stack_depth += 1
-// }
-
-// pop_stack :: proc(vm: ^Vm) {
-// 	vm.stack_ptr = vm.header_ptr
-// 	vm.header_ptr = int(vm.stack[vm.header_ptr].data.(f64))
-// 	vm.stack_depth -= 1
-// }
-
-// eval_expr :: proc(vm: ^Vm, expr: Parsed_Expression) -> (result: Value, err: Error) {
-// 	switch e in expr {
-// 	case ^Parsed_Literal_Expression:
-// 		result = e.value
-
-// 	case ^Parsed_String_Literal_Expression:
-// 		// FIXME: Very naive approach. No reuse of constant strings or stack allocation
-// 		str := make([]rune, len(e.value))
-// 		for r, i in e.value {
-// 			str[i] = r
-// 		}
-// 		obj := new_clone(String_Object{base = Object{kind = .String}, data = str})
-// 		result = Value {
-// 			kind = .Object_Ref,
-// 			data = cast(^Object)obj,
-// 		}
-
-// 	case ^Parsed_Array_Literal_Expression:
-// 		array := make([dynamic]Value)
-// 		for element_expr, i in e.values {
-// 			value := eval_expr(vm, element_expr) or_return
-// 			append(&array, value)
-// 		}
-// 		obj := new_clone(Array_Object{base = Object{kind = .Array}, data = array})
-// 		result = Value {
-// 			kind = .Object_Ref,
-// 			data = cast(^Object)obj,
-// 		}
-
-// 	case ^Parsed_Unary_Expression:
-// 		result = eval_expr(vm, e.expr) or_return
-// 		#partial switch e.op {
-// 		case .Minus_Op:
-// 			result.data = -(result.data.(f64))
-// 		case .Not_Op:
-// 			result.data = !(result.data.(bool))
-// 		}
-
-// 	case ^Parsed_Binary_Expression:
-// 		// FIXME: Boolean operator needs to eval expr sequentially depending on
-// 		// the result of the first
-// 		left := eval_expr(vm, e.left) or_return
-// 		right := eval_expr(vm, e.right) or_return
-// 		#partial switch e.op {
-// 		case .And_Op:
-// 			result = Value {
-// 				kind = .Boolean,
-// 				data = left.data.(bool) && right.data.(bool),
-// 			}
-
-// 		case .Or_Op:
-// 			result = Value {
-// 				kind = .Boolean,
-// 				data = left.data.(bool) || right.data.(bool),
-// 			}
-
-// 		case .Minus_Op:
-// 			result = Value {
-// 				kind = .Number,
-// 				data = left.data.(f64) - right.data.(f64),
-// 			}
-// 		case .Plus_Op:
-// 			result = Value {
-// 				kind = .Number,
-// 				data = left.data.(f64) + right.data.(f64),
-// 			}
-// 		case .Mult_Op:
-// 			result = Value {
-// 				kind = .Number,
-// 				data = left.data.(f64) * right.data.(f64),
-// 			}
-
-// 		case .Div_Op:
-// 			result = Value {
-// 				kind = .Number,
-// 				data = left.data.(f64) / right.data.(f64),
-// 			}
-
-// 		case .Rem_Op:
-// 			result = Value {
-// 				kind = .Number,
-// 				data = f64(int(left.data.(f64)) % int(right.data.(f64))),
-// 			}
-// 		}
-
-// 	case ^Parsed_Identifier_Expression:
-// 		result = get_stack_value(vm, e.name)
-
-// 	case ^Parsed_Index_Expression:
-// 		obj := get_stack_value(vm, e.left.(^Parsed_Identifier_Expression).name)
-// 		array := cast(^Array_Object)obj.data.(^Object)
-// 		index_value := eval_expr(vm, e.index) or_return
-// 		result = array.data[int(index_value.data.(f64))]
-// 	// e.
-
-// 	case ^Parsed_Array_Type_Expression:
-// 		assert(false, "Invalid branch")
-
-// 	case ^Parsed_Call_Expression:
-// 		value := eval_expr(vm, e.func) or_return
-// 		fn := cast(^Fn_Object)value.data.(^Object)
-// 		push_stack(vm)
-// 		defer pop_stack(vm)
-// 		push_stack_value(vm, "result")
-// 		for i in 0 ..< fn.param_count {
-// 			arg := eval_expr(vm, e.args[i]) or_return
-// 			push_stack_value(vm, fn.parameters[i], arg)
-// 		}
-// 		eval_node(vm, fn.body) or_return
-// 		result = get_stack_value(vm, "result")
-
-// 	}
-// 	return
-// }
-
-// eval_node :: proc(vm: ^Vm, node: Parsed_Node) -> (err: Error) {
-// 	switch n in node {
-// 	case ^Parsed_Expression_Statement:
-// 		eval_expr(vm, n.expr) or_return
-
-// 	case ^Parsed_Block_Statement:
-// 		for body_node in n.nodes {
-// 			eval_node(vm, body_node) or_return
-// 		}
-
-// 	case ^Parsed_Assignment_Statement:
-// 		result := eval_expr(vm, n.right) or_return
-// 		#partial switch left in n.left {
-// 		case ^Parsed_Identifier_Expression:
-// 			set_stack_value(vm, left.name, result)
-// 		case ^Parsed_Index_Expression:
-// 			obj := get_stack_value(vm, left.left.(^Parsed_Identifier_Expression).name)
-// 			array := cast(^Array_Object)obj.data.(^Object)
-// 			index_value := eval_expr(vm, left.index) or_return
-// 			array.data[int(index_value.data.(f64))] = result
-// 		case:
-// 			assert(false, "Left handside expression kind in Assignment Statement not implemented")
-// 		}
-
-// 	case ^Parsed_If_Statement:
-// 		push_stack(vm)
-// 		defer pop_stack(vm)
-// 		condition_result := eval_expr(vm, n.condition) or_return
-// 		if condition_result.data.(bool) {
-// 			eval_node(vm, n.body) or_return
-// 		} else if n.next_branch != nil {
-// 			eval_node(vm, n.next_branch) or_return
-// 		}
-
-// 	case ^Parsed_Range_Statement:
-// 		iterator := RANGE_ITERATOR_IMPL
-// 		low_result := eval_expr(vm, n.low) or_return
-// 		high_result := eval_expr(vm, n.high) or_return
-// 		iterator.low = low_result.data.(f64)
-// 		iterator.high = high_result.data.(f64)
-// 		if n.op == .Exclusive {
-// 			iterator.high -= 1
-// 		}
-
-// 		push_stack(vm)
-// 		defer pop_stack(vm)
-// 		push_stack_value(vm, n.iterator_name)
-// 		range_loop: for {
-// 			iterator_value, done := iterator->next()
-// 			set_stack_value(vm, n.iterator_name, iterator_value)
-// 			if done {
-// 				break range_loop
-// 			} else {
-// 				eval_node(vm, n.body)
-// 			}
-// 		}
-
-// 	case ^Parsed_Var_Declaration:
-// 		result: Value
-// 		switch n.initialized {
-// 		case true:
-// 			result = eval_expr(vm, n.expr) or_return
-
-// 		// We zero initialize the value
-// 		case false:
-// 			// FIXME: Undecided on this semantic
-// 			// Should the complex types (array, map, class, which are dynamically allocated)
-// 			// Be initialized or left as nil?
-// 			// In any case, need a transformed "typed" AST before being able to do any of that
-// 			assert(false, "Uninitialized value not supported at runtime yet")
-// 		}
-// 		if vm.stack_depth > 0 {
-// 			push_stack_value(vm, n.identifier, result)
-// 		} else {
-// 			set_stack_value(vm, n.identifier, result)
-// 		}
-
-// 	case ^Parsed_Fn_Declaration:
-// 	case ^Parsed_Type_Declaration:
-// 		assert(false)
-// 	}
-// 	return
-// }
-
-// zero_initialize_primitive_value :: proc(kind: Value_Kind) -> (result: Value, err: Error) {
-// 	result = Value {
-// 		kind = kind,
-// 	}
-// 	return
-// }
-
-// zero_initialize_object_value :: proc() -> (result: Value, err: Error) {
-// 	assert(false, "Complex type zero initialization not implemented yet")
-// 	return
-// }

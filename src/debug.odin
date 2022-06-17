@@ -723,6 +723,7 @@ op_code_str := map[Op_Code]string {
 	.Op_Lesser_Eq     = "Op_Lesser_Eq",
 	.Op_Jump          = "Op_Jump",
 	.Op_Jump_False    = "Op_Jump_False",
+	.Op_Return_Val    = "Op_Return_Val",
 	.Op_Return        = "Op_Return",
 	.Op_Call          = "Op_Call",
 	.Op_Make_Array    = "Op_Make_Array",
@@ -797,12 +798,12 @@ print_chunk :: proc(p: ^Debug_Printer, c: Chunk) {
 			format(p, op_code_str[op], max_str)
 			fmt.sbprintf(&p.builder, " || var addr: %d", get_i16(&vm))
 
-		case .Op_Get, .Op_Get_Scoped, .Op_Return:
+		case .Op_Get, .Op_Get_Scoped, .Op_Return_Val:
 			write(p, op_code_str[op])
 			format(p, op_code_str[op], max_str)
 			fmt.sbprintf(&p.builder, " || var addr: %d", get_i16(&vm))
 
-		case .Op_Pop, .Op_Push, .Op_Neg, .Op_Inc, .Op_Dec, .Op_Not:
+		case .Op_Pop, .Op_Push, .Op_Neg, .Op_Inc, .Op_Dec, .Op_Not, .Op_Return:
 			write(p, op_code_str[op])
 			format(p, op_code_str[op], max_str)
 			fmt.sbprintf(&p.builder, " ||")
@@ -915,11 +916,13 @@ print_value :: proc(p: ^Debug_Printer, value: Value) {
 			for field in class_object.fields {
 				write(p, field.name)
 				write(p, ": ")
+				// fmt.sbprintf(&p.builder, "%v", field.value)
 				print_value(p, field.value)
-				fmt.println(value)
 				write(p, `,`)
 			}
 			write(p, `]`)
 		}
+	case:
+		write(p, "Nil")
 	}
 }

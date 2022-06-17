@@ -1,11 +1,27 @@
 package tests
 
 import "core:fmt"
+import "core:mem"
 import lily "../src"
 
 main :: proc() {
-
+	track := mem.Tracking_Allocator{}
+	mem.tracking_allocator_init(&track, context.allocator)
+	context.allocator = mem.tracking_allocator(&track)
 	playground()
+
+	if len(track.allocation_map) > 0 {
+		fmt.printf("Leaks:")
+		for _, v in track.allocation_map {
+			fmt.printf("\t%v\n\n", v)
+		}
+	}
+	if len(track.bad_free_array) > 0 {
+		fmt.printf("Bad Frees:")
+		for v in track.bad_free_array {
+			fmt.printf("\t%v\n\n", v)
+		}
+	}
 }
 
 playground :: proc() {using lily
@@ -45,15 +61,15 @@ playground :: proc() {using lily
 	checked_module, check_err := check_module(checker, parsed_module)
 	// print_symbol_table(checker, checked_module)
 	assert(check_err == nil, fmt.tprint("Failed, Error raised ->", check_err))
-	print_checked_ast(checked_module, checker)
+	// print_checked_ast(checked_module, checker)
 
 	compiler := new_compiler()
 	compiled_module := compile_module(compiler, checked_module)
 	// print_compiled_module(compiled_module)
-	fmt.println()
+	// fmt.println()
 	vm := Vm{}
 	run_module(&vm, compiled_module)
-	fmt.println("RESULT:")
-	fmt.println(vm.chunk.variables)
+	// fmt.println("RESULT:")
+	// fmt.println(vm.chunk.variables)
 
 }
