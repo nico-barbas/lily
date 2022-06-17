@@ -183,6 +183,10 @@ print_parsed_node :: proc(p: ^Debug_Printer, node: Parsed_Node) {
 		}
 		decrement(p)
 
+	case ^Parsed_Import_Statement:
+		write_line(p, "Import Statement: ")
+		write(p, n.identifier.text)
+
 	case ^Parsed_Var_Declaration:
 		write_line(p, "Var Declaration: ")
 		increment(p)

@@ -542,6 +542,9 @@ check_node_symbols :: proc(c: ^Checker, node: Parsed_Node) -> (err: Error) {
 		defer pop_scope(c.current)
 		check_node_symbols(c, n.body) or_return
 
+	case ^Parsed_Import_Statement:
+		assert(false, "Module not implemented yet")
+
 	case ^Parsed_Var_Declaration:
 		if c.current.scope_depth > 0 {
 			add_var_symbol(c, n.identifier) or_return
@@ -775,6 +778,9 @@ check_node_types :: proc(c: ^Checker, node: Parsed_Node) -> (result: Checked_Nod
 				body = body_node,
 			},
 		)
+
+	case ^Parsed_Import_Statement:
+		assert(false, "Module not implemented yet")
 
 	case ^Parsed_Var_Declaration:
 		var_expr, var_info := check_expr_types(c, n.type_expr) or_return

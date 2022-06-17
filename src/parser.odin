@@ -118,6 +118,8 @@ parse_node :: proc(p: ^Parser) -> (result: Parsed_Node, err: Error) {
 	#partial switch token.kind {
 	case .EOF, .Newline, .End, .Else:
 		result = nil
+	case .Import:
+		result, err = parse_import_stmt(p)
 	case .Var:
 		result, err = parse_var_decl(p)
 	case .Fn:
@@ -306,6 +308,15 @@ parse_range_stmt :: proc(p: ^Parser) -> (result: ^Parsed_Range_Statement, err: E
 			details = fmt.tprintf("Expected %s, got %s", Token_Kind.Identifier, p.current.kind),
 		}
 	}
+	return
+}
+
+// FIXME: Allow for multiple module name in one Import statement
+parse_import_stmt :: proc(p: ^Parser) -> (result: ^Parsed_Import_Statement, err: Error) {
+	result = new_clone(Parsed_Import_Statement{token = p.current})
+	match_token_kind_next(p, .Identifier) or_return
+	result.identifier = p.current
+	match_token_kind_next(p, .Newline) or_return
 	return
 }
 

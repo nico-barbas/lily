@@ -79,4 +79,8 @@ var addResult = add(5, 10)
 - [x] Custom Class Types
 - [x] Class constructors
 - [x] Class methods
-
+- [ ] Modules
+- [ ] Minimal standard library
+    - [x] Parsing
+    - [ ] Checking
+    - [ ] Compiling

@@ -164,6 +164,7 @@ Parsed_Node :: union {
 	^Parsed_Assignment_Statement,
 	^Parsed_If_Statement,
 	^Parsed_Range_Statement,
+	^Parsed_Import_Statement,
 
 	// Declarations
 	^Parsed_Var_Declaration,
@@ -200,6 +201,11 @@ Parsed_Range_Statement :: struct {
 	reverse:       bool,
 	op:            Range_Operator,
 	body:          ^Parsed_Block_Statement,
+}
+
+Parsed_Import_Statement :: struct {
+	token:      Token,
+	identifier: Token,
 }
 
 Parsed_Var_Declaration :: struct {
@@ -260,6 +266,9 @@ free_parsed_node :: proc(node: Parsed_Node) {
 		free_parsed_expression(n.low)
 		free_parsed_expression(n.high)
 		free_parsed_node(n.body)
+		free(n)
+
+	case ^Parsed_Import_Statement:
 		free(n)
 
 	case ^Parsed_Var_Declaration:

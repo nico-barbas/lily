@@ -8,6 +8,7 @@ Token_Kind :: enum {
 
 	// Keywords
 	_keyword_start_,
+	Import,
 	Var,
 	Fn,
 	Type,
@@ -79,6 +80,7 @@ Token :: struct {
 }
 
 keywords := map[string]Token_Kind {
+	"import"      = .Import,
 	"var"         = .Var,
 	"fn"          = .Fn,
 	"type"        = .Type,

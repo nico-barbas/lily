@@ -26,31 +26,34 @@ main :: proc() {
 }
 
 playground :: proc() {using lily
-	PRINT_AST :: false
+	PRINT_AST :: true
 	PRINT_SYMBOL_TABLE :: false
 	PRINT_COMPILE :: true
 	PRINT_VM_STATE :: false
 
 	RUN_PARSER :: true
-	RUN_CHECKER :: true
-	RUN_COMPILER :: true
-	RUN_VM :: true
+	RUN_CHECKER :: false
+	RUN_COMPILER :: false
+	RUN_VM :: false
 
-	input: string = `
-		type Foo is class
-			x: number
+	// input: string = `
+	// 	type Foo is class
+	// 		x: number
 
-			constructor new(_x: number):
-				self.x = _x
-			end
+	// 		constructor new(_x: number):
+	// 			self.x = _x
+	// 		end
 
-			fn add(n: number):
-				self.x = self.x + n
-			end
-		end
+	// 		fn add(n: number):
+	// 			self.x = self.x + n
+	// 		end
+	// 	end
 
-	    var a = Foo.new(1)
-		a.add(2)
+	//     var a = Foo.new(1)
+	// 	a.add(2)
+	// `
+	input := `
+		import std
 	`
 
 	when RUN_PARSER {
@@ -60,6 +63,10 @@ playground :: proc() {using lily
 		err := parse_module(input, parsed_module)
 		assert(err == nil, fmt.tprint("Failed, Error raised ->", err))
 
+		when PRINT_AST {
+			print_parsed_ast(parsed_module)
+		}
+
 		when RUN_CHECKER {
 			checker := new_checker()
 			checked_module, check_err := check_module(checker, parsed_module)
@@ -68,7 +75,7 @@ playground :: proc() {using lily
 			assert(check_err == nil, fmt.tprint("Failed, Error raised ->", check_err))
 
 			when PRINT_AST {
-				print_parsed_ast(parsed_module)
+
 				print_checked_ast(checked_module, checker)
 			}
 			when PRINT_SYMBOL_TABLE {
