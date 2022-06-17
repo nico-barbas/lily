@@ -1,5 +1,7 @@
 # Lily, a small scripting language
 
+:warning: This project is still in early development :warning:
+
 A small scripting language somewhere between Lua and Pascal, with some inspiration from Ada.
 
 ```lua
@@ -27,6 +29,7 @@ myEntity.update()
 * Lily is small and meant to embedded in other applications.
 * Lily is straightforward and has a small cherry picked set of features.
 * Lily support classes and Object orientation. 
+* Lily is typed.
 
 ## Basics:
 ```lua
@@ -69,7 +72,7 @@ var addResult = add(5, 10)
 ```
 
 ## Status and Roadmap:
-- [ ] += (and others) assignment operatros
+- [ ] += (and others) assignment operators
 - [x] Control flow
 - [ ] Container iterators
 - [x] Array Type
