@@ -472,7 +472,7 @@ reset_compiler :: proc(c: ^Compiler) {
 	c.write_at_cursor = false
 }
 
-compile_module :: proc(c: ^Compiler, module: ^Checked_Module) -> ^Compiled_Module {
+compile_checked_module :: proc(c: ^Compiler, module: ^Checked_Module) -> ^Compiled_Module {
 	m := make_compiled_module(module)
 
 	for class, i in module.classes {

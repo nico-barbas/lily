@@ -6,6 +6,11 @@ VM_STACK_GROWTH :: 2
 // VM_DEBUG_VIEW :: true
 
 Vm :: struct {
+	checker:     ^Checker,
+	modules:     map[string]^Compiled_Module,
+
+
+	// Runtime states
 	module:      ^Compiled_Module,
 	chunk:       Chunk,
 	ip:          int,
@@ -17,6 +22,38 @@ Vm :: struct {
 	// A stack for all the function calls
 	call_stack:  [VM_STACK_SIZE]Call_Frame,
 	call_count:  int,
+}
+
+
+new_vm :: proc() -> ^Vm {
+	vm := new(Vm)
+	vm.checker = new_checker()
+	vm.modules = make(map[string]^Compiled_Module)
+
+	vm.stack = make([]Value, VM_STACK_SIZE)
+	return vm
+}
+
+free_vm :: proc(vm: ^Vm) {
+	delete(vm.stack)
+}
+
+compile_module :: proc(vm: ^Vm, input: string) -> (err: Error) {
+	parsed_module := make_parsed_module()
+	parse_module(string(input), parsed_module) or_return
+	defer delete_parsed_module(parsed_module)
+
+	checked_module := check_module(vm.checker, parsed_module) or_return
+	// defer free_checker(checker)
+	// defer delete_checked_module(checked_module)
+
+	// TODO: Store the checked_module in the checker or somewhere else
+	// It's probably be better to store it outside, this way we could checked multiple at once 
+	// (probably not in the forceable future)
+
+	compiler := new_compiler()
+	compiled_module := compile_checked_module(compiler, checked_module)
+	return
 }
 
 Call_Frame :: struct {
@@ -122,8 +159,6 @@ get_i16 :: proc(vm: ^Vm) -> i16 {
 run_module :: proc(vm: ^Vm, c: ^Compiled_Module) {
 	vm.module = c
 	vm.chunk = c.main
-	vm.stack = make([]Value, VM_STACK_SIZE)
-	defer delete(vm.stack)
 	vm.stack_ptr = 0
 	vm.ip = 0
 	vm.call_count = 1
