@@ -9,7 +9,7 @@ type Entity is class
     x: number
     y: number
 
-    constructor(_id: number, _x: number, _y: number):
+    constructor new(_id: number, _x: number, _y: number):
         id = _id
         x = _x
         y = _y
@@ -20,7 +20,7 @@ type Entity is class
     end
 end
 
-var myEntity = Entity(0, 10, 25)
+var myEntity = Entity.new(0, 10, 25)
 myEntity.update()
 ```
 
@@ -51,3 +51,5 @@ var mapValue = myMap["foo"]
 ```
 
 ## Status and Roadmap:
+- [x] Array Type
+- [ ] Map Type
