@@ -36,7 +36,7 @@ var foo: number = 10
 var bar = false -- is of type 'bool'
 
 -- More builtin types:
--- Strings are managed by the VM and are dynamically allocated.
+-- Strings are managed by the VM, are immutable and are dynamically allocated.
 var str: string = "Hello world!"
 -- Arrays are also managed by the VM and are dynamically allocated.
 -- They are also growable.
@@ -48,8 +48,35 @@ myArray.append(9)
 var myMap = map of (string, number)["foo" = 11, "bar" = 4]
 myMap["foobar"] = 62
 var mapValue = myMap["foo"]
+
+-- Control flow:
+var foobar: number
+if true:
+    foobar = 2
+else:
+    foobar = 3
+end
+
+for i in 0..<10:
+    foobbar = foobar + 1
+end
+
+-- Functions declaration and calling:
+fn add(a: number, b: number): number
+    result = a + b
+end
+var addResult = add(5, 10)
 ```
 
 ## Status and Roadmap:
+- [ ] += (and others) assignment operatros
+- [x] Control flow
+- [ ] Container iterators
 - [x] Array Type
 - [ ] Map Type
+- [x] Custom functions
+- [x] Custom Types
+- [x] Custom Class Types
+- [x] Class constructors
+- [x] Class methods
+
