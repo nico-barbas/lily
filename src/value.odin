@@ -72,6 +72,25 @@ Class_Vtable :: struct {
 	methods:      []Fn_Object,
 }
 
+free_object :: proc(object: ^Object) {
+	switch object.kind {
+	case .String:
+	case .Array:
+	case .Fn:
+		fn_object := cast(^Fn_Object)object
+		delete_chunk(&fn_object.chunk)
+	case .Class:
+		class_object := cast(^Class_Object)object
+		// FIXME: Need to recursively delete fields
+		for field in class_object.fields {
+			if field_object, ok := field.value.data.(^Object); ok {
+				free_object(field_object)
+			}
+		}
+	// delete_chunk(class_object.fields)
+	}
+}
+
 token_to_operator :: proc(kind: Token_Kind) -> Operator {
 	#partial switch kind {
 	case .Not:

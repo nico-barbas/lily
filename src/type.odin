@@ -76,7 +76,7 @@ Generic_Type_Info :: struct {
 
 RETURN_TYPE_INFO_LOC :: 0
 
-// TODO: This is a bit better as it enables multiple return values
+// TODO: This is a bit better for now as it enables multiple return values later on
 Fn_Signature_Info :: struct {
 	types_info:       []Type_Info,
 	parameters:       []Type_Info,
@@ -96,14 +96,22 @@ set_fn_return_type_info :: proc(fn: ^Fn_Signature_Info, return_info: Type_Info) 
 	fn.types_info[RETURN_TYPE_INFO_LOC] = return_info
 }
 
-// set_fn_param_type_info :: proc(fn: ^Fn_Signature_Info, at: int, info: Type_Info) {
-// 	fn.
-// }
+delete_fn_signature_info :: proc(info: Type_Info, loc := #caller_location) {
+	fn_signature := info.type_id_data.(Fn_Signature_Info)
+	delete(fn_signature.types_info)
+}
 
 Class_Definition_Info :: struct {
 	fields:       []Type_Info,
 	constructors: []Type_Info,
 	methods:      []Type_Info,
+}
+
+delete_class_definition_info :: proc(info: Type_Info) {
+	class_def := info.type_id_data.(Class_Definition_Info)
+	delete(class_def.fields)
+	delete(class_def.constructors)
+	delete(class_def.methods)
 }
 
 Type_Info :: struct {

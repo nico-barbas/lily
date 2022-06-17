@@ -1,5 +1,6 @@
 package lily
 
+// import "core:mem"
 import "core:fmt"
 
 LILY_DEBUG :: false
@@ -117,7 +118,7 @@ Compiled_Module :: struct {
 	classe_prototypes: []Class_Object,
 	class_vtables:     []Class_Vtable,
 	function_names:    []string,
-	functions:         [dynamic]Fn_Object,
+	functions:         []Fn_Object,
 	main:              Chunk,
 }
 
@@ -388,10 +389,77 @@ push_op_set_field_code :: proc(c: ^Compiler, instance_addr, field_addr: i16) {
 	push_byte(c, upper_addr)
 }
 
+make_chunk :: proc(c: ^Compiler) -> (result: Chunk) {
+	result = Chunk {
+		bytecode  = make([]byte, len(c.bytecode)),
+		constants = make([]Value, len(c.constants)),
+		variables = make([]Variable, len(c.variables)),
+	}
+	copy(result.bytecode, c.bytecode[:])
+	copy(result.constants, c.constants[:])
+	copy(result.variables, c.variables[:])
+	reset_compiler(c)
+	return
+}
+
+delete_chunk :: proc(c: ^Chunk) {
+	delete(c.bytecode)
+	delete(c.variables)
+	delete(c.constants)
+}
+
+make_compiled_module :: proc(checked_module: ^Checked_Module) -> ^Compiled_Module {
+	return new_clone(
+		Compiled_Module{
+			classe_prototypes = make([]Class_Object, len(checked_module.classes)),
+			class_vtables = make([]Class_Vtable, len(checked_module.classes)),
+			functions = make([]Fn_Object, len(checked_module.functions)),
+		},
+	)
+}
+
+delete_compiled_module :: proc(m: ^Compiled_Module) {
+	delete(m.class_names)
+	for prototype in m.classe_prototypes {
+		delete(prototype.fields)
+	}
+	delete(m.classe_prototypes)
+	for vtable in m.class_vtables {
+		for constructor in vtable.constructors {
+			constr_chunk := constructor.chunk
+			delete_chunk(&constr_chunk)
+		}
+		delete(vtable.constructors)
+		for method in vtable.methods {
+			method_chunk := method.chunk
+			delete_chunk(&method_chunk)
+		}
+		delete(vtable.methods)
+	}
+	delete(m.class_vtables)
+	for fn_object in m.functions {
+		fn_chunk := fn_object.chunk
+		delete_chunk(&fn_chunk)
+	}
+	delete(m.function_names)
+	delete(m.functions)
+	delete_chunk(&m.main)
+	free(m)
+}
+
 new_compiler :: proc() -> ^Compiler {
 	return new_clone(
 		Compiler{cursor = -1, bytecode = make([dynamic]byte), constants = make([dynamic]Value)},
 	)
+}
+
+free_compiler :: proc(c: ^Compiler) {
+	delete(c.fn_names)
+	delete(c.class_info)
+	delete(c.bytecode)
+	delete(c.constants)
+	delete(c.variables)
+	free(c)
 }
 
 reset_compiler :: proc(c: ^Compiler) {
@@ -405,13 +473,7 @@ reset_compiler :: proc(c: ^Compiler) {
 }
 
 compile_module :: proc(c: ^Compiler, module: ^Checked_Module) -> ^Compiled_Module {
-	m := new_clone(
-		Compiled_Module{
-			classe_prototypes = make([]Class_Object, len(module.classes)),
-			class_vtables = make([]Class_Vtable, len(module.classes)),
-			functions = make([dynamic]Fn_Object),
-		},
-	)
+	m := make_compiled_module(module)
 
 	for class, i in module.classes {
 		class_decl := class.(^Checked_Class_Declaration)
@@ -438,7 +500,6 @@ compile_module :: proc(c: ^Compiler, module: ^Checked_Module) -> ^Compiled_Modul
 				base = Object{kind = .Fn},
 				chunk = constructor_chunk,
 			}
-			reset_compiler(c)
 		}
 
 		for method, i in class_decl.methods {
@@ -447,7 +508,6 @@ compile_module :: proc(c: ^Compiler, module: ^Checked_Module) -> ^Compiled_Modul
 				base = Object{kind = .Fn},
 				chunk = method_chunk,
 			}
-			reset_compiler(c)
 		}
 
 		m.class_vtables[i] = vtable
@@ -457,10 +517,14 @@ compile_module :: proc(c: ^Compiler, module: ^Checked_Module) -> ^Compiled_Modul
 
 	for fn_decl, i in module.functions {
 		fn := fn_decl.(^Checked_Fn_Declaration)
-		fn_chunk := compile_chunk(c, module.functions[i:i + 1])
-		append(&m.functions, Fn_Object{base = Object{kind = .Fn}, chunk = fn_chunk})
+		// fn_chunk := compile_chunk(c, module.functions[i:i + 1])
+		fn_chunk := compile_chunk_node(c, fn_decl)
+		m.functions[i] = Fn_Object {
+			base = Object{kind = .Fn},
+			chunk = fn_chunk,
+		}
 		append(&c.fn_names, fn.identifier.text)
-		reset_compiler(c)
+		// reset_compiler(c)
 	}
 
 	m.main = compile_chunk(c, module.nodes[:])
@@ -482,28 +546,13 @@ compile_chunk :: proc(c: ^Compiler, nodes: []Checked_Node) -> (result: Chunk) {
 	for node in nodes {
 		compile_node(c, node)
 	}
-
-	result = Chunk {
-		bytecode  = make([]byte, len(c.bytecode)),
-		constants = make([]Value, len(c.constants)),
-		variables = make([]Variable, len(c.variables)),
-	}
-	copy(result.bytecode[:], c.bytecode[:])
-	copy(result.constants[:], c.constants[:])
-	copy(result.variables[:], c.variables[:])
+	result = make_chunk(c)
 	return
 }
 
 compile_chunk_node :: proc(c: ^Compiler, node: Checked_Node) -> (result: Chunk) {
 	compile_node(c, node)
-	result = Chunk {
-		bytecode  = make([]byte, len(c.bytecode)),
-		constants = make([]Value, len(c.constants)),
-		variables = make([]Variable, len(c.variables)),
-	}
-	copy(result.bytecode[:], c.bytecode[:])
-	copy(result.constants[:], c.constants[:])
-	copy(result.variables[:], c.variables[:])
+	result = make_chunk(c)
 	return
 }
 
@@ -534,15 +583,7 @@ compile_class_constructor :: proc(
 		compile_node(c, constr.body)
 		push_op_return_code(c, self_addr)
 	}
-
-	result = Chunk {
-		bytecode  = make([]byte, len(c.bytecode)),
-		constants = make([]Value, len(c.constants)),
-		variables = make([]Variable, len(c.variables)),
-	}
-	copy(result.bytecode[:], c.bytecode[:])
-	copy(result.constants[:], c.constants[:])
-	copy(result.variables[:], c.variables[:])
+	result = make_chunk(c)
 	return
 }
 
@@ -581,15 +622,7 @@ compile_class_method :: proc(c: ^Compiler, method: ^Checked_Fn_Declaration, clas
 			push_op_code(c, .Op_Return)
 		}
 	}
-
-	result = Chunk {
-		bytecode  = make([]byte, len(c.bytecode)),
-		constants = make([]Value, len(c.constants)),
-		variables = make([]Variable, len(c.variables)),
-	}
-	copy(result.bytecode[:], c.bytecode[:])
-	copy(result.constants[:], c.constants[:])
-	copy(result.variables[:], c.variables[:])
+	result = make_chunk(c)
 	return
 }
 

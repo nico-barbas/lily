@@ -28,7 +28,7 @@ Checked_Module :: struct {
 	scope_depth:  int,
 }
 
-new_checked_module :: proc() -> ^Checked_Module {
+make_checked_module :: proc() -> ^Checked_Module {
 	m := new_clone(
 		Checked_Module{
 			nodes = make([dynamic]Checked_Node),
@@ -40,6 +40,27 @@ new_checked_module :: proc() -> ^Checked_Module {
 	init_symbol_table(m)
 	return m
 }
+
+delete_checked_module :: proc(m: ^Checked_Module) {
+	for class in m.classes {
+		free_checked_node(class)
+	}
+	delete(m.classes)
+	for function in m.functions {
+		free_checked_node(function)
+	}
+	delete(m.functions)
+	for node in m.nodes {
+		free_checked_node(node)
+	}
+	delete(m.nodes)
+
+	delete(m.type_lookup)
+	delete(m.class_scopes)
+	free_scope(m.root)
+	free(m)
+}
+
 
 get_class_decl :: proc(m: ^Checked_Module, type_id: Type_ID) -> ^Checked_Class_Declaration {
 	for class in m.classes {
@@ -142,6 +163,7 @@ free_checked_expression :: proc(expr: Checked_Expression) {
 		for value in e.values {
 			free_checked_expression(value)
 		}
+		delete(e.values)
 		free(e)
 
 	case ^Checked_Unary_Expression:
@@ -161,6 +183,7 @@ free_checked_expression :: proc(expr: Checked_Expression) {
 		free(e)
 
 	case ^Checked_Dot_Expression:
+		free_checked_expression(e.selector)
 		free(e)
 
 	case ^Checked_Call_Expression:
@@ -168,6 +191,7 @@ free_checked_expression :: proc(expr: Checked_Expression) {
 		for arg in e.args {
 			free_checked_expression(arg)
 		}
+		delete(e.args)
 		free(e)
 
 	}
@@ -275,6 +299,65 @@ find_checked_method :: proc(c: ^Checked_Class_Declaration, name: Token) -> (
 	return nil, false
 }
 
+free_checked_node :: proc(node: Checked_Node) {
+	switch n in node {
+	case ^Checked_Expression_Statement:
+		free_checked_expression(n.expr)
+		free(n)
+
+	case ^Checked_Block_Statement:
+		for block_node in n.nodes {
+			free_checked_node(block_node)
+		}
+		delete(n.nodes)
+		free(n)
+
+	case ^Checked_Assigment_Statement:
+		free_checked_expression(n.left)
+		free_checked_expression(n.right)
+		free(n)
+
+	case ^Checked_If_Statement:
+		free_checked_expression(n.condition)
+		free_checked_node(n.body)
+		free_checked_node(n.next_branch)
+		free(n)
+
+	case ^Checked_Range_Statement:
+		free_checked_expression(n.low)
+		free_checked_expression(n.high)
+		free_checked_node(n.body)
+		free(n)
+
+	case ^Checked_Var_Declaration:
+		free_checked_expression(n.expr)
+		free(n)
+
+	case ^Checked_Fn_Declaration:
+		delete(n.param_names)
+		delete_fn_signature_info(n.type_info)
+		free_checked_node(n.body)
+		free(n)
+
+	case ^Checked_Type_Declaration:
+		free(n)
+
+	case ^Checked_Class_Declaration:
+		delete(n.field_names)
+		for constructor in n.constructors {
+			free_checked_node(constructor)
+		}
+		delete(n.constructors)
+		for method in n.methods {
+			free_checked_node(method)
+		}
+		delete(n.methods)
+		delete_class_definition_info(n.type_info)
+		free(n)
+
+	}
+}
+
 // Symbol table stuff
 
 Semantic_Scope :: struct {
@@ -310,8 +393,13 @@ new_scope :: proc() -> ^Semantic_Scope {
 	return scope
 }
 
-delete_scope :: proc(s: ^Semantic_Scope) {
+free_scope :: proc(s: ^Semantic_Scope) {
+	for children in s.children {
+		free_scope(children)
+	}
 	delete(s.symbols)
+	delete(s.var_symbol_lookup)
+	delete(s.children)
 	free(s)
 }
 
@@ -402,7 +490,6 @@ format_scope_name :: proc(c: ^Checked_Module, name: Token) -> (result: string) {
 
 hash_scope_id :: proc(c: ^Checked_Module, name: Token) -> Scope_ID {
 	scope_name := format_scope_name(c, name)
-	defer delete(scope_name)
 	return Scope_ID(hash.fnv32(transmute([]u8)scope_name))
 }
 
@@ -436,13 +523,7 @@ push_class_scope :: proc(c: ^Checked_Module, name: Token) {
 enter_child_scope :: proc(c: ^Checked_Module, name: Token, loc := #caller_location) -> (
 	err: Error,
 ) {
-	scope_name := strings.concatenate(
-		{c.name, name.text, fmt.tprint(name.line, name.start)},
-		context.temp_allocator,
-	)
-
-	defer delete(scope_name)
-	scope_id := Scope_ID(hash.fnv32(transmute([]u8)scope_name))
+	scope_id := hash_scope_id(c, name)
 	for scope in c.scope.children {
 		if scope.id == scope_id {
 			c.scope = scope

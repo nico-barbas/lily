@@ -123,6 +123,7 @@ run_module :: proc(vm: ^Vm, c: ^Compiled_Module) {
 	vm.module = c
 	vm.chunk = c.main
 	vm.stack = make([]Value, VM_STACK_SIZE)
+	defer delete(vm.stack)
 	vm.stack_ptr = 0
 	vm.ip = 0
 	vm.call_count = 1

@@ -1,5 +1,23 @@
 package lily
 
+Parsed_Module :: struct {
+	source: string,
+	nodes:  [dynamic]Parsed_Node,
+}
+
+make_parsed_module :: proc() -> ^Parsed_Module {
+	return new_clone(Parsed_Module{nodes = make([dynamic]Parsed_Node)})
+}
+
+delete_parsed_module :: proc(p: ^Parsed_Module) {
+	for node in p.nodes {
+		free_parsed_node(node)
+	}
+	delete(p.nodes)
+	free(p)
+}
+
+
 Typed_Identifier :: struct {
 	name:      Token,
 	type_expr: Parsed_Expression,
@@ -85,6 +103,58 @@ Parsed_Array_Type_Expression :: struct {
 	elem_type: Parsed_Expression, // Either Identifier or another Type Parsed_Expression. Allows for multi-arrays
 }
 
+free_parsed_expression :: proc(expr: Parsed_Expression) {
+	switch e in expr {
+	case ^Parsed_Literal_Expression:
+		free(e)
+
+	case ^Parsed_String_Literal_Expression:
+		free(e)
+
+	case ^Parsed_Array_Literal_Expression:
+		free_parsed_expression(e.type_expr)
+		for value in e.values {
+			free_parsed_expression(value)
+		}
+		free(e)
+
+	case ^Parsed_Unary_Expression:
+		free_parsed_expression(e.expr)
+		free(e)
+
+	case ^Parsed_Binary_Expression:
+		free_parsed_expression(e.left)
+		free_parsed_expression(e.right)
+		free(e)
+
+	case ^Parsed_Identifier_Expression:
+		free(e)
+
+	case ^Parsed_Index_Expression:
+		free_parsed_expression(e.left)
+		free_parsed_expression(e.index)
+		free(e)
+
+	case ^Parsed_Dot_Expression:
+		free_parsed_expression(e.left)
+		free_parsed_expression(e.selector)
+		free(e)
+
+	case ^Parsed_Call_Expression:
+		free_parsed_expression(e.func)
+		for arg in e.args {
+			free_parsed_expression(arg)
+		}
+		delete(e.args)
+		free(e)
+
+	case ^Parsed_Array_Type_Expression:
+		free_parsed_expression(e.elem_type)
+		free(e)
+
+	}
+}
+
 //////
 
 Parsed_Node :: union {
@@ -160,4 +230,68 @@ Parsed_Type_Declaration :: struct {
 	fields:       [dynamic]Typed_Identifier,
 	constructors: [dynamic]^Parsed_Fn_Declaration,
 	methods:      [dynamic]^Parsed_Fn_Declaration,
+}
+
+free_parsed_node :: proc(node: Parsed_Node) {
+	switch n in node {
+	case ^Parsed_Expression_Statement:
+		free_parsed_expression(n.expr)
+		free(n)
+
+	case ^Parsed_Block_Statement:
+		for block_node in n.nodes {
+			free_parsed_node(block_node)
+		}
+		delete(n.nodes)
+		free(n)
+
+	case ^Parsed_Assignment_Statement:
+		free_parsed_expression(n.left)
+		free_parsed_expression(n.right)
+		free(n)
+
+	case ^Parsed_If_Statement:
+		free_parsed_expression(n.condition)
+		free_parsed_node(n.body)
+		free_parsed_node(n.next_branch)
+		free(n)
+
+	case ^Parsed_Range_Statement:
+		free_parsed_expression(n.low)
+		free_parsed_expression(n.high)
+		free_parsed_node(n.body)
+		free(n)
+
+	case ^Parsed_Var_Declaration:
+		free_parsed_expression(n.type_expr)
+		free_parsed_expression(n.expr)
+		free(n)
+
+	case ^Parsed_Fn_Declaration:
+		for identifier in n.parameters {
+			free_parsed_expression(identifier.type_expr)
+		}
+		delete(n.parameters)
+		free_parsed_node(n.body)
+		free_parsed_expression(n.return_type_expr)
+		free(n)
+
+	case ^Parsed_Type_Declaration:
+		free_parsed_expression(n.type_expr)
+		if n.type_kind == .Class {
+			for field in n.fields {
+				free_parsed_expression(field.type_expr)
+			}
+			delete(n.fields)
+			for constructor in n.constructors {
+				free_parsed_node(constructor)
+			}
+			delete(n.constructors)
+			for method in n.methods {
+				free_parsed_node(method)
+			}
+			delete(n.methods)
+		}
+		free(n)
+	}
 }

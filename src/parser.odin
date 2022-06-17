@@ -60,20 +60,6 @@ Precedence :: enum {
 	Highest,
 }
 
-Parsed_Module :: struct {
-	source: string,
-	nodes:  [dynamic]Parsed_Node,
-}
-
-make_module :: proc() -> ^Parsed_Module {
-	return new_clone(Parsed_Module{nodes = make([dynamic]Parsed_Node)})
-}
-
-delete_module :: proc(p: ^Parsed_Module) {
-	// delete(p.source)
-	// FIXME: Free the rest of the ast
-	free(p)
-}
 
 parse_module :: proc(i: string, mod: ^Parsed_Module) -> (err: Error) {
 	mod.source = strings.clone(i)
@@ -479,7 +465,7 @@ parse_fn_decl :: proc(p: ^Parser) -> (result: ^Parsed_Fn_Declaration, err: Error
 	return
 }
 
-// Disallow nested type declaration
+// FIXME: Disallow nested type declaration
 parse_type_decl :: proc(p: ^Parser) -> (result: ^Parsed_Type_Declaration, err: Error) {
 	result = new_clone(Parsed_Type_Declaration{token = p.current})
 	name_token := consume_token(p)

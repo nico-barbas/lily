@@ -30,6 +30,11 @@ new_checker :: proc() -> ^Checker {
 	return c
 }
 
+free_checker :: proc(c: ^Checker) {
+	delete(c.modules)
+	free(c)
+}
+
 contain_symbol :: proc(c: ^Checker, token: Token) -> bool {
 	builtins: for name in c.builtin_symbols {
 		if name == token.text {
@@ -259,7 +264,7 @@ gen_type_id :: proc(c: ^Checker) -> Type_ID {
 
 check_module :: proc(c: ^Checker, m: ^Parsed_Module) -> (module: ^Checked_Module, err: Error) {
 	// Create a new module and add all the file level declaration symbols
-	module = new_checked_module()
+	module = make_checked_module()
 	append(&c.modules, module)
 	c.current = module
 	// The type symbols need to be added first
@@ -457,9 +462,7 @@ check_module :: proc(c: ^Checker, m: ^Parsed_Module) -> (module: ^Checked_Module
 					param_names = make([]Token, len(n.parameters)),
 				},
 			)
-			fn_signature := Fn_Signature_Info {
-				parameters = make([]Type_Info, len(n.parameters)),
-			}
+			fn_signature := make_fn_signature_info(len(n.parameters))
 
 			enter_child_scope(c.current, n.identifier) or_return
 			defer pop_scope(c.current)
