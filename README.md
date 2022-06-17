@@ -80,7 +80,8 @@ var addResult = add(5, 10)
 - [x] Class constructors
 - [x] Class methods
 - [ ] Modules
-- [ ] Minimal standard library
     - [x] Parsing
     - [ ] Checking
     - [ ] Compiling
+- [ ] Minimal standard library
+    
