@@ -84,4 +84,9 @@ var addResult = add(5, 10)
     - [ ] Checking
     - [ ] Compiling
 - [ ] Minimal standard library
-    
+- [ ] Full test suite
+    - [x] Lexer
+    - [ ] Parser :: 50%
+    - [ ] Checker
+    - [ ] Compiler
+    - [ ] VM
