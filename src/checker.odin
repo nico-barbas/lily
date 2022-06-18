@@ -3,21 +3,24 @@ package lily
 import "core:fmt"
 
 Checker :: struct {
-	modules:         [dynamic]^Checked_Module,
+	// a weak ref to all the checked modules that have already been compiled
+	modules:         []^Checked_Module,
+	import_callback: import_module_callback,
+
+	// Builtin types and internal states
 	builtin_symbols: [5]string,
 	builtin_types:   [BUILT_IN_ID_COUNT]Type_Info,
 	type_id_ptr:     Type_ID,
 	current:         ^Checked_Module,
 }
 
-new_checker :: proc() -> ^Checker {
-	c := new_clone(
-		Checker{
-			modules = make([dynamic]^Checked_Module),
-			builtin_symbols = {"untyped", "number", "string", "bool", "array"},
-			type_id_ptr = BUILT_IN_ID_COUNT,
-		},
-	)
+import_module_callback :: proc(module_name: string) -> ^Parsed_Module
+
+init_checker :: proc(c: ^Checker, loaded: []^Checked_Module, cb: import_module_callback) {
+	c.modules = loaded
+	c.import_callback = cb
+	c.builtin_symbols = {"untyped", "number", "string", "bool", "array"}
+	c.type_id_ptr = BUILT_IN_ID_COUNT
 	c.builtin_types[UNTYPED_ID] = UNTYPED_INFO
 	c.builtin_types[UNTYPED_NUMBER_ID] = UNTYPED_NUMBER_INFO
 	c.builtin_types[UNTYPED_BOOL_ID] = UNTYPED_BOOL_INFO
@@ -27,11 +30,9 @@ new_checker :: proc() -> ^Checker {
 	c.builtin_types[STRING_ID] = STRING_INFO
 	c.builtin_types[FN_ID] = FN_INFO
 	c.builtin_types[ARRAY_ID] = ARRAY_INFO
-	return c
 }
 
 free_checker :: proc(c: ^Checker) {
-	delete(c.modules)
 	free(c)
 }
 
@@ -265,7 +266,6 @@ gen_type_id :: proc(c: ^Checker) -> Type_ID {
 check_module :: proc(c: ^Checker, m: ^Parsed_Module) -> (module: ^Checked_Module, err: Error) {
 	// Create a new module and add all the file level declaration symbols
 	module = make_checked_module()
-	append(&c.modules, module)
 	c.current = module
 	// The type symbols need to be added first
 	for node in m.nodes {

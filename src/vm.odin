@@ -6,8 +6,9 @@ VM_STACK_GROWTH :: 2
 // VM_DEBUG_VIEW :: true
 
 Vm :: struct {
-	checker:     ^Checker,
-	modules:     map[string]^Compiled_Module,
+	// Persistant states
+	checked:     [dynamic]^Checked_Module,
+	compiled:    map[string]^Compiled_Module,
 
 
 	// Runtime states
@@ -27,8 +28,8 @@ Vm :: struct {
 
 new_vm :: proc() -> ^Vm {
 	vm := new(Vm)
-	vm.checker = new_checker()
-	vm.modules = make(map[string]^Compiled_Module)
+	vm.checked = make([dynamic]^Checked_Module)
+	vm.compiled = make(map[string]^Compiled_Module)
 
 	vm.stack = make([]Value, VM_STACK_SIZE)
 	return vm
@@ -43,6 +44,8 @@ compile_module :: proc(vm: ^Vm, input: string) -> (err: Error) {
 	parse_module(string(input), parsed_module) or_return
 	defer delete_parsed_module(parsed_module)
 
+	checker := Checker{}
+	init_checker(&checker, vm.checked[:], nil)
 	checked_module := check_module(vm.checker, parsed_module) or_return
 	// defer free_checker(checker)
 	// defer delete_checked_module(checked_module)
