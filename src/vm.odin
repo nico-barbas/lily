@@ -1,7 +1,8 @@
 package lily
 
-import "core:strings"
-import "core:os"
+when LILY_DEBUG {
+	import "core:fmt"
+}
 
 VM_STACK_SIZE :: 255
 VM_STACK_GROWTH :: 2
@@ -380,6 +381,11 @@ run_bytecode :: proc(vm: ^Vm) {
 			array_object := cast(^Array_Object)obj.data.(^Object)
 			append(&array_object.data, element)
 			push_stack_value(vm, obj)
+
+		case .Op_Len_Array:
+			obj := pop_stack_value(vm)
+			array_object := cast(^Array_Object)obj.data.(^Object)
+			push_stack_value(vm, Value{kind = .Number, data = f64(len(array_object.data))})
 
 		case .Op_Make_Instance:
 			class_addr := get_i16(vm)

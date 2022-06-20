@@ -1180,6 +1180,12 @@ check_expr_types :: proc(c: ^Checker, expr: Parsed_Expression) -> (
 		case .Generic_Type:
 			if left_info.type_id == ARRAY_ID {
 				checked_dot.selector, info = check_array_dot_expression_types(c, left_info, e.selector) or_return
+				#partial switch s in checked_dot.selector {
+				case ^Checked_Identifier_Expression:
+					checked_dot.kind = .Array_Len
+				case ^Checked_Call_Expression:
+					checked_dot.kind = .Array_Append
+				}
 			} else {
 				err = Semantic_Error {
 					kind    = .Invalid_Dot_Operand,
@@ -1289,7 +1295,7 @@ check_array_dot_expression_types :: proc(
 
 			item, item_info := check_expr_types(c, s.args[0]) or_return
 			array_elem_info := array_info.type_id_data.(Generic_Type_Info)
-			if item_info.type_id != array_elem_info.spec_type_id {
+			if !type_equal(c, item_info, get_type_from_id(c, array_elem_info.spec_type_id)) {
 				err = Semantic_Error {
 					kind    = .Mismatched_Types,
 					token   = s.token,

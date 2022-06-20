@@ -3,7 +3,7 @@ package lily
 // import "core:mem"
 import "core:fmt"
 
-LILY_DEBUG :: false
+LILY_DEBUG :: true
 
 // FIXME: Remove all string comparisons from the compiler if possible
 // Most of them can be done during the semantic analysis.
@@ -47,6 +47,7 @@ Op_Code :: enum byte {
 	Op_Assign_Array,
 	Op_Index_Array,
 	Op_Append_Array,
+	Op_Len_Array,
 
 	Op_Make_Instance, // Allocate a class instance and leave a reference at the top of the stack
     Op_Call_Constr,
@@ -91,6 +92,7 @@ instruction_lengths := map[Op_Code]int {
 	.Op_Assign_Array  = 1,
 	.Op_Index_Array   = 1,
 	.Op_Append_Array  = 1,
+	.Op_Len_Array     = 1,
 	.Op_Make_Instance = 3,
 	.Op_Call_Constr   = 5,
 	.Op_Call_Method   = 5,
@@ -556,11 +558,7 @@ compile_chunk_node :: proc(c: ^Compiler, node: Checked_Node) -> (result: Chunk) 
 	return
 }
 
-compile_class_constructor :: proc(
-	c: ^Compiler,
-	constr: ^Checked_Fn_Declaration,
-	class_addr: i16,
-) -> (
+compile_class_constructor :: proc(c: ^Compiler, constr: ^Checked_Fn_Declaration, class_addr: i16) -> (
 	result: Chunk,
 ) {
 
@@ -899,6 +897,19 @@ compile_expr :: proc(c: ^Compiler, expr: Checked_Expression) {
 				compile_expr(c, arg_expr)
 			}
 			push_op_call_method_code(c, instance_addr, method_addr)
+
+		case .Array_Len:
+			array_addr := get_variable_addr(c, e.left.text)
+			push_op_get_code(c, array_addr)
+			push_op_code(c, .Op_Len_Array)
+
+		case .Array_Append:
+			append_call := e.selector.(^Checked_Call_Expression)
+			compile_expr(c, append_call.args[0])
+			array_addr := get_variable_addr(c, e.left.text)
+			push_op_get_code(c, array_addr)
+			push_op_code(c, .Op_Append_Array)
+			push_op_code(c, .Op_Pop)
 		}
 
 	case ^Checked_Call_Expression:

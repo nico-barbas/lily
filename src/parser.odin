@@ -62,7 +62,6 @@ Precedence :: enum {
 }
 
 parse_dependencies :: proc(buf: ^[dynamic]^Parsed_Module, entry_point: ^Parsed_Module) -> (err: Error) {
-	current := entry_point
 	start := len(buf) - 1
 	for import_node in entry_point.import_nodes {
 		import_stmt := import_node.(^Parsed_Import_Statement)

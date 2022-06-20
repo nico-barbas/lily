@@ -10,6 +10,7 @@ main :: proc() {
 	context.allocator = mem.tracking_allocator(&track)
 	playground()
 
+	fmt.println()
 	if len(track.allocation_map) > 0 {
 		fmt.printf("Leaks:")
 		for _, v in track.allocation_map {
@@ -29,12 +30,12 @@ playground :: proc() {using lily
 	PRINT_AST :: true
 	PRINT_SYMBOL_TABLE :: false
 	PRINT_COMPILE :: true
-	PRINT_VM_STATE :: false
+	PRINT_VM_STATE :: true
 
 	RUN_PARSER :: true
-	RUN_CHECKER :: false
-	RUN_COMPILER :: false
-	RUN_VM :: false
+	RUN_CHECKER :: true
+	RUN_COMPILER :: true
+	RUN_VM :: true
 
 	// input: string = `
 	// 	type Foo is class
@@ -53,7 +54,9 @@ playground :: proc() {using lily
 	// 	a.add(2)
 	// `
 	input := `
-		import std
+		var foo = array of number[1, 2]
+		var length = foo.len
+		foo.append(4)
 	`
 
 	when RUN_PARSER {
@@ -68,15 +71,16 @@ playground :: proc() {using lily
 		}
 
 		when RUN_CHECKER {
-			checker := new_checker()
-			checked_module, check_err := check_module(checker, parsed_module)
-			defer free_checker(checker)
+			checker := Checker{}
+			init_checker(&checker)
+			checked_module, check_err := check_module(&checker, parsed_module)
+			defer free_checker(&checker)
 			defer delete_checked_module(checked_module)
 			assert(check_err == nil, fmt.tprint("Failed, Error raised ->", check_err))
 
 			when PRINT_AST {
 
-				print_checked_ast(checked_module, checker)
+				print_checked_ast(checked_module, &checker)
 			}
 			when PRINT_SYMBOL_TABLE {
 				print_symbol_table(checker, checked_module)
@@ -84,7 +88,7 @@ playground :: proc() {using lily
 
 			when RUN_COMPILER {
 				compiler := new_compiler()
-				compiled_module := compile_module(compiler, checked_module)
+				compiled_module := compile_checked_module(compiler, checked_module)
 				defer free_compiler(compiler)
 				defer delete_compiled_module(compiled_module)
 
@@ -93,8 +97,9 @@ playground :: proc() {using lily
 					fmt.println("== END COMPILED MODULE ==")
 				}
 				when RUN_VM {
-					vm := Vm{}
-					run_module(&vm, compiled_module)
+					vm := new_vm()
+					defer free_vm(vm)
+					run_module(vm, compiled_module)
 				}
 				when PRINT_VM_STATE {
 					fmt.println("RESULT:")

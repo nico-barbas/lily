@@ -139,6 +139,8 @@ Checked_Dot_Expression :: struct {
 		Class,
 		Instance_Field,
 		Instance_Call,
+		Array_Len,
+		Array_Append,
 	},
 	left:      Token,
 	selector:  Checked_Expression,
@@ -580,8 +582,12 @@ pop_scope :: proc(c: ^Checked_Module) {
 }
 
 get_class_scope_from_name :: proc(c: ^Checked_Module, name: string) -> ^Semantic_Scope {
-	scope_info := c.class_scopes[name]
-	return c.root.children[scope_info.root_index]
+	scope_info, exist := c.class_scopes[name]
+	if !exist {
+		return nil
+	} else {
+		return c.root.children[scope_info.root_index]
+	}
 }
 
 get_class_scope_from_id :: proc(c: ^Checked_Module, scope_id: Scope_ID) -> ^Semantic_Scope {

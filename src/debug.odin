@@ -376,6 +376,10 @@ print_checked_expr :: proc(p: ^Debug_Printer, c: ^Checker, checked_expr: Checked
 				write(p, "Instance Field")
 			case .Instance_Call:
 				write(p, "Instance Call")
+			case .Array_Len:
+				write(p, "Array Length")
+			case .Array_Append:
+				write(p, "Array Append Call")
 			}
 			write_line(p, "Selector: ")
 			print_checked_expr(p, c, e.selector)
@@ -784,12 +788,7 @@ print_chunk :: proc(p: ^Debug_Printer, c: Chunk) {
 		case .Op_Bind:
 			write(p, op_code_str[op])
 			format(p, op_code_str[op], max_str)
-			fmt.sbprintf(
-				&p.builder,
-				" || var addr: %d  ==  relative stack id: %d",
-				get_i16(&vm),
-				get_i16(&vm),
-			)
+			fmt.sbprintf(&p.builder, " || var addr: %d  ==  relative stack id: %d", get_i16(&vm), get_i16(&vm))
 
 		case .Op_Set:
 			write(p, op_code_str[op])
@@ -832,7 +831,7 @@ print_chunk :: proc(p: ^Debug_Printer, c: Chunk) {
 			format(p, op_code_str[op], max_str)
 			fmt.sbprintf(&p.builder, " || fn addr: %d", get_i16(&vm))
 
-		case .Op_Make_Array, .Op_Assign_Array, .Op_Index_Array, .Op_Append_Array:
+		case .Op_Make_Array, .Op_Assign_Array, .Op_Index_Array, .Op_Append_Array, .Op_Len_Array:
 			write(p, op_code_str[op])
 			format(p, op_code_str[op], max_str)
 			fmt.sbprintf(&p.builder, " ||")
