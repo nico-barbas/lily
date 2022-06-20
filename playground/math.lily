@@ -1,0 +1,14 @@
+type Vector is class
+    x: number
+    y: number
+
+    constructor new():
+        self.x = 0
+        self.y = 0
+    end
+
+    fn add(n: number):
+        self.x = self.x + number
+    end
+end
+

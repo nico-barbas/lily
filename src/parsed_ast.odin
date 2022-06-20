@@ -4,11 +4,21 @@ Parsed_Module :: struct {
 	source:       string,
 	name:         string,
 	import_nodes: [dynamic]Parsed_Node,
+	types:        [dynamic]Parsed_Node,
+	functions:    [dynamic]Parsed_Node,
 	nodes:        [dynamic]Parsed_Node,
 }
 
-make_parsed_module :: proc() -> ^Parsed_Module {
-	return new_clone(Parsed_Module{nodes = make([dynamic]Parsed_Node)})
+make_parsed_module :: proc(name: string) -> ^Parsed_Module {
+	return new_clone(
+		Parsed_Module{
+			name = name,
+			import_nodes = make([dynamic]Parsed_Node),
+			types = make([dynamic]Parsed_Node),
+			functions = make([dynamic]Parsed_Node),
+			nodes = make([dynamic]Parsed_Node),
+		},
+	)
 }
 
 delete_parsed_module :: proc(p: ^Parsed_Module) {

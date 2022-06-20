@@ -61,21 +61,35 @@ Precedence :: enum {
 	Highest,
 }
 
-parse_dependencies :: proc(buf: ^[dynamic]^Parsed_Module, entry_point: ^Parsed_Module) -> (err: Error) {
+parse_dependencies :: proc(
+	buf: ^[dynamic]^Parsed_Module,
+	lookup: ^map[string]int,
+	entry_point: ^Parsed_Module,
+) -> (
+	err: Error,
+) {
+	if len(entry_point.import_nodes) == 0 {
+		return
+	}
+
 	start := len(buf) - 1
 	for import_node in entry_point.import_nodes {
 		import_stmt := import_node.(^Parsed_Import_Statement)
+		if _, exist := lookup[import_stmt.identifier.text]; exist {
+			continue
+		}
 		module_path := strings.concatenate({import_stmt.identifier.text, ".lily"}, context.temp_allocator)
-		imported_module := make_parsed_module()
+		imported_module := make_parsed_module(import_stmt.identifier.text)
 		// FIXME: check for read errros
 		imported_source, _ := os.read_entire_file(module_path)
 		defer delete(imported_source)
 		parse_module(string(imported_source), imported_module) or_return
 		append(buf, imported_module)
+		lookup[imported_module.name] = len(buf) - 1
 	}
 	imported_modules := buf[start:len(buf)]
 	for module in imported_modules {
-		parse_dependencies(buf, module) or_return
+		parse_dependencies(buf, lookup, module) or_return
 	}
 	return
 }
@@ -89,7 +103,16 @@ parse_module :: proc(i: string, mod: ^Parsed_Module) -> (err: Error) {
 	ast: for {
 		node := parse_node(&parser) or_return
 		if node != nil {
-			append(&mod.nodes, node)
+			#partial switch n in node {
+			case ^Parsed_Import_Statement:
+				append(&mod.import_nodes, node)
+			case ^Parsed_Type_Declaration:
+				append(&mod.types, node)
+			case ^Parsed_Fn_Declaration:
+				append(&mod.functions, node)
+			case:
+				append(&mod.nodes, node)
+			}
 		} else if parser.current.kind == .EOF {
 			break ast
 		}

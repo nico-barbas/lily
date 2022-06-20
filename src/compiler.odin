@@ -43,6 +43,9 @@ Op_Code :: enum byte {
 	Op_Return_Val,
 	Op_Return,
 
+	Op_Push_Module,
+	Op_Pop_Module,
+
 	Op_Make_Array,
 	Op_Assign_Array,
 	Op_Index_Array,
@@ -88,6 +91,8 @@ instruction_lengths := map[Op_Code]int {
 	.Op_Call          = 3,
 	.Op_Return_Val    = 3,
 	.Op_Return        = 1,
+	.Op_Push_Module   = 3,
+	.Op_Pop_Module    = 1,
 	.Op_Make_Array    = 1,
 	.Op_Assign_Array  = 1,
 	.Op_Index_Array   = 1,
@@ -116,11 +121,13 @@ Compiler :: struct {
 }
 
 Compiled_Module :: struct {
+	id:                int,
 	class_names:       []string,
 	classe_prototypes: []Class_Object,
 	class_vtables:     []Class_Vtable,
 	function_names:    []string,
 	functions:         []Fn_Object,
+	module_variables:  map[string]Value,
 	main:              Chunk,
 }
 
@@ -413,6 +420,7 @@ delete_chunk :: proc(c: ^Chunk) {
 make_compiled_module :: proc(checked_module: ^Checked_Module) -> ^Compiled_Module {
 	return new_clone(
 		Compiled_Module{
+			id = checked_module.id,
 			classe_prototypes = make([]Class_Object, len(checked_module.classes)),
 			class_vtables = make([]Class_Vtable, len(checked_module.classes)),
 			functions = make([]Fn_Object, len(checked_module.functions)),
@@ -474,7 +482,8 @@ reset_compiler :: proc(c: ^Compiler) {
 	c.write_at_cursor = false
 }
 
-compile_checked_module :: proc(c: ^Compiler, module: ^Checked_Module) -> ^Compiled_Module {
+compile_module :: proc(c: ^Compiler, modules: []^Checked_Module, module_id: int) -> ^Compiled_Module {
+	module := modules[module_id]
 	m := make_compiled_module(module)
 
 	for class, i in module.classes {
@@ -856,12 +865,13 @@ compile_expr :: proc(c: ^Compiler, expr: Checked_Expression) {
 	case ^Checked_Dot_Expression:
 		switch e.kind {
 		case .Module:
-			assert(false, "Module not implemented yet")
+
+
 		case .Class:
 			call_expr := e.selector.(^Checked_Call_Expression)
 			call_identifier := call_expr.func.(^Checked_Identifier_Expression)
-			class_addr := get_class_addr(c, e.left.text)
-			constr_addr := get_constructor_addr(c, class_addr, call_identifier.name.text)
+			class_addr := i16(e.left_id)
+			constr_addr := i16(e.selector_id)
 
 
 			push_op_code(c, .Op_Begin)

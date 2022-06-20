@@ -3,30 +3,20 @@ package lily
 import "core:fmt"
 
 Checker :: struct {
-	modules:               [dynamic]^Checked_Module,
-	current:               ^Checked_Module,
+	import_names_lookup: map[string]int,
+	modules:             []^Checked_Module,
+	current:             ^Checked_Module,
 
 	// A place to store the parsed modules and keep track of which one is currently being worked on
-	parsed_results:        [dynamic]^Parsed_Module,
-	current_parsed_module: ^Parsed_Module,
-	dependency_graph:      struct {
-		head: ^Module_Graph_Node,
-		root: ^Module_Graph_Node,
-	},
-
+	parsed_results:      [dynamic]^Parsed_Module,
+	current_parsed:      ^Parsed_Module,
 	// Builtin types and internal states
-	builtin_symbols:       [5]string,
-	builtin_types:         [BUILT_IN_ID_COUNT]Type_Info,
-	type_id_ptr:           Type_ID,
-}
-
-Module_Graph_Node :: struct {
-	name:   string,
-	parent: ^Module_Graph_Node,
+	builtin_symbols:     [5]string,
+	builtin_types:       [BUILT_IN_ID_COUNT]Type_Info,
+	type_id_ptr:         Type_ID,
 }
 
 init_checker :: proc(c: ^Checker) {
-	c.modules = make([dynamic]^Checked_Module)
 	c.builtin_symbols = {"untyped", "number", "string", "bool", "array"}
 	c.type_id_ptr = BUILT_IN_ID_COUNT
 	c.builtin_types[UNTYPED_ID] = UNTYPED_INFO
@@ -85,6 +75,12 @@ get_symbol :: proc(c: ^Checker, token: Token) -> (result: Symbol, err: Error) {
 					return
 				}
 
+			case Module_Symbol:
+				if n.name == token.text {
+					result = name
+					return
+				}
+
 			case Var_Symbol:
 				if n.name == token.text {
 					result = name
@@ -125,6 +121,15 @@ add_scope_ref_symbol_to_current_module :: proc(
 	shadow := false,
 ) -> Error {
 	return add_scope_ref_symbol_to_scope(c.current.scope, token, scope_id, shadow)
+}
+
+add_module_symbol :: proc {
+	add_module_symbol_to_scope,
+	add_module_symbol_to_current_module,
+}
+
+add_module_symbol_to_current_module :: proc(c: ^Checker, token: Token, module_id: int) -> Error {
+	return add_module_symbol_to_scope(c.current.scope, token, module_id)
 }
 
 add_var_symbol :: proc {
@@ -168,6 +173,9 @@ add_class_type :: proc(c: ^Checker, decl: ^Parsed_Type_Declaration) {
 		type_kind = .Class_Type,
 	}
 	c.current.type_lookup[decl.identifier.text] = class_info
+	updated_lookup := c.current.class_lookup[decl.identifier.text]
+	updated_lookup.class_id = len(c.current.classes) - 1
+	c.current.class_lookup[decl.identifier.text] = updated_lookup
 	checked_class.type_info = class_info
 	c.current.type_count += 1
 }
@@ -236,11 +244,17 @@ get_type_from_identifier :: proc(c: ^Checker, i: Token) -> (result: Type_Info) {
 	return
 }
 
-get_variable_type :: proc(c: ^Checker, name: string) -> (result: Type_Info, exist: bool) {
+get_variable_type :: proc(c: ^Checker, name: string, loc := #caller_location) -> (
+	result: Type_Info,
+	exist: bool,
+) {
 	current := c.current.scope
 	for current != nil {
 		if index, contains := current.var_symbol_lookup[name]; contains {
-			var_symbol := current.symbols[index].(Var_Symbol)
+			var_symbol, ok := current.symbols[index].(Var_Symbol)
+			if !ok {
+				fmt.println(loc, name)
+			}
 			result = var_symbol.type_info
 			contains = true
 			break
@@ -267,45 +281,69 @@ gen_type_id :: proc(c: ^Checker) -> Type_ID {
 	return c.type_id_ptr - 1
 }
 
-build_checked_program :: proc(c: ^Checker, entry_point: string) -> (
+build_checked_program :: proc(c: ^Checker, module_name: string, entry_point: string) -> (
 	result: []^Checked_Module,
 	err: Error,
 ) {
-	parsed_module := make_parsed_module()
-	parse_module(entry_point, parsed_module) or_return
-	append(&c.parsed_results, parsed_module)
-	c.current_parsed_module = parsed_module
+	c.import_names_lookup = make(map[string]int)
+	entry_module := make_parsed_module(module_name)
+	parse_module(entry_point, entry_module) or_return
+	append(&c.parsed_results, entry_module)
+	c.import_names_lookup[entry_module.name] = 0
+	c.current_parsed = entry_module
 
-	parse_dependencies(&c.parsed_results, c.current_parsed_module) or_return
-	// TODO: preallocate checked module buffer, we know the size
-	build_dependency_graph(c)
-	return
-}
+	parse_dependencies(&c.parsed_results, &c.import_names_lookup, c.current_parsed) or_return
+	c.modules = make([]^Checked_Module, len(c.parsed_results))
 
-build_dependency_graph :: proc(c: ^Checker) -> (err: Error) {
-	c.dependency_graph.root = new_clone(
-		Module_Graph_Node{name = c.current_parsed_module.name, parent = nil},
-	)
-	c.dependency_graph.head = c.dependency_graph.root
+	// Build all the symbols and then check them
+	for module, i in c.parsed_results {
+		index := c.import_names_lookup[module.name]
+		c.modules[index] = make_checked_module(module.name, i)
+		add_module_import_symbols(c, index) or_return
+		check_module_decl_symbols(c, index) or_return
+	}
 	for module in c.parsed_results {
-		if module.name == c.dependency_graph.root.name {
-			continue
-		}
-		new_node := new_clone(Module_Graph_Node{name = module.name, parent = c.dependency_graph.head})
-		c.dependency_graph.head = new_node
+		index := c.import_names_lookup[module.name]
+		check_module_inner_symbols(c, index) or_return
 	}
 
-	// TODO: Check for cycles
 
+	for module in c.parsed_results {
+		index := c.import_names_lookup[module.name]
+		add_module_type_decl(c, index) or_return
+	}
+	for module in c.parsed_results {
+		index := c.import_names_lookup[module.name]
+		check_module_types_inner(c, index) or_return
+	}
+	for module in c.parsed_results {
+		index := c.import_names_lookup[module.name]
+		check_module_fn_types(c, index) or_return
+	}
+	for module in c.parsed_results {
+		index := c.import_names_lookup[module.name]
+		check_module_body_types(c, index) or_return
+	}
 	return
 }
 
-check_module :: proc(c: ^Checker, m: ^Parsed_Module) -> (module: ^Checked_Module, err: Error) {
-	// Create a new module and add all the file level declaration symbols
-	module = make_checked_module()
-	c.current = module
+add_module_import_symbols :: proc(c: ^Checker, module_id: int) -> (err: Error) {
+	c.current = c.modules[module_id]
+	c.current_parsed = c.parsed_results[module_id]
+
+	for import_node in c.current_parsed.import_nodes {
+		import_stmt := import_node.(^Parsed_Import_Statement)
+		import_index := c.import_names_lookup[import_stmt.identifier.text]
+		add_module_symbol(c, import_stmt.identifier, import_index) or_return
+	}
+	return
+}
+
+check_module_decl_symbols :: proc(c: ^Checker, module_id: int) -> (err: Error) {
+	c.current = c.modules[module_id]
+	c.current_parsed = c.parsed_results[module_id]
 	// The type symbols need to be added first
-	for node in m.nodes {
+	for node in c.current_parsed.types {
 		if n, ok := node.(^Parsed_Type_Declaration); ok {
 			switch n.type_kind {
 			case .Alias:
@@ -330,29 +368,45 @@ check_module :: proc(c: ^Checker, m: ^Parsed_Module) -> (module: ^Checked_Module
 		}
 	}
 
-	for node in m.nodes {
-		#partial switch n in node {
-		case ^Parsed_Var_Declaration:
-			add_var_symbol(c, n.identifier) or_return
-		case ^Parsed_Fn_Declaration:
+	for node in c.current_parsed.functions {
+		if n, ok := node.(^Parsed_Fn_Declaration); ok {
 			fn_scope_id := push_scope(c.current, n.identifier)
 			pop_scope(c.current)
 			add_scope_ref_symbol(c, n.identifier, fn_scope_id) or_return
 		}
 	}
 
-	// After all the declaration have been gathered, 
-	// we resolve the rest of the symbols in the inner expressions and scopes.
-	for node in m.nodes {
+	for node in c.current_parsed.nodes {
+		#partial switch n in node {
+		case ^Parsed_Var_Declaration:
+			add_var_symbol(c, n.identifier) or_return
+		}
+	}
+	return
+}
+
+check_module_inner_symbols :: proc(c: ^Checker, module_id: int) -> (err: Error) {
+	c.current = c.modules[module_id]
+	c.current_parsed = c.parsed_results[module_id]
+
+	for node in c.current_parsed.types {
 		check_node_symbols(c, node) or_return
 	}
 
-	// Resolve the types:
-	// Gather all the type declaration and generate type info for them.
-	// Store those in the module type infos.
-	// Then we can start to solve the types in each node and expression.
+	for node in c.current_parsed.functions {
+		check_node_symbols(c, node) or_return
+	}
+	for node in c.current_parsed.nodes {
+		check_node_symbols(c, node) or_return
+	}
+	return
+}
 
-	for node in m.nodes {
+add_module_type_decl :: proc(c: ^Checker, module_id: int) -> (err: Error) {
+	c.current = c.modules[module_id]
+	c.current_parsed = c.parsed_results[module_id]
+
+	for node in c.current_parsed.types {
 		#partial switch n in node {
 		case ^Parsed_Type_Declaration:
 			switch n.type_kind {
@@ -363,8 +417,14 @@ check_module :: proc(c: ^Checker, m: ^Parsed_Module) -> (module: ^Checked_Module
 			}
 		}
 	}
+	return
+}
 
-	for node in m.nodes {
+check_module_types_inner :: proc(c: ^Checker, module_id: int) -> (err: Error) {
+	c.current = c.modules[module_id]
+	c.current_parsed = c.parsed_results[module_id]
+
+	for node in c.current_parsed.types {
 		#partial switch n in node {
 		case ^Parsed_Type_Declaration:
 			switch n.type_kind {
@@ -376,7 +436,7 @@ check_module :: proc(c: ^Checker, m: ^Parsed_Module) -> (module: ^Checked_Module
 			case .Class:
 				name := n.identifier.text
 				class_decl: ^Checked_Class_Declaration
-				for node in module.classes {
+				for node in c.current.classes {
 					class := node.(^Checked_Class_Declaration)
 					if class.identifier.text == name {
 						class_decl = class
@@ -462,10 +522,10 @@ check_module :: proc(c: ^Checker, m: ^Parsed_Module) -> (module: ^Checked_Module
 				// Check all the methods
 
 				// Update the class Type_Info
-				t := module.type_lookup[name]
+				t := c.current.type_lookup[name]
 				t.type_id_data = class_info
 				class_decl.type_info = t
-				module.type_lookup[name] = t
+				c.current.type_lookup[name] = t
 
 				// set_variable_type(c, "self", t)
 				for constructor, i in n.constructors {
@@ -487,8 +547,14 @@ check_module :: proc(c: ^Checker, m: ^Parsed_Module) -> (module: ^Checked_Module
 			}
 		}
 	}
+	return
+}
 
-	for node in m.nodes {
+check_module_fn_types :: proc(c: ^Checker, module_id: int) -> (err: Error) {
+	c.current = c.modules[module_id]
+	c.current_parsed = c.parsed_results[module_id]
+
+	for node in c.current_parsed.functions {
 		#partial switch n in node {
 		case ^Parsed_Fn_Declaration:
 			fn_decl := new_clone(
@@ -524,22 +590,277 @@ check_module :: proc(c: ^Checker, m: ^Parsed_Module) -> (module: ^Checked_Module
 			fn_decl.body = check_node_types(c, n.body) or_return
 			fn_decl.type_info.type_id_data = fn_signature
 
-			append(&module.functions, fn_decl)
+			append(&c.current.functions, fn_decl)
 		}
 	}
+	return
+}
 
-	for node in m.nodes {
+check_module_body_types :: proc(c: ^Checker, module_id: int) -> (err: Error) {
+	c.current = c.modules[module_id]
+	c.current_parsed = c.parsed_results[module_id]
+
+	for node in c.current_parsed.nodes {
 		checked_node := check_node_types(c, node) or_return
 		#partial switch node in checked_node {
 		case ^Checked_Fn_Declaration, ^Checked_Type_Declaration:
 		case:
-			append(&module.nodes, checked_node)
+			append(&c.current.nodes, checked_node)
 		}
 	}
-
-	c.current = nil
 	return
 }
+
+// check_module :: proc(c: ^Checker, m: ^Parsed_Module) -> (module: ^Checked_Module, err: Error) {
+// 	// Create a new module and add all the file level declaration symbols
+// 	module = make_checked_module()
+// 	c.modules[c.import_names_lookup[m.name]] = module
+
+// 	for import_node in m.import_nodes {
+// 		import_stmt := import_node.(^Parsed_Import_Statement)
+// 		index := c.import_names_lookup[import_stmt.identifier.text]
+// 		if c.modules[index] == nil {
+// 			check_module(c, c.parsed_results[index]) or_return
+// 		}
+// 	}
+// 	c.current = module
+
+// 	// The type symbols need to be added first
+// 	for node in m.nodes {
+// 		if n, ok := node.(^Parsed_Type_Declaration); ok {
+// 			switch n.type_kind {
+// 			case .Alias:
+// 				add_symbol(c, n.identifier) or_return
+// 			case .Class:
+// 				push_class_scope(c.current, n.identifier)
+// 				defer pop_scope(c.current)
+// 				for field in n.fields {
+// 					add_var_symbol(c, field.name) or_return
+// 				}
+// 				for constructor in n.constructors {
+// 					add_symbol(c, constructor.identifier) or_return
+// 					push_scope(c.current, constructor.identifier)
+// 					defer pop_scope(c.current)
+// 				}
+// 				for method in n.methods {
+// 					add_symbol(c, method.identifier) or_return
+// 					push_scope(c.current, method.identifier)
+// 					defer pop_scope(c.current)
+// 				}
+// 			}
+// 		}
+// 	}
+
+// 	for node in m.nodes {
+// 		#partial switch n in node {
+// 		case ^Parsed_Var_Declaration:
+// 			add_var_symbol(c, n.identifier) or_return
+// 		case ^Parsed_Fn_Declaration:
+// 			fn_scope_id := push_scope(c.current, n.identifier)
+// 			pop_scope(c.current)
+// 			add_scope_ref_symbol(c, n.identifier, fn_scope_id) or_return
+// 		}
+// 	}
+
+// 	// After all the declaration have been gathered, 
+// 	// we resolve the rest of the symbols in the inner expressions and scopes.
+// 	for node in m.nodes {
+// 		check_node_symbols(c, node) or_return
+// 	}
+
+// 	// Resolve the types:
+// 	// Gather all the type declaration and generate type info for them.
+// 	// Store those in the module type infos.
+// 	// Then we can start to solve the types in each node and expression.
+
+// 	for node in m.nodes {
+// 		#partial switch n in node {
+// 		case ^Parsed_Type_Declaration:
+// 			switch n.type_kind {
+// 			case .Alias:
+// 				add_type_alias(c, n.identifier, UNTYPED_ID)
+// 			case .Class:
+// 				add_class_type(c, n)
+// 			}
+// 		}
+// 	}
+
+// 	for node in m.nodes {
+// 		#partial switch n in node {
+// 		case ^Parsed_Type_Declaration:
+// 			switch n.type_kind {
+// 			case .Alias:
+// 				parent_expr, parent_info := check_expr_types(c, n.type_expr) or_return
+// 				update_type_alias(c, n.identifier, parent_info.type_id)
+// 				free_checked_expression(parent_expr)
+
+// 			case .Class:
+// 				name := n.identifier.text
+// 				class_decl: ^Checked_Class_Declaration
+// 				for node in module.classes {
+// 					class := node.(^Checked_Class_Declaration)
+// 					if class.identifier.text == name {
+// 						class_decl = class
+// 					}
+// 				}
+
+// 				// FIXME: Check if class has methods, constructors and fields before allocating
+// 				// Check all the expression of the class's field
+// 				class_decl.field_names = make([]Token, len(n.fields))
+// 				class_decl.constructors = make([]^Checked_Fn_Declaration, len(n.constructors))
+// 				class_decl.methods = make([]^Checked_Fn_Declaration, len(n.methods))
+// 				class_info := Class_Definition_Info {
+// 					fields       = make([]Type_Info, len(n.fields)),
+// 					constructors = make([]Type_Info, len(n.constructors)),
+// 					methods      = make([]Type_Info, len(n.methods)),
+// 				}
+// 				enter_class_scope(c.current, n.identifier) or_return
+// 				defer pop_scope(c.current)
+// 				for field, i in n.fields {
+// 					field_expr, field_info := check_expr_types(c, field.type_expr) or_return
+// 					class_info.fields[i] = field_info
+// 					class_decl.field_names[i] = field.name
+// 					set_variable_type(c, field.name.text, field_info)
+// 					free_checked_expression(field_expr)
+// 				}
+// 				for constructor, i in n.constructors {
+// 					constr_decl := new_clone(
+// 						Checked_Fn_Declaration{
+// 							token = constructor.token,
+// 							identifier = constructor.identifier,
+// 							type_info = Type_Info{name = "constructor", type_id = FN_ID, type_kind = .Fn_Type},
+// 							param_names = make([]Token, len(constructor.parameters)),
+// 						},
+// 					)
+// 					constr_signature := make_fn_signature_info(len(constructor.parameters))
+
+// 					enter_child_scope(c.current, constructor.identifier) or_return
+// 					defer pop_scope(c.current)
+// 					for param, i in constructor.parameters {
+// 						constr_decl.param_names[i] = param.name
+// 						param_expr, param_info := check_expr_types(c, param.type_expr) or_return
+// 						constr_signature.parameters[i] = param_info
+// 						set_variable_type(c, param.name.text, param_info)
+// 						free_checked_expression(param_expr)
+// 					}
+// 					constr_decl.type_info.type_id_data = constr_signature
+// 					class_decl.constructors[i] = constr_decl
+// 					class_info.constructors[i] = constr_decl.type_info
+// 				}
+// 				for method, i in n.methods {
+// 					method_decl := new_clone(
+// 						Checked_Fn_Declaration{
+// 							token = method.token,
+// 							identifier = method.identifier,
+// 							type_info = Type_Info{name = "constructor", type_id = FN_ID, type_kind = .Fn_Type},
+// 							param_names = make([]Token, len(method.parameters)),
+// 						},
+// 					)
+// 					method_signature := make_fn_signature_info(len(method.parameters))
+
+// 					if method.return_type_expr != nil {
+// 						return_expr, return_info := check_expr_types(c, method.return_type_expr) or_return
+// 						defer free_checked_expression(return_expr)
+// 						set_fn_return_type_info(&method_signature, return_info)
+// 						set_variable_type(c, "result", return_info)
+// 					} else {
+// 						set_fn_return_type_info(&method_signature, UNTYPED_INFO)
+// 					}
+
+// 					enter_child_scope(c.current, method.identifier) or_return
+// 					defer pop_scope(c.current)
+// 					for param, i in method.parameters {
+// 						method_decl.param_names[i] = param.name
+// 						param_expr, param_info := check_expr_types(c, param.type_expr) or_return
+// 						method_signature.parameters[i] = param_info
+// 						set_variable_type(c, param.name.text, param_info)
+// 						free_checked_expression(param_expr)
+// 					}
+// 					// method_decl.body = check_node_types(c, method.body) or_return
+// 					method_decl.type_info.type_id_data = method_signature
+// 					class_decl.methods[i] = method_decl
+// 				}
+// 				// Check all the methods
+
+// 				// Update the class Type_Info
+// 				t := module.type_lookup[name]
+// 				t.type_id_data = class_info
+// 				class_decl.type_info = t
+// 				module.type_lookup[name] = t
+
+// 				// set_variable_type(c, "self", t)
+// 				for constructor, i in n.constructors {
+// 					// Update the constructor signature
+// 					constr_signature := class_info.constructors[i].type_id_data.(Fn_Signature_Info)
+// 					set_fn_return_type_info(&constr_signature, class_decl.type_info)
+// 					class_info.constructors[i].type_id_data = constr_signature
+// 					class_decl.constructors[i].type_info.type_id_data = constr_signature
+
+// 					enter_child_scope(c.current, constructor.identifier) or_return
+// 					defer pop_scope(c.current)
+// 					class_decl.constructors[i].body = check_node_types(c, constructor.body) or_return
+// 				}
+// 				for method, i in n.methods {
+// 					enter_child_scope(c.current, method.identifier) or_return
+// 					defer pop_scope(c.current)
+// 					class_decl.methods[i].body = check_node_types(c, method.body) or_return
+// 				}
+// 			}
+// 		}
+// 	}
+
+// 	for node in m.nodes {
+// 		#partial switch n in node {
+// 		case ^Parsed_Fn_Declaration:
+// 			fn_decl := new_clone(
+// 				Checked_Fn_Declaration{
+// 					token = n.token,
+// 					identifier = n.identifier,
+// 					type_info = Type_Info{name = "fn", type_id = FN_ID, type_kind = .Fn_Type},
+// 					param_names = make([]Token, len(n.parameters)),
+// 				},
+// 			)
+// 			fn_signature := make_fn_signature_info(len(n.parameters))
+
+// 			enter_child_scope(c.current, n.identifier) or_return
+// 			defer pop_scope(c.current)
+
+// 			if n.return_type_expr != nil {
+// 				return_expr, return_info := check_expr_types(c, n.return_type_expr) or_return
+// 				defer free_checked_expression(return_expr)
+// 				set_fn_return_type_info(&fn_signature, return_info)
+// 				set_variable_type(c, "result", return_info)
+// 			} else {
+// 				set_fn_return_type_info(&fn_signature, UNTYPED_INFO)
+// 			}
+
+// 			for param, i in n.parameters {
+// 				fn_decl.param_names[i] = param.name
+// 				param_expr, param_info := check_expr_types(c, param.type_expr) or_return
+// 				defer free_checked_expression(param_expr)
+
+// 				fn_signature.parameters[i] = param_info
+// 				set_variable_type(c, param.name.text, param_info)
+// 			}
+// 			fn_decl.body = check_node_types(c, n.body) or_return
+// 			fn_decl.type_info.type_id_data = fn_signature
+
+// 			append(&module.functions, fn_decl)
+// 		}
+// 	}
+
+// 	for node in m.nodes {
+// 		checked_node := check_node_types(c, node) or_return
+// 		#partial switch node in checked_node {
+// 		case ^Checked_Fn_Declaration, ^Checked_Type_Declaration:
+// 		case:
+// 			append(&module.nodes, checked_node)
+// 		}
+// 	}
+
+// 	c.current = nil
+// 	return
+// }
 
 check_node_symbols :: proc(c: ^Checker, node: Parsed_Node) -> (err: Error) {
 	switch n in node {
@@ -580,7 +901,6 @@ check_node_symbols :: proc(c: ^Checker, node: Parsed_Node) -> (err: Error) {
 		check_node_symbols(c, n.body) or_return
 
 	case ^Parsed_Import_Statement:
-		assert(false, "Module not implemented yet")
 
 	case ^Parsed_Var_Declaration:
 		if c.current.scope_depth > 0 {
@@ -667,48 +987,83 @@ check_expr_symbols :: proc(c: ^Checker, expr: Parsed_Expression) -> (err: Error)
 		left_identifier := e.left.(^Parsed_Identifier_Expression)
 		l := get_symbol(c, left_identifier.name) or_return
 
-		class_scope: ^Semantic_Scope
-		switch left_symbol in l {
-		case string:
-			assert(false)
-		case Scope_Ref_Symbol:
-			class_scope = get_class_scope_from_id(c.current, left_symbol.scope_id)
-		case Var_Symbol:
-			class_scope = get_class_scope_from_name(c.current, left_symbol.type_info.name)
-			if class_scope == nil {
-				// This means is an array or map
-				identifier: string
-				#partial switch s in e.selector {
-				case ^Parsed_Identifier_Expression:
-					identifier = s.name.text
-				case ^Parsed_Call_Expression:
-					t := s.func.(^Parsed_Identifier_Expression)
-					identifier = t.name.text
+		get_scope_from_symbol :: proc(c: ^Checker, module_id: int, s: Symbol) -> (scope: ^Semantic_Scope) {
+			switch symbol in s {
+			case string:
+				assert(false)
+			case Scope_Ref_Symbol:
+				scope = get_class_scope_from_id(c.modules[module_id], symbol.scope_id)
+
+			case Module_Symbol:
+				scope = c.modules[symbol.module_id].scope
+
+			case Var_Symbol:
+				scope = get_class_scope_from_name(c.modules[module_id], symbol.type_info.name)
+				if scope == nil {
+
 				}
-				if !is_builtin_container_symbol(identifier) {
+			}
+			return
+		}
+
+		scope := get_scope_from_symbol(c, c.current.id, l)
+		// fmt.println(e.left)
+		// fmt.println(c.current)
+
+		// This means is an array or map
+		if scope == nil {
+			identifier: string
+			#partial switch s in e.selector {
+			case ^Parsed_Identifier_Expression:
+				identifier = s.name.text
+			case ^Parsed_Call_Expression:
+				t := s.func.(^Parsed_Identifier_Expression)
+				identifier = t.name.text
+			}
+			if !is_builtin_container_symbol(identifier) {
+				err = Semantic_Error {
+					kind    = .Unknown_Symbol,
+					token   = e.token,
+					details = fmt.tprintf("Unknown symbol: %s", identifier),
+				}
+			}
+			return
+		}
+		selector := e.selector
+
+		for {
+			if nested, ok := selector.(^Parsed_Dot_Expression); ok {
+				module_symbol := l.(Module_Symbol)
+				nested_identifier := nested.left.(^Parsed_Identifier_Expression)
+				n, nested_exist := get_scoped_symbol(scope, nested_identifier.name.text)
+				if !nested_exist {
 					err = Semantic_Error {
 						kind    = .Unknown_Symbol,
-						token   = e.token,
-						details = fmt.tprintf("Unknown symbol: %s", identifier),
+						token   = nested_identifier.name,
+						details = fmt.tprintf("Unknown Module symbol: %s", nested_identifier.name.text),
 					}
+					return
 				}
-				return
+				scope = get_scope_from_symbol(c, module_symbol.module_id, n)
+				selector = nested.selector
+			} else {
+				break
 			}
 		}
 
-		#partial switch a in e.selector {
+		#partial switch a in selector {
 		case ^Parsed_Identifier_Expression:
-			if !contain_scoped_symbol(class_scope, a.name.text) {
+			if !contain_scoped_symbol(scope, a.name.text) {
 				err = Semantic_Error {
 					kind    = .Unknown_Symbol,
 					token   = a.name,
 					details = fmt.tprintf("Unknown Class field: %s", a.name.text),
 				}
 			}
+
 		case ^Parsed_Call_Expression:
-			// FIXME: Does not support Function literals
 			fn_identifier := a.func.(^Parsed_Identifier_Expression)
-			if !contain_scoped_symbol(class_scope, fn_identifier.name.text) {
+			if !contain_scoped_symbol(scope, fn_identifier.name.text) {
 				err = Semantic_Error {
 					kind    = .Unknown_Symbol,
 					token   = fn_identifier.name,
@@ -1047,7 +1402,9 @@ check_expr_types :: proc(c: ^Checker, expr: Parsed_Expression) -> (
 
 	case ^Parsed_Dot_Expression:
 		left_identifier := e.left.(^Parsed_Identifier_Expression)
-		checked_dot := new_clone(Checked_Dot_Expression{token = e.token, left = left_identifier.name})
+		checked_dot := new_clone(
+			Checked_Dot_Expression{token = e.token, left = left_identifier.name, left_id = -1},
+		)
 
 		// RULES:
 		// 1. accessing fields on Class not allowed
@@ -1061,15 +1418,30 @@ check_expr_types :: proc(c: ^Checker, expr: Parsed_Expression) -> (
 			is_instance = true
 			symbol := get_symbol(c, left_identifier.name) or_return
 			self_symbol := symbol.(Scope_Ref_Symbol)
-			for class_name, scope_info in c.current.class_scopes {
-				if self_symbol.scope_id == scope_info.scope_id {
+			for class_name, class_lookup in c.current.class_lookup {
+				if self_symbol.scope_id == class_lookup.scope_id {
 					left_info = c.current.type_lookup[class_name]
 					break
 				}
 			}
 
 		case:
-			if t, exist := c.current.type_lookup[name]; exist {
+			if index, module_exist := c.import_names_lookup[name]; module_exist {
+				module := c.modules[index]
+				previous := c.current
+				c.current = module
+				nested_dot, nested_info := check_expr_types(c, e.selector) or_return
+				c.current = previous
+				checked_dot.selector = nested_dot
+				checked_dot.type_info = nested_info
+				checked_dot.kind = .Module
+				checked_dot.left_id = index
+				result = checked_dot
+				info = nested_info
+				return
+
+			} else if t, exist := c.current.type_lookup[name]; exist {
+				checked_dot.left_id = c.current.class_lookup[name].class_id
 				left_info = t
 			} else {
 				is_instance = true
@@ -1090,6 +1462,7 @@ check_expr_types :: proc(c: ^Checker, expr: Parsed_Expression) -> (
 					for field, i in class_decl.field_names {
 						if field.text == selector.name.text {
 							info = class_def.fields[i]
+							checked_dot.selector_id = i
 							break
 						}
 					}
@@ -1112,9 +1485,9 @@ check_expr_types :: proc(c: ^Checker, expr: Parsed_Expression) -> (
 
 			case ^Parsed_Call_Expression:
 				call_identifier := selector.func.(^Parsed_Identifier_Expression)
-				fn_decl, is_constructor := find_checked_constructor(class_decl, call_identifier.name)
+				fn_decl, fn_id, is_constructor := find_checked_constructor(class_decl, call_identifier.name)
 				if !is_constructor {
-					fn_decl, _ = find_checked_method(class_decl, call_identifier.name)
+					fn_decl, fn_id, _ = find_checked_method(class_decl, call_identifier.name)
 				}
 
 				// Rule 2 check
@@ -1174,6 +1547,7 @@ check_expr_types :: proc(c: ^Checker, expr: Parsed_Expression) -> (
 
 				checked_dot.selector = checked_call
 				checked_dot.type_info = info
+				checked_dot.selector_id = fn_id
 			}
 
 

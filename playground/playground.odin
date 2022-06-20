@@ -54,58 +54,72 @@ playground :: proc() {using lily
 	// 	a.add(2)
 	// `
 	input := `
-		var foo = array of number[1, 2]
-		var length = foo.len
-		foo.append(4)
+		import math
+
+		var foo = math.Vector.new()
 	`
 
-	when RUN_PARSER {
-		// Parsing
-		parsed_module := make_parsed_module()
-		defer delete_parsed_module(parsed_module)
-		err := parse_module(input, parsed_module)
-		assert(err == nil, fmt.tprint("Failed, Error raised ->", err))
+	checker := Checker{}
+	init_checker(&checker)
+	_, err := build_checked_program(&checker, "main", input)
+	assert(err == nil, fmt.tprint(err))
 
-		when PRINT_AST {
-			print_parsed_ast(parsed_module)
-		}
-
-		when RUN_CHECKER {
-			checker := Checker{}
-			init_checker(&checker)
-			checked_module, check_err := check_module(&checker, parsed_module)
-			defer free_checker(&checker)
-			defer delete_checked_module(checked_module)
-			assert(check_err == nil, fmt.tprint("Failed, Error raised ->", check_err))
-
-			when PRINT_AST {
-
-				print_checked_ast(checked_module, &checker)
-			}
-			when PRINT_SYMBOL_TABLE {
-				print_symbol_table(checker, checked_module)
-			}
-
-			when RUN_COMPILER {
-				compiler := new_compiler()
-				compiled_module := compile_checked_module(compiler, checked_module)
-				defer free_compiler(compiler)
-				defer delete_compiled_module(compiled_module)
-
-				when PRINT_COMPILE {
-					print_compiled_module(compiled_module)
-					fmt.println("== END COMPILED MODULE ==")
-				}
-				when RUN_VM {
-					vm := new_vm()
-					defer free_vm(vm)
-					run_module(vm, compiled_module)
-				}
-				when PRINT_VM_STATE {
-					fmt.println("RESULT:")
-					fmt.println(vm.chunk.variables)
-				}
-			}
-		}
+	for module in checker.parsed_results {
+		print_parsed_ast(module)
 	}
+
+	for module in checker.modules {
+		print_checked_ast(module, &checker)
+	}
+
+	// when RUN_PARSER {
+	// 	// Parsing
+	// 	parsed_module := make_parsed_module()
+	// 	defer delete_parsed_module(parsed_module)
+	// 	err := parse_module(input, parsed_module)
+	// 	assert(err == nil, fmt.tprint("Failed, Error raised ->", err))
+
+	// 	when PRINT_AST {
+	// 		print_parsed_ast(parsed_module)
+	// 	}
+
+	// 	when RUN_CHECKER {
+	// 		checker := Checker{}
+	// 		init_checker(&checker)
+	// 		build_checked_program(&checker, parsed_module) or_return
+	// 		// checked_module, check_err := check_module(&checker, parsed_module)
+	// 		defer free_checker(&checker)
+	// 		defer delete_checked_module(checked_module)
+	// 		assert(check_err == nil, fmt.tprint("Failed, Error raised ->", check_err))
+
+	// 		when PRINT_AST {
+
+	// 			print_checked_ast(checked_module, &checker)
+	// 		}
+	// 		when PRINT_SYMBOL_TABLE {
+	// 			print_symbol_table(checker, checked_module)
+	// 		}
+
+	// 		when RUN_COMPILER {
+	// 			compiler := new_compiler()
+	// 			compiled_module := compile_checked_module(compiler, checked_module)
+	// 			defer free_compiler(compiler)
+	// 			defer delete_compiled_module(compiled_module)
+
+	// 			when PRINT_COMPILE {
+	// 				print_compiled_module(compiled_module)
+	// 				fmt.println("== END COMPILED MODULE ==")
+	// 			}
+	// 			when RUN_VM {
+	// 				vm := new_vm()
+	// 				defer free_vm(vm)
+	// 				run_module(vm, compiled_module)
+	// 			}
+	// 			when PRINT_VM_STATE {
+	// 				fmt.println("RESULT:")
+	// 				fmt.println(vm.chunk.variables)
+	// 			}
+	// 		}
+	// 	}
+	// }
 }

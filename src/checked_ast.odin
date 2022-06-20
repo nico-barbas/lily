@@ -9,17 +9,18 @@ import "core:strings"
 // type infos can be kept at one place,
 Checked_Module :: struct {
 	name:         string,
+	id:           int,
 	// This is all the nodes at the file level
 	nodes:        [dynamic]Checked_Node,
 	functions:    [dynamic]Checked_Node,
 	classes:      [dynamic]Checked_Node,
-	// types:       [dynamic]Type_Info,
 	type_lookup:  map[string]Type_Info,
 	type_count:   int,
 
 	// symbols
-	class_scopes: map[string]struct {
+	class_lookup: map[string]struct {
 		name:       string,
+		class_id:   int,
 		scope_id:   Scope_ID,
 		root_index: int,
 	},
@@ -28,9 +29,11 @@ Checked_Module :: struct {
 	scope_depth:  int,
 }
 
-make_checked_module :: proc() -> ^Checked_Module {
+make_checked_module :: proc(name: string, id: int) -> ^Checked_Module {
 	m := new_clone(
 		Checked_Module{
+			name = name,
+			id = id,
 			nodes = make([dynamic]Checked_Node),
 			functions = make([dynamic]Checked_Node),
 			classes = make([dynamic]Checked_Node),
@@ -56,7 +59,7 @@ delete_checked_module :: proc(m: ^Checked_Module) {
 	delete(m.nodes)
 
 	delete(m.type_lookup)
-	delete(m.class_scopes)
+	delete(m.class_lookup)
 	free_scope(m.root)
 	free(m)
 }
@@ -132,9 +135,9 @@ Checked_Index_Expression :: struct {
 }
 
 Checked_Dot_Expression :: struct {
-	token:     Token,
-	type_info: Type_Info,
-	kind:      enum {
+	token:       Token,
+	type_info:   Type_Info,
+	kind:        enum {
 		Module,
 		Class,
 		Instance_Field,
@@ -142,8 +145,10 @@ Checked_Dot_Expression :: struct {
 		Array_Len,
 		Array_Append,
 	},
-	left:      Token,
-	selector:  Checked_Expression,
+	left:        Token,
+	left_id:     int,
+	selector:    Checked_Expression,
+	selector_id: int,
 }
 
 Checked_Call_Expression :: struct {
@@ -279,26 +284,28 @@ Checked_Class_Declaration :: struct {
 
 find_checked_constructor :: proc(c: ^Checked_Class_Declaration, name: Token) -> (
 	^Checked_Fn_Declaration,
+	int,
 	bool,
 ) {
-	for constructor in c.constructors {
+	for constructor, i in c.constructors {
 		if constructor.identifier.text == name.text {
-			return constructor, true
+			return constructor, i, true
 		}
 	}
-	return nil, false
+	return nil, -1, false
 }
 
 find_checked_method :: proc(c: ^Checked_Class_Declaration, name: Token) -> (
 	^Checked_Fn_Declaration,
+	int,
 	bool,
 ) {
-	for method in c.methods {
+	for method, i in c.methods {
 		if method.identifier.text == name.text {
-			return method, true
+			return method, i, true
 		}
 	}
-	return nil, false
+	return nil, -1, false
 }
 
 free_checked_node :: proc(node: Checked_Node) {
@@ -374,6 +381,7 @@ Symbol :: union {
 	string,
 	Scope_Ref_Symbol,
 	Var_Symbol,
+	Module_Symbol,
 }
 
 builtin_container_symbols :: [?]string{"len", "append"}
@@ -391,6 +399,11 @@ is_builtin_container_symbol :: proc(s: string) -> bool {
 Scope_Ref_Symbol :: struct {
 	name:     string,
 	scope_id: Scope_ID,
+}
+
+Module_Symbol :: struct {
+	name:      string,
+	module_id: int,
 }
 
 Var_Symbol :: struct {
@@ -449,6 +462,19 @@ add_scope_ref_symbol_to_scope :: proc(
 	return
 }
 
+add_module_symbol_to_scope :: proc(s: ^Semantic_Scope, t: Token, module_id: int) -> Error {
+	if contain_scoped_symbol(s, t.text) {
+		return Semantic_Error{
+			kind = .Redeclared_Symbol,
+			token = t,
+			details = fmt.tprintf("Redeclared symbol: %s", t.text),
+		}
+	}
+	append(&s.symbols, Module_Symbol{name = t.text, module_id = module_id})
+	s.var_symbol_lookup[t.text] = len(s.symbols) - 1
+	return nil
+}
+
 add_var_symbol_to_scope :: proc(s: ^Semantic_Scope, t: Token, shadow := false) -> Error {
 	if !shadow && contain_scoped_symbol(s, t.text) {
 		return Semantic_Error{
@@ -464,17 +490,23 @@ add_var_symbol_to_scope :: proc(s: ^Semantic_Scope, t: Token, shadow := false) -
 
 contain_scoped_symbol :: proc(s: ^Semantic_Scope, name: string) -> bool {
 	for symbol in s.symbols {
-		switch smbl in symbol {
+		switch sy in symbol {
 		case string:
-			if smbl == name {
+			if sy == name {
 				return true
 			}
 		case Scope_Ref_Symbol:
-			if smbl.name == name {
+			if sy.name == name {
 				return true
 			}
+
+		case Module_Symbol:
+			if sy.name == name {
+				return true
+			}
+
 		case Var_Symbol:
-			if smbl.name == name {
+			if sy.name == name {
 				return true
 			}
 		}
@@ -482,9 +514,44 @@ contain_scoped_symbol :: proc(s: ^Semantic_Scope, name: string) -> bool {
 	return false
 }
 
+get_scoped_symbol :: proc(s: ^Semantic_Scope, name: string) -> (result: Symbol, exist: bool) {
+	for symbol in s.symbols {
+		switch sy in symbol {
+		case string:
+			if sy == name {
+				result = symbol
+				exist = true
+				return
+			}
+		case Scope_Ref_Symbol:
+			if sy.name == name {
+				result = symbol
+				exist = true
+				return
+			}
+
+		case Module_Symbol:
+			if sy.name == name {
+				result = symbol
+				exist = true
+				return
+			}
+
+		case Var_Symbol:
+			if sy.name == name {
+				result = symbol
+				exist = true
+				return
+			}
+		}
+	}
+	return
+}
+
 init_symbol_table :: proc(c: ^Checked_Module) {
-	c.class_scopes = make(map[string]struct {
+	c.class_lookup = make(map[string]struct {
 			name:       string,
+			class_id:   int,
 			scope_id:   Scope_ID,
 			root_index: int,
 		})
@@ -524,7 +591,7 @@ push_class_scope :: proc(c: ^Checked_Module, name: Token) {
 	add_scope_ref_symbol(c.scope, name, class_scope.id)
 	add_scope_ref_symbol(class_scope, Token{text = "self"}, class_scope.id)
 	append(&c.scope.children, class_scope)
-	c.class_scopes[name.text] = {
+	c.class_lookup[name.text] = {
 		name       = name.text,
 		scope_id   = class_scope.id,
 		root_index = len(c.scope.children) - 1,
@@ -551,8 +618,8 @@ enter_child_scope :: proc(c: ^Checked_Module, name: Token, loc := #caller_locati
 }
 
 enter_class_scope :: proc(c: ^Checked_Module, name: Token) -> (err: Error) {
-	scope_info := c.class_scopes[name.text]
-	c.scope = c.root.children[scope_info.root_index]
+	class_lookup_info := c.class_lookup[name.text]
+	c.scope = c.root.children[class_lookup_info.root_index]
 	c.scope_depth = 1
 	return
 }
@@ -560,9 +627,9 @@ enter_class_scope :: proc(c: ^Checked_Module, name: Token) -> (err: Error) {
 enter_class_scope_by_id :: proc(c: ^Checked_Module, scope_id: Scope_ID, loc := #caller_location) -> (
 	err: Error,
 ) {
-	for _, class_scope in c.class_scopes {
-		if class_scope.scope_id == scope_id {
-			c.scope = c.root.children[class_scope.root_index]
+	for _, class_lookup in c.class_lookup {
+		if class_lookup.scope_id == scope_id {
+			c.scope = c.root.children[class_lookup.root_index]
 			c.scope_depth = 1
 			return
 		}
@@ -582,18 +649,18 @@ pop_scope :: proc(c: ^Checked_Module) {
 }
 
 get_class_scope_from_name :: proc(c: ^Checked_Module, name: string) -> ^Semantic_Scope {
-	scope_info, exist := c.class_scopes[name]
+	class_lookup, exist := c.class_lookup[name]
 	if !exist {
 		return nil
 	} else {
-		return c.root.children[scope_info.root_index]
+		return c.root.children[class_lookup.root_index]
 	}
 }
 
 get_class_scope_from_id :: proc(c: ^Checked_Module, scope_id: Scope_ID) -> ^Semantic_Scope {
-	for _, class_scope in c.class_scopes {
-		if class_scope.scope_id == scope_id {
-			return c.root.children[class_scope.root_index]
+	for _, class_lookup in c.class_lookup {
+		if class_lookup.scope_id == scope_id {
+			return c.root.children[class_lookup.root_index]
 		}
 	}
 	return nil

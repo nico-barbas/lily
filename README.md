@@ -93,3 +93,6 @@ var addResult = add(5, 10)
     - [ ] Checker
     - [ ] Compiler
     - [ ] VM
+
+## Bugs:
+- Invalid symbol definition when function parameter is a class

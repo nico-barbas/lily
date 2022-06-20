@@ -11,12 +11,11 @@ VM_STACK_GROWTH :: 2
 Vm :: struct {
 	// Persistant states
 	checker:     Checker,
-	compiled:    map[string]^Compiled_Module,
-
 
 	// Runtime states
+	modules:     []^Compiled_Module,
 	module:      ^Compiled_Module,
-	chunk:       Chunk,
+	chunk:       ^Chunk,
 	ip:          int,
 	stack:       []Value,
 	header_ptr:  int,
@@ -31,8 +30,6 @@ Vm :: struct {
 
 new_vm :: proc() -> ^Vm {
 	vm := new(Vm)
-	vm.compiled = make(map[string]^Compiled_Module)
-
 	vm.stack = make([]Value, VM_STACK_SIZE)
 	return vm
 }
@@ -59,26 +56,33 @@ free_vm :: proc(vm: ^Vm) {
 // }
 
 Call_Frame :: struct {
-	fn: ^Fn_Object,
-	ip: int,
+	module_id: int,
+	chunk:     ^Chunk,
+	ip:        int,
 }
 
-push_call :: proc(vm: ^Vm, fn: ^Fn_Object) {
+push_call :: proc(vm: ^Vm, module_id: int, chunk: ^Chunk) {
 	vm.call_stack[vm.call_count - 1].ip = vm.ip
 	vm.call_stack[vm.call_count] = Call_Frame {
-		fn = fn,
-		ip = 0,
+		module_id = module_id,
+		chunk     = chunk,
+		ip        = 0,
 	}
 	vm.ip = 0
-	vm.chunk = fn.chunk
+	vm.module = vm.modules[module_id]
+	vm.chunk = chunk
 	vm.call_count += 1
 }
 
 pop_call :: proc(vm: ^Vm) {
 	vm.call_count -= 1
 	call_frame := &vm.call_stack[vm.call_count - 1]
+	assert(call_frame == nil)
 	vm.ip = call_frame.ip
-	vm.chunk = call_frame.fn.chunk if call_frame.fn != nil else vm.module.main
+	vm.module = vm.modules[call_frame.module_id]
+	vm.chunk = call_frame.chunk
+	// FIXME: this seems wrong..
+	// vm.chunk = call_frame.fn.chunk if call_frame.fn != nil else vm.module.main
 }
 
 push_stack :: proc(vm: ^Vm) {
@@ -158,12 +162,10 @@ get_i16 :: proc(vm: ^Vm) -> i16 {
 	return i16(upper) << 8 | i16(lower)
 }
 
-run_module :: proc(vm: ^Vm, c: ^Compiled_Module) {
-	vm.module = c
-	vm.chunk = c.main
+run_module :: proc(vm: ^Vm, module_id: int) {
+	vm.module = vm.modules[module_id]
+	push_call(vm, module_id, &vm.module.main)
 	vm.stack_ptr = 0
-	vm.ip = 0
-	vm.call_count = 1
 
 	run_bytecode(vm)
 }
@@ -337,7 +339,7 @@ run_bytecode :: proc(vm: ^Vm) {
 		case .Op_Call:
 			fn_addr := get_i16(vm)
 			fn := &vm.module.functions[fn_addr]
-			push_call(vm, fn)
+			push_call(vm, vm.module.id, &fn.chunk)
 
 		case .Op_Return_Val:
 			result_addr := get_i16(vm)
@@ -350,6 +352,8 @@ run_bytecode :: proc(vm: ^Vm) {
 		case .Op_Return:
 			pop_call(vm)
 			pop_stack(vm)
+
+		case .Op_Push_Module, .Op_Pop_Module:
 
 		case .Op_Make_Array:
 			array := make([dynamic]Value)
@@ -400,7 +404,7 @@ run_bytecode :: proc(vm: ^Vm) {
 			class_addr := get_i16(vm)
 			constr_addr := get_i16(vm)
 			constr := &vm.module.class_vtables[class_addr].constructors[constr_addr]
-			push_call(vm, constr)
+			push_call(vm, vm.module.id, &constr.chunk)
 
 		case .Op_Call_Method:
 			instance_addr := get_i16(vm)
@@ -408,8 +412,7 @@ run_bytecode :: proc(vm: ^Vm) {
 			obj := get_stack_value(vm, get_variable_stack_id(vm, instance_addr))
 			instance := cast(^Class_Object)obj.data.(^Object)
 			method := &instance.vtable.methods[method_addr]
-			// set_stack_value(vm, )
-			push_call(vm, method)
+			push_call(vm, vm.module.id, &method.chunk)
 
 		case .Op_Get_Field:
 			instance_addr := get_i16(vm)
