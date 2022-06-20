@@ -3,22 +3,30 @@ package lily
 import "core:fmt"
 
 Checker :: struct {
-	// a weak ref to all the checked modules that have already been compiled
-	modules:         []^Checked_Module,
-	import_callback: import_module_callback,
+	modules:               [dynamic]^Checked_Module,
+	current:               ^Checked_Module,
+
+	// A place to store the parsed modules and keep track of which one is currently being worked on
+	parsed_results:        [dynamic]^Parsed_Module,
+	current_parsed_module: ^Parsed_Module,
+	dependency_graph:      struct {
+		head: ^Module_Graph_Node,
+		root: ^Module_Graph_Node,
+	},
 
 	// Builtin types and internal states
-	builtin_symbols: [5]string,
-	builtin_types:   [BUILT_IN_ID_COUNT]Type_Info,
-	type_id_ptr:     Type_ID,
-	current:         ^Checked_Module,
+	builtin_symbols:       [5]string,
+	builtin_types:         [BUILT_IN_ID_COUNT]Type_Info,
+	type_id_ptr:           Type_ID,
 }
 
-import_module_callback :: proc(module_name: string) -> ^Parsed_Module
+Module_Graph_Node :: struct {
+	name:   string,
+	parent: ^Module_Graph_Node,
+}
 
-init_checker :: proc(c: ^Checker, loaded: []^Checked_Module, cb: import_module_callback) {
-	c.modules = loaded
-	c.import_callback = cb
+init_checker :: proc(c: ^Checker) {
+	c.modules = make([dynamic]^Checked_Module)
 	c.builtin_symbols = {"untyped", "number", "string", "bool", "array"}
 	c.type_id_ptr = BUILT_IN_ID_COUNT
 	c.builtin_types[UNTYPED_ID] = UNTYPED_INFO
@@ -33,7 +41,7 @@ init_checker :: proc(c: ^Checker, loaded: []^Checked_Module, cb: import_module_c
 }
 
 free_checker :: proc(c: ^Checker) {
-	free(c)
+	delete(c.modules)
 }
 
 contain_symbol :: proc(c: ^Checker, token: Token) -> bool {
@@ -151,11 +159,7 @@ update_type_alias :: proc(c: ^Checker, name: Token, parent_type: Type_ID) {
 // but also adding the Checked_Type_Declaration to the module for later compilation
 add_class_type :: proc(c: ^Checker, decl: ^Parsed_Type_Declaration) {
 	checked_class := new_clone(
-		Checked_Class_Declaration{
-			token = decl.token,
-			is_token = decl.is_token,
-			identifier = decl.identifier,
-		},
+		Checked_Class_Declaration{token = decl.token, is_token = decl.is_token, identifier = decl.identifier},
 	)
 	append(&c.current.classes, checked_class)
 	class_info := Type_Info {
@@ -261,6 +265,39 @@ get_fn_type :: proc(c: ^Checker, name: string) -> (result: Type_Info, exist: boo
 gen_type_id :: proc(c: ^Checker) -> Type_ID {
 	c.type_id_ptr += 1
 	return c.type_id_ptr - 1
+}
+
+build_checked_program :: proc(c: ^Checker, entry_point: string) -> (
+	result: []^Checked_Module,
+	err: Error,
+) {
+	parsed_module := make_parsed_module()
+	parse_module(entry_point, parsed_module) or_return
+	append(&c.parsed_results, parsed_module)
+	c.current_parsed_module = parsed_module
+
+	parse_dependencies(&c.parsed_results, c.current_parsed_module) or_return
+	// TODO: preallocate checked module buffer, we know the size
+	build_dependency_graph(c)
+	return
+}
+
+build_dependency_graph :: proc(c: ^Checker) -> (err: Error) {
+	c.dependency_graph.root = new_clone(
+		Module_Graph_Node{name = c.current_parsed_module.name, parent = nil},
+	)
+	c.dependency_graph.head = c.dependency_graph.root
+	for module in c.parsed_results {
+		if module.name == c.dependency_graph.root.name {
+			continue
+		}
+		new_node := new_clone(Module_Graph_Node{name = module.name, parent = c.dependency_graph.head})
+		c.dependency_graph.head = new_node
+	}
+
+	// TODO: Check for cycles
+
+	return
 }
 
 check_module :: proc(c: ^Checker, m: ^Parsed_Module) -> (module: ^Checked_Module, err: Error) {
@@ -638,9 +675,26 @@ check_expr_symbols :: proc(c: ^Checker, expr: Parsed_Expression) -> (err: Error)
 			class_scope = get_class_scope_from_id(c.current, left_symbol.scope_id)
 		case Var_Symbol:
 			class_scope = get_class_scope_from_name(c.current, left_symbol.type_info.name)
+			if class_scope == nil {
+				// This means is an array or map
+				identifier: string
+				#partial switch s in e.selector {
+				case ^Parsed_Identifier_Expression:
+					identifier = s.name.text
+				case ^Parsed_Call_Expression:
+					t := s.func.(^Parsed_Identifier_Expression)
+					identifier = t.name.text
+				}
+				if !is_builtin_container_symbol(identifier) {
+					err = Semantic_Error {
+						kind    = .Unknown_Symbol,
+						token   = e.token,
+						details = fmt.tprintf("Unknown symbol: %s", identifier),
+					}
+				}
+				return
+			}
 		}
-		// left_symbol := l.(Scope_Ref_Symbol)
-		// class_scope := get_class_scope(c.current, left_symbol.scope_id)
 
 		#partial switch a in e.selector {
 		case ^Parsed_Identifier_Expression:
@@ -723,11 +777,7 @@ check_node_types :: proc(c: ^Checker, node: Parsed_Node) -> (result: Checked_Nod
 			err = Semantic_Error {
 				kind    = .Mismatched_Types,
 				token   = n.token,
-				details = fmt.tprintf(
-					"Expected %s, got %s",
-					c.builtin_types[BOOL_ID].name,
-					condition_info.name,
-				),
+				details = fmt.tprintf("Expected %s, got %s", c.builtin_types[BOOL_ID].name, condition_info.name),
 			}
 		}
 		// push a new scope here
@@ -842,10 +892,7 @@ check_expr_types :: proc(c: ^Checker, expr: Parsed_Expression) -> (
 		case .Boolean:
 			info = c.builtin_types[UNTYPED_BOOL_ID]
 		case:
-			assert(
-				false,
-				"Probably erroneous path for Parsed_Literal_Expression in  check_expr_types procedure",
-			)
+			assert(false, "Probably erroneous path for Parsed_Literal_Expression in  check_expr_types procedure")
 		}
 		result = new_clone(Checked_Literal_Expression{type_info = info, value = e.value})
 
@@ -1006,7 +1053,7 @@ check_expr_types :: proc(c: ^Checker, expr: Parsed_Expression) -> (
 		// 1. accessing fields on Class not allowed
 		// 2. calling constructors from instance not allowed
 
-		class_info: Type_Info
+		left_info: Type_Info
 		name := left_identifier.name.text
 		is_instance := false
 		switch {
@@ -1016,122 +1063,141 @@ check_expr_types :: proc(c: ^Checker, expr: Parsed_Expression) -> (
 			self_symbol := symbol.(Scope_Ref_Symbol)
 			for class_name, scope_info in c.current.class_scopes {
 				if self_symbol.scope_id == scope_info.scope_id {
-					class_info = c.current.type_lookup[class_name]
+					left_info = c.current.type_lookup[class_name]
 					break
 				}
 			}
 
 		case:
 			if t, exist := c.current.type_lookup[name]; exist {
-				class_info = t
+				left_info = t
 			} else {
 				is_instance = true
-				class_info, _ = get_variable_type(c, name)
+				left_info, _ = get_variable_type(c, name)
 			}
 		}
 
-		class_def := class_info.type_id_data.(Class_Definition_Info)
-		class_decl := get_class_decl(c.current, class_info.type_id)
+		#partial switch left_info.type_kind {
+		case .Class_Type:
+			class_def := left_info.type_id_data.(Class_Definition_Info)
+			class_decl := get_class_decl(c.current, left_info.type_id)
 
-		#partial switch selector in e.selector {
-		case ^Parsed_Identifier_Expression:
-			// Rule 1 check
-			if is_instance {
-				checked_dot.kind = .Instance_Field
-				for field, i in class_decl.field_names {
-					if field.text == selector.name.text {
-						info = class_def.fields[i]
-						break
+			#partial switch selector in e.selector {
+			case ^Parsed_Identifier_Expression:
+				// Rule 1 check
+				if is_instance {
+					checked_dot.kind = .Instance_Field
+					for field, i in class_decl.field_names {
+						if field.text == selector.name.text {
+							info = class_def.fields[i]
+							break
+						}
 					}
-				}
-				checked_dot.selector = new_clone(
-					Checked_Identifier_Expression{name = selector.name, type_info = info},
-				)
-			} else {
-				err = Semantic_Error {
-					kind    = .Invalid_Class_Field_Access,
-					token   = e.token,
-					details = fmt.tprintf(
-						"Cannot access fields of %s. %s is a class and not an instance of class",
-						name,
-						name,
-					),
-				}
-				return
-			}
-
-
-		case ^Parsed_Call_Expression:
-			call_identifier := selector.func.(^Parsed_Identifier_Expression)
-			fn_decl, is_constructor := find_checked_constructor(class_decl, call_identifier.name)
-			if !is_constructor {
-				fn_decl, _ = find_checked_method(class_decl, call_identifier.name)
-			}
-
-			// Rule 2 check
-			if is_instance {
-				checked_dot.kind = .Instance_Call
-				if is_constructor {
+					checked_dot.selector = new_clone(
+						Checked_Identifier_Expression{name = selector.name, type_info = info},
+					)
+				} else {
 					err = Semantic_Error {
-						kind    = .Invalid_Class_Constructor_Usage,
-						token   = e.token,
-						details = fmt.tprintf("%s is an instance of Class %s", name, class_info.name),
-					}
-					return
-				}
-			} else {
-				checked_dot.kind = .Class
-			}
-
-
-			signature_info := fn_decl.type_info.type_id_data.(Fn_Signature_Info)
-			info = signature_info.return_type_info^
-
-			checked_call := new_clone(
-				Checked_Call_Expression{
-					token = selector.token,
-					type_info = info,
-					func = new_clone(
-						Checked_Identifier_Expression{name = call_identifier.name, type_info = fn_decl.type_info},
-					),
-					args = make([]Checked_Expression, len(selector.args)),
-				},
-			)
-
-			if len(signature_info.parameters) != len(selector.args) {
-				err = Semantic_Error {
-					kind    = .Invalid_Arg_Count,
-					token   = e.token,
-					details = fmt.tprintf(
-						"Invalid Argument count, expected %i, got %i",
-						len(signature_info.parameters),
-						len(selector.args),
-					),
-				}
-				return
-			}
-			for arg, i in selector.args {
-				arg_expr, arg_info := check_expr_types(c, arg) or_return
-				if !type_equal(c, arg_info, signature_info.parameters[i]) {
-					err = Semantic_Error {
-						kind    = .Mismatched_Types,
+						kind    = .Invalid_Class_Field_Access,
 						token   = e.token,
 						details = fmt.tprintf(
-							"Expected %s, got %s",
-							arg_info.name,
-							signature_info.parameters[i].name,
+							"Cannot access fields of %s. %s is a class and not an instance of class",
+							name,
+							name,
 						),
 					}
 					return
 				}
-				checked_call.args[i] = arg_expr
+
+
+			case ^Parsed_Call_Expression:
+				call_identifier := selector.func.(^Parsed_Identifier_Expression)
+				fn_decl, is_constructor := find_checked_constructor(class_decl, call_identifier.name)
+				if !is_constructor {
+					fn_decl, _ = find_checked_method(class_decl, call_identifier.name)
+				}
+
+				// Rule 2 check
+				if is_instance {
+					checked_dot.kind = .Instance_Call
+					if is_constructor {
+						err = Semantic_Error {
+							kind    = .Invalid_Class_Constructor_Usage,
+							token   = e.token,
+							details = fmt.tprintf("%s is an instance of Class %s", name, left_info.name),
+						}
+						return
+					}
+				} else {
+					checked_dot.kind = .Class
+				}
+
+
+				signature_info := fn_decl.type_info.type_id_data.(Fn_Signature_Info)
+				info = signature_info.return_type_info^
+
+				checked_call := new_clone(
+					Checked_Call_Expression{
+						token = selector.token,
+						type_info = info,
+						func = new_clone(
+							Checked_Identifier_Expression{name = call_identifier.name, type_info = fn_decl.type_info},
+						),
+						args = make([]Checked_Expression, len(selector.args)),
+					},
+				)
+
+				if len(signature_info.parameters) != len(selector.args) {
+					err = Semantic_Error {
+						kind    = .Invalid_Arg_Count,
+						token   = e.token,
+						details = fmt.tprintf(
+							"Invalid Argument count, expected %i, got %i",
+							len(signature_info.parameters),
+							len(selector.args),
+						),
+					}
+					return
+				}
+				for arg, i in selector.args {
+					arg_expr, arg_info := check_expr_types(c, arg) or_return
+					if !type_equal(c, arg_info, signature_info.parameters[i]) {
+						err = Semantic_Error {
+							kind    = .Mismatched_Types,
+							token   = e.token,
+							details = fmt.tprintf("Expected %s, got %s", arg_info.name, signature_info.parameters[i].name),
+						}
+						return
+					}
+					checked_call.args[i] = arg_expr
+				}
+
+				checked_dot.selector = checked_call
+				checked_dot.type_info = info
 			}
 
-			checked_dot.selector = checked_call
-			checked_dot.type_info = info
+
+		case .Generic_Type:
+			if left_info.type_id == ARRAY_ID {
+				checked_dot.selector, info = check_array_dot_expression_types(c, left_info, e.selector) or_return
+			} else {
+				err = Semantic_Error {
+					kind    = .Invalid_Dot_Operand,
+					token   = left_identifier.name,
+					details = fmt.tprintf("Left operand %s is not of valid type: %s", name, left_info.name),
+				}
+			}
+
+		case:
+			err = Semantic_Error {
+				kind    = .Invalid_Dot_Operand,
+				token   = left_identifier.name,
+				details = fmt.tprintf("Left operand %s is not of valid type: %s", name, left_info.name),
+			}
 		}
 
 		result = checked_dot
+
 
 	case ^Parsed_Call_Expression:
 		checked_call := new_clone(
@@ -1162,11 +1228,7 @@ check_expr_types :: proc(c: ^Checker, expr: Parsed_Expression) -> (
 					err = Semantic_Error {
 						kind    = .Mismatched_Types,
 						token   = e.token,
-						details = fmt.tprintf(
-							"Expected %s, got %s",
-							arg_info.name,
-							signature_info.parameters[i].name,
-						),
+						details = fmt.tprintf("Expected %s, got %s", arg_info.name, signature_info.parameters[i].name),
 					}
 					return
 				}
@@ -1194,6 +1256,67 @@ check_expr_types :: proc(c: ^Checker, expr: Parsed_Expression) -> (
 			type_kind = .Generic_Type,
 			type_id_data = Generic_Type_Info{spec_type_id = inner_info.type_id},
 		}
+	}
+	return
+}
+
+check_array_dot_expression_types :: proc(
+	c: ^Checker,
+	array_info: Type_Info,
+	selector: Parsed_Expression,
+) -> (
+	result: Checked_Expression,
+	info: Type_Info,
+	err: Error,
+) {
+	#partial switch s in selector {
+	case ^Parsed_Identifier_Expression:
+		if s.name.text == "len" {
+			result = new_clone(Checked_Identifier_Expression{name = s.name, type_info = UNTYPED_NUMBER_INFO})
+			info = UNTYPED_NUMBER_INFO
+		}
+
+	case ^Parsed_Call_Expression:
+		identifier := s.func.(^Parsed_Identifier_Expression)
+		if identifier.name.text == "append" {
+			if len(s.args) != 1 {
+				err = Semantic_Error {
+					kind    = .Invalid_Arg_Count,
+					token   = s.token,
+					details = fmt.tprintf("append expect 1 argument, got %d", len(s.args)),
+				}
+			}
+
+			item, item_info := check_expr_types(c, s.args[0]) or_return
+			array_elem_info := array_info.type_id_data.(Generic_Type_Info)
+			if item_info.type_id != array_elem_info.spec_type_id {
+				err = Semantic_Error {
+					kind    = .Mismatched_Types,
+					token   = s.token,
+					details = fmt.tprintf(
+						"Cannot append element of type %s to array of type %s",
+						item_info.name,
+						get_type_from_id(c, array_elem_info.spec_type_id),
+					),
+				}
+				return
+			}
+
+			args := make([]Checked_Expression, 1)
+			args[0] = item
+			result = new_clone(
+				Checked_Call_Expression{
+					token = identifier.name,
+					type_info = UNTYPED_INFO,
+					func = new_clone(Checked_Identifier_Expression{name = identifier.name}),
+					args = args,
+				},
+			)
+			info = UNTYPED_INFO
+		}
+	case:
+		// FIXME: do better
+		assert(false)
 	}
 	return
 }

@@ -374,6 +374,17 @@ Symbol :: union {
 	Var_Symbol,
 }
 
+builtin_container_symbols :: [?]string{"len", "append"}
+
+is_builtin_container_symbol :: proc(s: string) -> bool {
+	for symbol in builtin_container_symbols {
+		if s == symbol {
+			return true
+		}
+	}
+	return false
+}
+
 // For classes, constructors, methods and functions
 Scope_Ref_Symbol :: struct {
 	name:     string,
@@ -520,9 +531,7 @@ push_class_scope :: proc(c: ^Checked_Module, name: Token) {
 	c.scope_depth += 1
 }
 
-enter_child_scope :: proc(c: ^Checked_Module, name: Token, loc := #caller_location) -> (
-	err: Error,
-) {
+enter_child_scope :: proc(c: ^Checked_Module, name: Token, loc := #caller_location) -> (err: Error) {
 	scope_id := hash_scope_id(c, name)
 	for scope in c.scope.children {
 		if scope.id == scope_id {
@@ -546,11 +555,7 @@ enter_class_scope :: proc(c: ^Checked_Module, name: Token) -> (err: Error) {
 	return
 }
 
-enter_class_scope_by_id :: proc(
-	c: ^Checked_Module,
-	scope_id: Scope_ID,
-	loc := #caller_location,
-) -> (
+enter_class_scope_by_id :: proc(c: ^Checked_Module, scope_id: Scope_ID, loc := #caller_location) -> (
 	err: Error,
 ) {
 	for _, class_scope in c.class_scopes {

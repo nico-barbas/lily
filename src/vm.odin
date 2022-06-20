@@ -1,5 +1,7 @@
 package lily
 
+import "core:strings"
+import "core:os"
 
 VM_STACK_SIZE :: 255
 VM_STACK_GROWTH :: 2
@@ -7,7 +9,7 @@ VM_STACK_GROWTH :: 2
 
 Vm :: struct {
 	// Persistant states
-	checked:     [dynamic]^Checked_Module,
+	checker:     Checker,
 	compiled:    map[string]^Compiled_Module,
 
 
@@ -28,7 +30,6 @@ Vm :: struct {
 
 new_vm :: proc() -> ^Vm {
 	vm := new(Vm)
-	vm.checked = make([dynamic]^Checked_Module)
 	vm.compiled = make(map[string]^Compiled_Module)
 
 	vm.stack = make([]Value, VM_STACK_SIZE)
@@ -39,25 +40,22 @@ free_vm :: proc(vm: ^Vm) {
 	delete(vm.stack)
 }
 
-compile_module :: proc(vm: ^Vm, input: string) -> (err: Error) {
-	parsed_module := make_parsed_module()
-	parse_module(string(input), parsed_module) or_return
-	defer delete_parsed_module(parsed_module)
+// compile_module :: proc(vm: ^Vm, module_path: string) -> (err: Error) {
 
-	checker := Checker{}
-	init_checker(&checker, vm.checked[:], nil)
-	checked_module := check_module(vm.checker, parsed_module) or_return
-	// defer free_checker(checker)
-	// defer delete_checked_module(checked_module)
 
-	// TODO: Store the checked_module in the checker or somewhere else
-	// It's probably be better to store it outside, this way we could checked multiple at once 
-	// (probably not in the forceable future)
+// 	init_checker(&vm.checker)
+// 	checked_module := check_module(&vm.checker, parsed_module) or_return
+// 	// defer free_checker(checker)
+// 	// defer delete_checked_module(checked_module)
 
-	compiler := new_compiler()
-	compiled_module := compile_checked_module(compiler, checked_module)
-	return
-}
+// 	// TODO: Store the checked_module in the checker or somewhere else
+// 	// It's probably be better to store it outside, this way we could checked multiple at once 
+// 	// (probably not in the forceable future)
+
+// 	compiler := new_compiler()
+// 	compiled_module := compile_checked_module(compiler, checked_module)
+// 	return
+// }
 
 Call_Frame :: struct {
 	fn: ^Fn_Object,

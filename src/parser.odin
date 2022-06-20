@@ -1,5 +1,6 @@
 package lily
 
+import "core:os"
 import "core:strconv"
 import "core:strings"
 import "core:fmt"
@@ -60,6 +61,25 @@ Precedence :: enum {
 	Highest,
 }
 
+parse_dependencies :: proc(buf: ^[dynamic]^Parsed_Module, entry_point: ^Parsed_Module) -> (err: Error) {
+	current := entry_point
+	start := len(buf) - 1
+	for import_node in entry_point.import_nodes {
+		import_stmt := import_node.(^Parsed_Import_Statement)
+		module_path := strings.concatenate({import_stmt.identifier.text, ".lily"}, context.temp_allocator)
+		imported_module := make_parsed_module()
+		// FIXME: check for read errros
+		imported_source, _ := os.read_entire_file(module_path)
+		defer delete(imported_source)
+		parse_module(string(imported_source), imported_module) or_return
+		append(buf, imported_module)
+	}
+	imported_modules := buf[start:len(buf)]
+	for module in imported_modules {
+		parse_dependencies(buf, module) or_return
+	}
+	return
+}
 
 parse_module :: proc(i: string, mod: ^Parsed_Module) -> (err: Error) {
 	mod.source = strings.clone(i)
@@ -164,16 +184,11 @@ parse_assign_stmt :: proc(p: ^Parser, lhs: Parsed_Expression) -> (
 }
 
 parse_if_stmt :: proc(p: ^Parser) -> (result: ^Parsed_If_Statement, err: Error) {
-	parse_branch :: proc(p: ^Parser, is_end_branch: bool) -> (
-		result: ^Parsed_If_Statement,
-		err: Error,
-	) {
+	parse_branch :: proc(p: ^Parser, is_end_branch: bool) -> (result: ^Parsed_If_Statement, err: Error) {
 		result = new(Parsed_If_Statement)
 		switch is_end_branch {
 		case true:
-			result.condition = new_clone(
-				Parsed_Literal_Expression{value = Value{kind = .Boolean, data = true}},
-			)
+			result.condition = new_clone(Parsed_Literal_Expression{value = Value{kind = .Boolean, data = true}})
 			result.body = new_clone(Parsed_Block_Statement{nodes = make([dynamic]Parsed_Node)})
 			else_body: for {
 				body_node := parse_node(p) or_return
@@ -610,10 +625,7 @@ parse_unary :: proc(p: ^Parser) -> (result: Parsed_Expression, err: Error) {
 	return
 }
 
-parse_binary :: proc(p: ^Parser, left: Parsed_Expression) -> (
-	result: Parsed_Expression,
-	err: Error,
-) {
+parse_binary :: proc(p: ^Parser, left: Parsed_Expression) -> (result: Parsed_Expression, err: Error) {
 	binary := new_clone(Parsed_Binary_Expression{left = left, op = token_to_operator(p.previous.kind)})
 	binary.right, err = parse_expr(p, parser_rules[p.previous.kind].prec)
 	result = binary
@@ -674,10 +686,7 @@ parse_infix_open_bracket :: proc(p: ^Parser, left: Parsed_Expression) -> (
 	return
 }
 
-parse_array :: proc(p: ^Parser, left: Parsed_Expression) -> (
-	result: Parsed_Expression,
-	err: Error,
-) {
+parse_array :: proc(p: ^Parser, left: Parsed_Expression) -> (result: Parsed_Expression, err: Error) {
 	array := new_clone(
 		Parsed_Array_Literal_Expression{type_expr = left, values = make([dynamic]Parsed_Expression)},
 	)
@@ -719,10 +728,7 @@ parse_array_type :: proc(p: ^Parser) -> (result: Parsed_Expression, err: Error) 
 	return
 }
 
-parse_index :: proc(p: ^Parser, left: Parsed_Expression) -> (
-	result: Parsed_Expression,
-	err: Error,
-) {
+parse_index :: proc(p: ^Parser, left: Parsed_Expression) -> (result: Parsed_Expression, err: Error) {
 	index_expr := new_clone(Parsed_Index_Expression{token = p.previous, left = left})
 	index_expr.index = parse_expr(p, .Lowest) or_return
 	match_token_kind(p, .Close_Bracket) or_return

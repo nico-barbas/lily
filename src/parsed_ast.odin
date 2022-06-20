@@ -1,8 +1,10 @@
 package lily
 
 Parsed_Module :: struct {
-	source: string,
-	nodes:  [dynamic]Parsed_Node,
+	source:       string,
+	name:         string,
+	import_nodes: [dynamic]Parsed_Node,
+	nodes:        [dynamic]Parsed_Node,
 }
 
 make_parsed_module :: proc() -> ^Parsed_Module {
