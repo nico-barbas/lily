@@ -378,11 +378,17 @@ Semantic_Scope :: struct {
 	children:          [dynamic]^Semantic_Scope,
 }
 
-Symbol :: union {
-	string,
-	Scope_Ref_Symbol,
-	Var_Symbol,
-	Module_Symbol,
+Symbol :: struct {
+	name:          string,
+	kind:          enum {
+		Name,
+		Scope_Ref_Symbol,
+		Var_Symbol,
+		Module_Symbol,
+	},
+	scope_id:      Scope_ID,
+	var_type_info: Type_Info,
+	module_id:     int,
 }
 
 builtin_container_symbols :: [?]string{"len", "append"}
@@ -394,22 +400,6 @@ is_builtin_container_symbol :: proc(s: string) -> bool {
 		}
 	}
 	return false
-}
-
-// For classes, constructors, methods and functions
-Scope_Ref_Symbol :: struct {
-	name:     string,
-	scope_id: Scope_ID,
-}
-
-Module_Symbol :: struct {
-	name:      string,
-	module_id: int,
-}
-
-Var_Symbol :: struct {
-	name:      string,
-	type_info: Type_Info,
 }
 
 new_scope :: proc() -> ^Semantic_Scope {
@@ -439,7 +429,7 @@ add_symbol_to_scope :: proc(s: ^Semantic_Scope, token: Token, shadow := false) -
 		}
 	}
 
-	append(&s.symbols, token.text)
+	append(&s.symbols, Symbol{name = token.text, kind = .Name})
 	return
 }
 
@@ -459,7 +449,7 @@ add_scope_ref_symbol_to_scope :: proc(
 		}
 	}
 
-	append(&s.symbols, Scope_Ref_Symbol{name = token.text, scope_id = scope_id})
+	append(&s.symbols, Symbol{name = token.text, kind = .Scope_Ref_Symbol, scope_id = scope_id})
 	return
 }
 
@@ -471,7 +461,7 @@ add_module_symbol_to_scope :: proc(s: ^Semantic_Scope, t: Token, module_id: int)
 			details = fmt.tprintf("Redeclared symbol: %s", t.text),
 		}
 	}
-	append(&s.symbols, Module_Symbol{name = t.text, module_id = module_id})
+	append(&s.symbols, Symbol{name = t.text, kind = .Module_Symbol, module_id = module_id})
 	s.var_symbol_lookup[t.text] = len(s.symbols) - 1
 	return nil
 }
@@ -484,32 +474,15 @@ add_var_symbol_to_scope :: proc(s: ^Semantic_Scope, t: Token, shadow := false) -
 			details = fmt.tprintf("Redeclared symbol: %s", t.text),
 		}
 	}
-	append(&s.symbols, Var_Symbol{name = t.text})
+	append(&s.symbols, Symbol{name = t.text, kind = .Var_Symbol})
 	s.var_symbol_lookup[t.text] = len(s.symbols) - 1
 	return nil
 }
 
 contain_scoped_symbol :: proc(s: ^Semantic_Scope, name: string) -> bool {
 	for symbol in s.symbols {
-		switch sy in symbol {
-		case string:
-			if sy == name {
-				return true
-			}
-		case Scope_Ref_Symbol:
-			if sy.name == name {
-				return true
-			}
-
-		case Module_Symbol:
-			if sy.name == name {
-				return true
-			}
-
-		case Var_Symbol:
-			if sy.name == name {
-				return true
-			}
+		if symbol.name == name {
+			return true
 		}
 	}
 	return false
@@ -517,33 +490,10 @@ contain_scoped_symbol :: proc(s: ^Semantic_Scope, name: string) -> bool {
 
 get_scoped_symbol :: proc(s: ^Semantic_Scope, name: string) -> (result: Symbol, exist: bool) {
 	for symbol in s.symbols {
-		switch sy in symbol {
-		case string:
-			if sy == name {
-				result = symbol
-				exist = true
-				return
-			}
-		case Scope_Ref_Symbol:
-			if sy.name == name {
-				result = symbol
-				exist = true
-				return
-			}
-
-		case Module_Symbol:
-			if sy.name == name {
-				result = symbol
-				exist = true
-				return
-			}
-
-		case Var_Symbol:
-			if sy.name == name {
-				result = symbol
-				exist = true
-				return
-			}
+		if symbol.name == name {
+			result = symbol
+			exist = true
+			break
 		}
 	}
 	return

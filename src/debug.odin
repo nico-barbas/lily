@@ -616,18 +616,18 @@ print_semantic_scope :: proc(p: ^Debug_Printer, c: ^Checker, s: ^Semantic_Scope)
 		increment(p)
 		for symbol in s.symbols {
 			write_line(p, "- ")
-			switch sy in symbol {
-			case string:
-				fmt.sbprintf(&p.builder, "Name: %s", sy)
-			case Scope_Ref_Symbol:
-				fmt.sbprintf(&p.builder, "Name: %s, Referred Scope: %d", sy.name, sy.scope_id)
+			switch symbol.kind {
+			case .Name:
+				fmt.sbprintf(&p.builder, "Name: %s", symbol.name)
+			case .Scope_Ref_Symbol:
+				fmt.sbprintf(&p.builder, "Name: %s, Referred Scope: %d", symbol.name, symbol.scope_id)
 
-			case Module_Symbol:
-				fmt.sbprintf(&p.builder, "Name: %s, Module ID: %d", sy.name, sy.module_id)
+			case .Module_Symbol:
+				fmt.sbprintf(&p.builder, "Name: %s, Module ID: %d", symbol.name, symbol.module_id)
 
-			case Var_Symbol:
-				fmt.sbprintf(&p.builder, "Name: %s, Type: ", sy.name)
-				print_type_info(p, c, sy.type_info)
+			case .Var_Symbol:
+				fmt.sbprintf(&p.builder, "Name: %s, Type: ", symbol.name)
+				print_type_info(p, c, symbol.var_type_info)
 			}
 		}
 		decrement(p)

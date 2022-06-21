@@ -11,13 +11,19 @@ Checker :: struct {
 	parsed_results:      [dynamic]^Parsed_Module,
 	current_parsed:      ^Parsed_Module,
 	// Builtin types and internal states
-	builtin_symbols:     [5]string,
+	builtin_symbols:     [5]Symbol,
 	builtin_types:       [BUILT_IN_ID_COUNT]Type_Info,
 	type_id_ptr:         Type_ID,
 }
 
 init_checker :: proc(c: ^Checker) {
-	c.builtin_symbols = {"untyped", "number", "string", "bool", "array"}
+	c.builtin_symbols = {
+		Symbol{name = "untyped", kind = .Name},
+		Symbol{name = "number", kind = .Name},
+		Symbol{name = "string", kind = .Name},
+		Symbol{name = "bool", kind = .Name},
+		Symbol{name = "array", kind = .Name},
+	}
 	c.type_id_ptr = BUILT_IN_ID_COUNT
 	c.builtin_types[UNTYPED_ID] = UNTYPED_INFO
 	c.builtin_types[UNTYPED_NUMBER_ID] = UNTYPED_NUMBER_INFO
@@ -35,8 +41,8 @@ free_checker :: proc(c: ^Checker) {
 }
 
 contain_symbol :: proc(c: ^Checker, token: Token) -> bool {
-	builtins: for name in c.builtin_symbols {
-		if name == token.text {
+	builtins: for symbol in c.builtin_symbols {
+		if symbol.name == token.text {
 			return true
 		}
 	}
@@ -53,39 +59,19 @@ contain_symbol :: proc(c: ^Checker, token: Token) -> bool {
 }
 
 get_symbol :: proc(c: ^Checker, token: Token) -> (result: Symbol, err: Error) {
-	builtins: for name in c.builtin_symbols {
-		if name == token.text {
-			result = name
+	builtins: for symbol in c.builtin_symbols {
+		if symbol.name == token.text {
+			result = symbol
 			return
 		}
 	}
 
 	scope := c.current.scope
 	find: for scope != nil {
-		for name in scope.symbols {
-			switch n in name {
-			case string:
-				if n == token.text {
-					result = name
-					return
-				}
-			case Scope_Ref_Symbol:
-				if n.name == token.text {
-					result = name
-					return
-				}
-
-			case Module_Symbol:
-				if n.name == token.text {
-					result = name
-					return
-				}
-
-			case Var_Symbol:
-				if n.name == token.text {
-					result = name
-					return
-				}
+		for symbol in scope.symbols {
+			if symbol.name == token.text {
+				result = symbol
+				return
 			}
 		}
 		scope = scope.parent
@@ -182,8 +168,8 @@ add_class_type :: proc(c: ^Checker, decl: ^Parsed_Type_Declaration) {
 
 set_variable_type :: proc(c: ^Checker, name: string, t: Type_Info, loc := #caller_location) {
 	index := c.current.scope.var_symbol_lookup[name]
-	symbol, ok := c.current.scope.symbols[index].(Var_Symbol)
-	if !ok {
+	symbol := c.current.scope.symbols[index]
+	if symbol.kind != .Var_Symbol {
 		fmt.println("FAIL UP STACK: ", loc, "Current scope id: ", c.current.scope.id)
 		fmt.println("culprit: ", name, t)
 		fmt.println("real: ", c.current.scope.symbols[index])
@@ -191,7 +177,7 @@ set_variable_type :: proc(c: ^Checker, name: string, t: Type_Info, loc := #calle
 		print_symbol_table(c, c.current)
 		assert(false)
 	}
-	symbol.type_info = t
+	symbol.var_type_info = t
 	c.current.scope.symbols[index] = symbol
 }
 
@@ -251,11 +237,13 @@ get_variable_type :: proc(c: ^Checker, name: string, loc := #caller_location) ->
 	current := c.current.scope
 	for current != nil {
 		if index, contains := current.var_symbol_lookup[name]; contains {
-			var_symbol, ok := current.symbols[index].(Var_Symbol)
-			if !ok {
+			symbol := current.symbols[index]
+			// FIXME: Put this behind a compile time conditional
+			if symbol.kind != .Var_Symbol {
 				fmt.println(loc, name)
+				assert(false)
 			}
-			result = var_symbol.type_info
+			result = symbol.var_type_info
 			contains = true
 			break
 		}
@@ -951,7 +939,7 @@ check_node_symbols :: proc(c: ^Checker, node: Parsed_Node) -> (err: Error) {
 	return
 }
 
-check_expr_symbols :: proc(c: ^Checker, expr: Parsed_Expression) -> (err: Error) {
+check_expr_symbols :: proc(c: ^Checker, expr: Parsed_Expression) -> (result: Symbol, err: Error) {
 	switch e in expr {
 	case ^Parsed_Literal_Expression:
 	// No symbols to check
@@ -991,20 +979,23 @@ check_expr_symbols :: proc(c: ^Checker, expr: Parsed_Expression) -> (err: Error)
 		left_identifier := e.left.(^Parsed_Identifier_Expression)
 		l := get_symbol(c, left_identifier.name) or_return
 
-		get_scope_from_symbol :: proc(c: ^Checker, module_id: int, s: Symbol) -> (scope: ^Semantic_Scope) {
-			switch symbol in s {
-			case string:
+		get_scope_from_symbol :: proc(c: ^Checker, module_id: int, symbol: Symbol) -> (
+			scope: ^Semantic_Scope,
+		) {
+			switch symbol.kind {
+			case .Name:
 				assert(false)
-			case Scope_Ref_Symbol:
+			case .Scope_Ref_Symbol:
 				scope = get_class_scope_from_id(c.modules[module_id], symbol.scope_id)
 
-			case Module_Symbol:
+			case .Module_Symbol:
 				scope = c.modules[symbol.module_id].scope
 
-			case Var_Symbol:
-				scope = get_class_scope_from_name(c.modules[module_id], symbol.type_info.name)
+			case .Var_Symbol:
+				scope = get_class_scope_from_name(c.modules[module_id], symbol.var_type_info.name)
 				if scope == nil {
-
+					// fmt.println(symbol)
+					// fmt.println(c.modules[module_id])
 				}
 			}
 			return
@@ -1025,8 +1016,6 @@ check_expr_symbols :: proc(c: ^Checker, expr: Parsed_Expression) -> (err: Error)
 				identifier = t.name.text
 			}
 			if !is_builtin_container_symbol(identifier) {
-				fmt.println(e.left)
-				fmt.println(l)
 				err = Semantic_Error {
 					kind    = .Unknown_Symbol,
 					token   = e.token,
@@ -1037,9 +1026,10 @@ check_expr_symbols :: proc(c: ^Checker, expr: Parsed_Expression) -> (err: Error)
 		}
 		selector := e.selector
 
+		// FIXME: This is crap lol..
+		// This doesn't support chaining at all
 		for {
 			if nested, ok := selector.(^Parsed_Dot_Expression); ok {
-				module_symbol := l.(Module_Symbol)
 				nested_identifier := nested.left.(^Parsed_Identifier_Expression)
 				n, nested_exist := get_scoped_symbol(scope, nested_identifier.name.text)
 				if !nested_exist {
@@ -1050,7 +1040,7 @@ check_expr_symbols :: proc(c: ^Checker, expr: Parsed_Expression) -> (err: Error)
 					}
 					return
 				}
-				scope = get_scope_from_symbol(c, module_symbol.module_id, n)
+				scope = get_scope_from_symbol(c, l.module_id, n)
 				selector = nested.selector
 			} else {
 				break
@@ -1059,7 +1049,9 @@ check_expr_symbols :: proc(c: ^Checker, expr: Parsed_Expression) -> (err: Error)
 
 		#partial switch a in selector {
 		case ^Parsed_Identifier_Expression:
-			if !contain_scoped_symbol(scope, a.name.text) {
+			exist: bool
+			result, exist = get_scoped_symbol(scope, a.name.text)
+			if !exist {
 				err = Semantic_Error {
 					kind    = .Unknown_Symbol,
 					token   = a.name,
@@ -1069,7 +1061,10 @@ check_expr_symbols :: proc(c: ^Checker, expr: Parsed_Expression) -> (err: Error)
 
 		case ^Parsed_Call_Expression:
 			fn_identifier := a.func.(^Parsed_Identifier_Expression)
-			if !contain_scoped_symbol(scope, fn_identifier.name.text) {
+			exist: bool
+			result, exist = get_scoped_symbol(scope, fn_identifier.name.text)
+			fmt.println(result)
+			if !exist {
 				err = Semantic_Error {
 					kind    = .Unknown_Symbol,
 					token   = fn_identifier.name,
@@ -1113,9 +1108,6 @@ check_node_types :: proc(c: ^Checker, node: Parsed_Node) -> (result: Checked_Nod
 		left, left_info := check_expr_types(c, n.left) or_return
 		right, right_info := check_expr_types(c, n.right) or_return
 		if !type_equal(c, left_info, right_info) {
-			fmt.println(n.left, left_info)
-			fmt.println(n.right, right_info)
-			fmt.println(c.current.scope.id)
 			err = Semantic_Error {
 				kind    = .Mismatched_Types,
 				token   = n.token,
@@ -1423,9 +1415,8 @@ check_expr_types :: proc(c: ^Checker, expr: Parsed_Expression) -> (
 		case name == "self":
 			is_instance = true
 			symbol := get_symbol(c, left_identifier.name) or_return
-			self_symbol := symbol.(Scope_Ref_Symbol)
 			for class_name, class_lookup in c.current.class_lookup {
-				if self_symbol.scope_id == class_lookup.scope_id {
+				if symbol.scope_id == class_lookup.scope_id {
 					left_info = c.current.type_lookup[class_name]
 					break
 				}
