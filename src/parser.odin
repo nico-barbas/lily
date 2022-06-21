@@ -30,6 +30,7 @@ parser_rules := map[Token_Kind]struct {
 	.Percent =         {prec = .Factor,  prefix_fn = nil             , infix_fn = parse_binary},
 	.And =             {prec = .Factor,  prefix_fn = nil             , infix_fn = parse_binary},
 	.Or =              {prec = .Factor,  prefix_fn = nil             , infix_fn = parse_binary},
+	.Equal =           {prec = .Factor,  prefix_fn = nil             , infix_fn = parse_binary},
 	.Greater =         {prec = .Factor,  prefix_fn = nil             , infix_fn = parse_binary},
 	.Greater_Equal =   {prec = .Factor,  prefix_fn = nil             , infix_fn = parse_binary},
 	.Lesser =          {prec = .Factor,  prefix_fn = nil             , infix_fn = parse_binary},
@@ -106,6 +107,8 @@ parse_module :: proc(i: string, mod: ^Parsed_Module) -> (err: Error) {
 			#partial switch n in node {
 			case ^Parsed_Import_Statement:
 				append(&mod.import_nodes, node)
+			case ^Parsed_Var_Declaration:
+				append(&mod.variables, node)
 			case ^Parsed_Type_Declaration:
 				append(&mod.types, node)
 			case ^Parsed_Fn_Declaration:

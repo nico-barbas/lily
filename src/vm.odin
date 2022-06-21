@@ -185,6 +185,15 @@ run_bytecode :: proc(vm: ^Vm) {
 			const_val := vm.chunk.constants[const_addr]
 			push_stack_value(vm, const_val)
 
+		case .Op_Set_Global:
+			global_addr := get_i16(vm)
+			value := pop_stack_value(vm)
+			vm.module.module_variables[global_addr] = value
+
+		case .Op_Get_Global:
+			global_addr := get_i16(vm)
+			push_stack_value(vm, vm.module.module_variables[global_addr])
+
 		case .Op_Set:
 			// We pop the new value off the stack
 			// Then check if the variable has already been binded to the environment

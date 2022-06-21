@@ -109,6 +109,8 @@ token_to_operator :: proc(kind: Token_Kind) -> Operator {
 		return .And_Op
 	case .Or:
 		return .Or_Op
+	case .Equal:
+		return .Equal_Op
 	case .Greater:
 		return .Greater_Op
 	case .Greater_Equal:
@@ -133,6 +135,7 @@ Operator :: enum {
 	Rem_Op,
 	Or_Op,
 	And_Op,
+	Equal_Op,
 	Greater_Op,
 	Greater_Eq_Op,
 	Lesser_Op,

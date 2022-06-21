@@ -6,6 +6,7 @@ Parsed_Module :: struct {
 	import_nodes: [dynamic]Parsed_Node,
 	types:        [dynamic]Parsed_Node,
 	functions:    [dynamic]Parsed_Node,
+	variables:    [dynamic]Parsed_Node,
 	nodes:        [dynamic]Parsed_Node,
 }
 

@@ -376,9 +376,8 @@ check_module_decl_symbols :: proc(c: ^Checker, module_id: int) -> (err: Error) {
 		}
 	}
 
-	for node in c.current_parsed.nodes {
-		#partial switch n in node {
-		case ^Parsed_Var_Declaration:
+	for node in c.current_parsed.variables {
+		if n, ok := node.(^Parsed_Var_Declaration); ok {
 			add_var_symbol(c, n.identifier) or_return
 		}
 	}
@@ -394,6 +393,9 @@ check_module_inner_symbols :: proc(c: ^Checker, module_id: int) -> (err: Error) 
 	}
 
 	for node in c.current_parsed.functions {
+		check_node_symbols(c, node) or_return
+	}
+	for node in c.current_parsed.variables {
 		check_node_symbols(c, node) or_return
 	}
 	for node in c.current_parsed.nodes {
@@ -600,13 +602,15 @@ check_module_body_types :: proc(c: ^Checker, module_id: int) -> (err: Error) {
 	c.current = c.modules[module_id]
 	c.current_parsed = c.parsed_results[module_id]
 
+
+	for node in c.current_parsed.variables {
+		checked_var := check_node_types(c, node) or_return
+		append(&c.current.variables, checked_var)
+	}
+
 	for node in c.current_parsed.nodes {
 		checked_node := check_node_types(c, node) or_return
-		#partial switch node in checked_node {
-		case ^Checked_Fn_Declaration, ^Checked_Type_Declaration:
-		case:
-			append(&c.current.nodes, checked_node)
-		}
+		append(&c.current.nodes, checked_node)
 	}
 	return
 }
@@ -1021,6 +1025,8 @@ check_expr_symbols :: proc(c: ^Checker, expr: Parsed_Expression) -> (err: Error)
 				identifier = t.name.text
 			}
 			if !is_builtin_container_symbol(identifier) {
+				fmt.println(e.left)
+				fmt.println(l)
 				err = Semantic_Error {
 					kind    = .Unknown_Symbol,
 					token   = e.token,
@@ -1338,7 +1344,7 @@ check_expr_types :: proc(c: ^Checker, expr: Parsed_Expression) -> (
 			}
 			info = left_info
 
-		case .Greater_Op, .Greater_Eq_Op, .Lesser_Op, .Lesser_Eq_Op:
+		case .Equal_Op, .Greater_Op, .Greater_Eq_Op, .Lesser_Op, .Lesser_Eq_Op:
 			if !is_numerical_type(left_info) {
 				err = Semantic_Error {
 					kind    = .Mismatched_Types,

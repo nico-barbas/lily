@@ -1,7 +1,7 @@
 package lily
 
 // import "core:mem"
-import "core:fmt"
+// import "core:fmt"
 
 LILY_DEBUG :: true
 
@@ -17,6 +17,8 @@ Op_Code :: enum byte {
 	Op_Push,       // Increment the stack counter
 	Op_Pop,        // Get the last element from the stack and decrement its counter
 	Op_Const,      // Take the constant from the associated constant pool and load it on to stack
+	Op_Set_Global,
+	Op_Get_Global,
 	Op_Bind,       // Bind the variable name to the given stack id
 	Op_Set,        // Bind the variable name to the current top of the stack
 	Op_Set_Scoped, //
@@ -66,6 +68,8 @@ instruction_lengths := map[Op_Code]int {
 	.Op_Push          = 1,
 	.Op_Pop           = 1,
 	.Op_Const         = 3,
+	.Op_Set_Global    = 3,
+	.Op_Get_Global    = 3,
 	.Op_Set           = 4,
 	.Op_Bind          = 5,
 	.Op_Set_Scoped    = 3,
@@ -108,16 +112,17 @@ instruction_lengths := map[Op_Code]int {
 RANGE_HIGH_SLOT :: 1
 
 Compiler :: struct {
-	cursor:          int,
-	write_at_cursor: bool,
-	fn_names:        [dynamic]string,
-	class_info:      [dynamic]^Checked_Class_Declaration,
-	bytecode:        [dynamic]byte,
-	constants:       [dynamic]Value,
-	variables:       [dynamic]Variable,
-	const_count:     i16,
-	var_count:       i16,
-	scope_depth:     int,
+	cursor:                  int,
+	write_at_cursor:         bool,
+	fn_names:                [dynamic]string,
+	class_info:              [dynamic]^Checked_Class_Declaration,
+	bytecode:                [dynamic]byte,
+	constants:               [dynamic]Value,
+	variables:               [dynamic]Variable,
+	module_variables_lookup: map[string]i16,
+	const_count:             i16,
+	var_count:               i16,
+	scope_depth:             int,
 }
 
 Compiled_Module :: struct {
@@ -127,7 +132,7 @@ Compiled_Module :: struct {
 	class_vtables:     []Class_Vtable,
 	function_names:    []string,
 	functions:         []Fn_Object,
-	module_variables:  map[string]Value,
+	module_variables:  []Value,
 	main:              Chunk,
 }
 
@@ -152,22 +157,39 @@ add_constant :: proc(c: ^Compiler, constant: Value) -> (ptr: i16) {
 }
 
 add_variable :: proc(c: ^Compiler, name: string, type_info: Type_Info) -> (ptr: i16) {
-	// TODO: keep track of the scope depth
-	append(
-		&c.variables,
-		Variable{name = name, type_info = type_info, scope_depth = c.scope_depth, stack_id = -1},
-	)
-	c.var_count += 1
-	return c.var_count - 1
+	var := Variable {
+		name        = name,
+		type_info   = type_info,
+		scope_depth = c.scope_depth,
+		stack_id    = -1,
+	}
+	switch {
+	case c.scope_depth == 0:
+		// append(&c.module_variables, var)
+		// c.module_var_count += 1
+		// return c.module_var_count
+		return c.module_variables_lookup[name]
+	case:
+		append(&c.variables, var)
+		c.var_count += 1
+		return c.var_count - 1
+	}
 }
 
-get_variable_addr :: proc(c: ^Compiler, name: string) -> i16 {
+get_variable_addr :: proc(c: ^Compiler, name: string) -> (result: i16, global: bool) {
+	if addr, exist := c.module_variables_lookup[name]; exist {
+		result = addr
+		global = true
+		return
+	}
 	for var, i in c.variables {
 		if var.name == name {
-			return i16(i)
+			result = i16(i)
+			global = false
+			return
 		}
 	}
-	return -1
+	return -1, false
 }
 
 get_fn_addr :: proc(c: ^Compiler, name: string) -> i16 {
@@ -201,10 +223,6 @@ get_constructor_addr :: proc(c: ^Compiler, class_addr: i16, name: string) -> i16
 get_field_addr :: proc(c: ^Compiler, instance_addr: i16, name: string) -> i16 {
 	instance := c.variables[instance_addr]
 	class_addr := get_class_addr(c, instance.type_info.name)
-	if class_addr == -1 {
-		fmt.println(instance)
-		fmt.println(c.variables)
-	}
 	class := c.class_info[class_addr]
 	for field, i in class.field_names {
 		if field.text == name {
@@ -261,6 +279,22 @@ push_op_code :: #force_inline proc(c: ^Compiler, op: Op_Code) {
 
 push_op_const_code :: proc(c: ^Compiler, addr: i16) {
 	push_byte(c, byte(Op_Code.Op_Const))
+	lower_addr := byte(addr)
+	upper_addr := byte(addr >> 8)
+	push_byte(c, lower_addr)
+	push_byte(c, upper_addr)
+}
+
+push_op_set_global_code :: proc(c: ^Compiler, addr: i16) {
+	push_byte(c, byte(Op_Code.Op_Set_Global))
+	lower_addr := byte(addr)
+	upper_addr := byte(addr >> 8)
+	push_byte(c, lower_addr)
+	push_byte(c, upper_addr)
+}
+
+push_op_get_global_code :: proc(c: ^Compiler, addr: i16) {
+	push_byte(c, byte(Op_Code.Op_Get_Global))
 	lower_addr := byte(addr)
 	upper_addr := byte(addr >> 8)
 	push_byte(c, lower_addr)
@@ -359,41 +393,41 @@ push_op_call_constr_code :: proc(c: ^Compiler, class_addr: i16, constr_addr: i16
 	push_byte(c, upper_addr)
 }
 
-push_op_call_method_code :: proc(c: ^Compiler, instance_addr, method_addr: i16) {
+push_op_call_method_code :: proc(c: ^Compiler, method_addr: i16) {
 	push_byte(c, byte(Op_Code.Op_Call_Method))
-	lower_addr := byte(instance_addr)
-	upper_addr := byte(instance_addr >> 8)
-	push_byte(c, lower_addr)
-	push_byte(c, upper_addr)
+	// lower_addr := byte(instance_addr)
+	// upper_addr := byte(instance_addr >> 8)
+	// push_byte(c, lower_addr)
+	// push_byte(c, upper_addr)
 
-	lower_addr = byte(method_addr)
-	upper_addr = byte(method_addr >> 8)
+	lower_addr := byte(method_addr)
+	upper_addr := byte(method_addr >> 8)
 	push_byte(c, lower_addr)
 	push_byte(c, upper_addr)
 }
 
-push_op_get_field_code :: proc(c: ^Compiler, instance_addr, field_addr: i16) {
+push_op_get_field_code :: proc(c: ^Compiler, field_addr: i16) {
 	push_byte(c, byte(Op_Code.Op_Get_Field))
-	lower_addr := byte(instance_addr)
-	upper_addr := byte(instance_addr >> 8)
-	push_byte(c, lower_addr)
-	push_byte(c, upper_addr)
+	// lower_addr := byte(instance_addr)
+	// upper_addr := byte(instance_addr >> 8)
+	// push_byte(c, lower_addr)
+	// push_byte(c, upper_addr)
 
-	lower_addr = byte(field_addr)
-	upper_addr = byte(field_addr >> 8)
+	lower_addr := byte(field_addr)
+	upper_addr := byte(field_addr >> 8)
 	push_byte(c, lower_addr)
 	push_byte(c, upper_addr)
 }
 
-push_op_set_field_code :: proc(c: ^Compiler, instance_addr, field_addr: i16) {
+push_op_set_field_code :: proc(c: ^Compiler, field_addr: i16) {
 	push_byte(c, byte(Op_Code.Op_Set_Field))
-	lower_addr := byte(instance_addr)
-	upper_addr := byte(instance_addr >> 8)
-	push_byte(c, lower_addr)
-	push_byte(c, upper_addr)
+	// lower_addr := byte(instance_addr)
+	// upper_addr := byte(instance_addr >> 8)
+	// push_byte(c, lower_addr)
+	// push_byte(c, upper_addr)
 
-	lower_addr = byte(field_addr)
-	upper_addr = byte(field_addr >> 8)
+	lower_addr := byte(field_addr)
+	upper_addr := byte(field_addr >> 8)
 	push_byte(c, lower_addr)
 	push_byte(c, upper_addr)
 }
@@ -424,6 +458,7 @@ make_compiled_module :: proc(checked_module: ^Checked_Module) -> ^Compiled_Modul
 			classe_prototypes = make([]Class_Object, len(checked_module.classes)),
 			class_vtables = make([]Class_Vtable, len(checked_module.classes)),
 			functions = make([]Fn_Object, len(checked_module.functions)),
+			module_variables = make([]Value, len(checked_module.variables)),
 		},
 	)
 }
@@ -486,6 +521,11 @@ compile_module :: proc(c: ^Compiler, modules: []^Checked_Module, module_id: int)
 	module := modules[module_id]
 	m := make_compiled_module(module)
 
+	for v, i in module.variables {
+		var_decl := v.(^Checked_Var_Declaration)
+		c.module_variables_lookup[var_decl.identifier.text] = i16(i)
+	}
+
 	for class, i in module.classes {
 		class_decl := class.(^Checked_Class_Declaration)
 		append(&c.class_info, class_decl)
@@ -528,17 +568,16 @@ compile_module :: proc(c: ^Compiler, modules: []^Checked_Module, module_id: int)
 
 	for fn_decl, i in module.functions {
 		fn := fn_decl.(^Checked_Fn_Declaration)
-		// fn_chunk := compile_chunk(c, module.functions[i:i + 1])
 		fn_chunk := compile_chunk_node(c, fn_decl)
 		m.functions[i] = Fn_Object {
 			base = Object{kind = .Fn},
 			chunk = fn_chunk,
 		}
 		append(&c.fn_names, fn.identifier.text)
-		// reset_compiler(c)
 	}
 
-	m.main = compile_chunk(c, module.nodes[:])
+	compile_chunk(c, module.variables[:], false)
+	m.main = compile_chunk(c, module.nodes[:], true)
 	when LILY_DEBUG {
 		m.class_names = make([]string, len(c.class_info))
 		m.function_names = make([]string, len(c.fn_names))
@@ -550,14 +589,17 @@ compile_module :: proc(c: ^Compiler, modules: []^Checked_Module, module_id: int)
 	}
 	clear(&c.class_info)
 	clear(&c.fn_names)
+	clear(&c.module_variables_lookup)
 	return m
 }
 
-compile_chunk :: proc(c: ^Compiler, nodes: []Checked_Node) -> (result: Chunk) {
+compile_chunk :: proc(c: ^Compiler, nodes: []Checked_Node, to_chunk: bool) -> (result: Chunk) {
 	for node in nodes {
 		compile_node(c, node)
 	}
-	result = make_chunk(c)
+	if to_chunk {
+		result = make_chunk(c)
+	}
 	return
 }
 
@@ -570,7 +612,8 @@ compile_chunk_node :: proc(c: ^Compiler, node: Checked_Node) -> (result: Chunk) 
 compile_class_constructor :: proc(c: ^Compiler, constr: ^Checked_Fn_Declaration, class_addr: i16) -> (
 	result: Chunk,
 ) {
-
+	c.scope_depth = 2
+	defer c.scope_depth = 0
 	compile_constructor: {
 		// 1. Allocate a new class instance
 		// 2. bind "self" to the new class
@@ -597,7 +640,8 @@ compile_class_constructor :: proc(c: ^Compiler, constr: ^Checked_Fn_Declaration,
 compile_class_method :: proc(c: ^Compiler, method: ^Checked_Fn_Declaration, class_addr: i16) -> (
 	result: Chunk,
 ) {
-
+	c.scope_depth = 2
+	defer c.scope_depth = 0
 	compile_method: {
 		// 1. Allocate a new class instance
 		// 2. bind "self" to the new class
@@ -647,24 +691,39 @@ compile_node :: proc(c: ^Compiler, node: Checked_Node) {
 		compile_expr(c, n.right)
 		#partial switch e in n.left {
 		case ^Checked_Identifier_Expression:
-			var_addr := get_variable_addr(c, e.name.text)
-			push_op_set_code(c, var_addr, true)
+			var_addr, global := get_variable_addr(c, e.name.text)
+			if global {
+				push_op_set_global_code(c, var_addr)
+			} else {
+				push_op_set_code(c, var_addr, true)
+			}
 		case ^Checked_Index_Expression:
 			identifier := e.left.text
-			var_addr := get_variable_addr(c, identifier)
+			var_addr, global := get_variable_addr(c, identifier)
 			compile_expr(c, e.index)
-			push_op_get_code(c, var_addr)
+			if global {
+				push_op_get_global_code(c, var_addr)
+			} else {
+				push_op_get_code(c, var_addr)
+			}
 			push_op_code(c, .Op_Assign_Array)
 		case ^Checked_Dot_Expression:
 			// FIXME: Doesn't support multi modules
-			instance_addr := get_variable_addr(c, e.left.text)
-			field_identifier := e.selector.(^Checked_Identifier_Expression)
-			field_addr := get_field_addr(c, instance_addr, field_identifier.name.text)
-			push_op_set_field_code(c, instance_addr, field_addr)
+			instance_addr, global := get_variable_addr(c, e.left.text)
+			if global {
+				push_op_get_global_code(c, instance_addr)
+			} else {
+				push_op_get_code(c, instance_addr)
+			}
+			// field_identifier := e.selector.(^Checked_Identifier_Expression)
+			// field_addr := get_field_addr(c, instance_addr, field_identifier.name.text)
+			field_addr := i16(e.selector_id)
+			push_op_set_field_code(c, field_addr)
 		}
 
 	case ^Checked_If_Statement:
 		// TODO: Use the temp allocator
+		// FIXME: Remove useless jump at the end of 1 branch ifs
 		branch_cursor := 0
 		cursors := make([dynamic]int)
 		defer delete(cursors)
@@ -674,6 +733,8 @@ compile_node :: proc(c: ^Compiler, node: Checked_Node) {
 
 		if_loop: for {
 			// Push a scope and evaluate the conditional expression
+			c.scope_depth += 1
+			defer c.scope_depth -= 1
 			push_op_code(c, .Op_Begin)
 			compile_expr(c, current_branch.condition)
 
@@ -689,14 +750,16 @@ compile_node :: proc(c: ^Compiler, node: Checked_Node) {
 			// We keep a track of this instruction too 
 			// This is the Op_Jump in case the branch evaluate to true,
 			// We execute the body and need to get out of the if statement
-			append(&cursors, len(c.bytecode))
-			reserve_bytes(c, instruction_lengths[.Op_Jump])
+			current_branch, branch_exist = current_branch.next_branch.(^Checked_If_Statement)
+
 
 			set_cursor_at_and_write(c, branch_cursor)
 			push_op_jump_code(c, i16(current_byte_offset(c)), true)
 			remove_cursor(c)
-			current_branch, branch_exist = current_branch.next_branch.(^Checked_If_Statement)
-			if !branch_exist {
+			if branch_exist {
+				append(&cursors, len(c.bytecode))
+				reserve_bytes(c, instruction_lengths[.Op_Jump])
+			} else {
 				break if_loop
 			}
 		}
@@ -709,6 +772,8 @@ compile_node :: proc(c: ^Compiler, node: Checked_Node) {
 
 
 	case ^Checked_Range_Statement:
+		c.scope_depth += 1
+		defer c.scope_depth -= 1
 		push_op_code(c, .Op_Begin)
 		defer push_op_code(c, .Op_End)
 		iterator_addr := add_variable(c, n.iterator_name.text, n.iterator_type_info)
@@ -743,13 +808,22 @@ compile_node :: proc(c: ^Compiler, node: Checked_Node) {
 
 
 	case ^Checked_Var_Declaration:
-		// Handle the case of uninitialized variables
-		var_addr := add_variable(c, n.identifier.text, n.type_info)
-		compile_expr(c, n.expr)
-		push_op_set_code(c, var_addr, true)
+		// FIXME: Handle the case of uninitialized variables
+		switch {
+		case c.scope_depth == 0:
+			var_addr, _ := get_variable_addr(c, n.identifier.text)
+			compile_expr(c, n.expr)
+			push_op_set_global_code(c, var_addr)
+		case:
+			var_addr := add_variable(c, n.identifier.text, n.type_info)
+			compile_expr(c, n.expr)
+			push_op_set_code(c, var_addr, true)
+		}
 
 	case ^Checked_Fn_Declaration:
 		// Bind all the variable to stack slot
+		c.scope_depth += 1
+		defer c.scope_depth -= 1
 		param_ptr: i16 = 0
 		result_addr: i16
 		fn_signature := n.type_info.type_id_data.(Fn_Signature_Info)
@@ -838,6 +912,8 @@ compile_expr :: proc(c: ^Compiler, expr: Checked_Expression) {
 			push_op_code(c, .Op_Or)
 		case .And_Op:
 			push_op_code(c, .Op_And)
+		case .Equal_Op:
+			push_op_code(c, .Op_Eq)
 		case .Greater_Op:
 			push_op_code(c, .Op_Greater)
 		case .Greater_Eq_Op:
@@ -849,17 +925,25 @@ compile_expr :: proc(c: ^Compiler, expr: Checked_Expression) {
 		}
 
 	case ^Checked_Identifier_Expression:
-		var_addr := get_variable_addr(c, e.name.text)
-		push_op_get_code(c, var_addr)
+		var_addr, global := get_variable_addr(c, e.name.text)
+		if global {
+			push_op_get_global_code(c, var_addr)
+		} else {
+			push_op_get_code(c, var_addr)
+		}
 
 	case ^Checked_Index_Expression:
 		// Compile the index expression and leave it on the stack
 		// Put the array on top of the stack
 
 		identifier := e.left.text
-		var_addr := get_variable_addr(c, identifier)
+		var_addr, global := get_variable_addr(c, identifier)
 		compile_expr(c, e.index)
-		push_op_get_code(c, var_addr)
+		if global {
+			push_op_get_global_code(c, var_addr)
+		} else {
+			push_op_get_code(c, var_addr)
+		}
 		push_op_code(c, .Op_Index_Array)
 
 	case ^Checked_Dot_Expression:
@@ -882,22 +966,32 @@ compile_expr :: proc(c: ^Compiler, expr: Checked_Expression) {
 			push_op_call_constr_code(c, class_addr, constr_addr)
 
 		case .Instance_Field:
-			field_identifier := e.selector.(^Checked_Identifier_Expression)
 			// 1. Get the instance ref at the top of the stack
 			// 2. Extract the field value and push it on the stack
 
-			instance_addr := get_variable_addr(c, e.left.text)
-			field_addr := get_field_addr(c, instance_addr, field_identifier.name.text)
-			push_op_get_field_code(c, instance_addr, field_addr)
+			instance_addr, global := get_variable_addr(c, e.left.text)
+			if global {
+				push_op_get_global_code(c, instance_addr)
+			} else {
+				push_op_get_code(c, instance_addr)
+			}
+			field_addr := i16(e.selector_id)
+			push_op_get_field_code(c, field_addr)
 
 		case .Instance_Call:
 			call_expr := e.selector.(^Checked_Call_Expression)
 			call_identifier := call_expr.func.(^Checked_Identifier_Expression)
-			instance_addr := get_variable_addr(c, e.left.text)
-			method_addr := get_method_addr(c, instance_addr, call_identifier.name.text)
+			instance_addr, global := get_variable_addr(c, e.left.text)
+			method_addr := i16(e.selector_id)
 
+			c.scope_depth += 1
+			defer c.scope_depth -= 1
 			push_op_code(c, .Op_Begin)
-			push_op_get_code(c, instance_addr)
+			if global {
+				push_op_get_global_code(c, instance_addr)
+			} else {
+				push_op_get_code(c, instance_addr)
+			}
 
 			is_void := call_expr.type_info.type_id == UNTYPED_ID
 			if !is_void {
@@ -906,23 +1000,29 @@ compile_expr :: proc(c: ^Compiler, expr: Checked_Expression) {
 			for arg_expr in call_expr.args {
 				compile_expr(c, arg_expr)
 			}
-			push_op_call_method_code(c, instance_addr, method_addr)
+			push_op_call_method_code(c, method_addr)
 
 		case .Array_Len:
-			array_addr := get_variable_addr(c, e.left.text)
+			array_addr, global := get_variable_addr(c, e.left.text)
 			push_op_get_code(c, array_addr)
 			push_op_code(c, .Op_Len_Array)
 
 		case .Array_Append:
 			append_call := e.selector.(^Checked_Call_Expression)
 			compile_expr(c, append_call.args[0])
-			array_addr := get_variable_addr(c, e.left.text)
-			push_op_get_code(c, array_addr)
+			array_addr, global := get_variable_addr(c, e.left.text)
+			if global {
+				push_op_get_global_code(c, array_addr)
+			} else {
+				push_op_get_code(c, array_addr)
+			}
 			push_op_code(c, .Op_Append_Array)
 			push_op_code(c, .Op_Pop)
 		}
 
 	case ^Checked_Call_Expression:
+		c.scope_depth += 1
+		defer c.scope_depth -= 1
 		push_op_code(c, .Op_Begin)
 		push_op_code(c, .Op_Push)
 		for arg_expr in e.args {

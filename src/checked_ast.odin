@@ -12,6 +12,7 @@ Checked_Module :: struct {
 	id:           int,
 	// This is all the nodes at the file level
 	nodes:        [dynamic]Checked_Node,
+	variables:    [dynamic]Checked_Node,
 	functions:    [dynamic]Checked_Node,
 	classes:      [dynamic]Checked_Node,
 	type_lookup:  map[string]Type_Info,
