@@ -379,16 +379,19 @@ Semantic_Scope :: struct {
 }
 
 Symbol :: struct {
-	name:          string,
-	kind:          enum {
+	name:                  string,
+	kind:                  enum {
 		Name,
 		Scope_Ref_Symbol,
+		Fn_Symbol,
 		Var_Symbol,
 		Module_Symbol,
 	},
-	scope_id:      Scope_ID,
-	var_type_info: Type_Info,
-	module_id:     int,
+	scope_id:              Scope_ID,
+	var_type_info:         Type_Info,
+	module_id:             int,
+	fn_has_return:         bool,
+	fn_return_symbol_name: string,
 }
 
 builtin_container_symbols :: [?]string{"len", "append"}
@@ -466,6 +469,32 @@ add_module_symbol_to_scope :: proc(s: ^Semantic_Scope, t: Token, module_id: int)
 	return nil
 }
 
+add_fn_symbol_to_scope :: proc(
+	s: ^Semantic_Scope,
+	t: Token,
+	scope_id: Scope_ID,
+	return_name: string = "",
+) -> Error {
+	if contain_scoped_symbol(s, t.text) {
+		return Semantic_Error{
+			kind = .Redeclared_Symbol,
+			token = t,
+			details = fmt.tprintf("Redeclared symbol: %s", t.text),
+		}
+	}
+	symbol := Symbol {
+		name                  = t.text,
+		kind                  = .Fn_Symbol,
+		scope_id              = scope_id,
+		fn_return_symbol_name = return_name,
+	}
+	if return_name == "" {
+		symbol.fn_has_return = false
+	}
+	append(&s.symbols, symbol)
+	return nil
+}
+
 add_var_symbol_to_scope :: proc(s: ^Semantic_Scope, t: Token, shadow := false) -> Error {
 	if !shadow && contain_scoped_symbol(s, t.text) {
 		return Semantic_Error{
@@ -488,10 +517,15 @@ contain_scoped_symbol :: proc(s: ^Semantic_Scope, name: string) -> bool {
 	return false
 }
 
-get_scoped_symbol :: proc(s: ^Semantic_Scope, name: string) -> (result: Symbol, exist: bool) {
-	for symbol in s.symbols {
+get_scoped_symbol :: proc(s: ^Semantic_Scope, name: string) -> (
+	result: Symbol,
+	index: int,
+	exist: bool,
+) {
+	for symbol, i in s.symbols {
 		if symbol.name == name {
 			result = symbol
+			index = i
 			exist = true
 			break
 		}
@@ -551,8 +585,26 @@ push_class_scope :: proc(c: ^Checked_Module, name: Token) {
 	c.scope_depth += 1
 }
 
-enter_child_scope :: proc(c: ^Checked_Module, name: Token, loc := #caller_location) -> (err: Error) {
-	scope_id := hash_scope_id(c, name)
+// enter_child_scope :: proc(c: ^Checked_Module, name: Token, loc := #caller_location) -> (err: Error) {
+// 	scope_id := hash_scope_id(c, name)
+// 	for scope in c.scope.children {
+// 		if scope.id == scope_id {
+// 			c.scope = scope
+// 			c.scope_depth += 1
+// 			return
+// 		}
+// 	}
+// 	err = Internal_Error {
+// 		kind         = .Unknown_Scope_Name,
+// 		details      = fmt.tprintf("Scope #%i not known", scope_id),
+// 		compiler_loc = loc,
+// 	}
+// 	return
+// }
+
+enter_child_scope_by_id :: proc(c: ^Checked_Module, scope_id: Scope_ID, loc := #caller_location) -> (
+	err: Error,
+) {
 	for scope in c.scope.children {
 		if scope.id == scope_id {
 			c.scope = scope

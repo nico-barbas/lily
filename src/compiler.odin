@@ -105,8 +105,8 @@ instruction_lengths := map[Op_Code]int {
 	.Op_Make_Instance = 3,
 	.Op_Call_Constr   = 5,
 	.Op_Call_Method   = 5,
-	.Op_Get_Field     = 5,
-	.Op_Set_Field     = 5,
+	.Op_Get_Field     = 3,
+	.Op_Set_Field     = 3,
 }
 
 RANGE_HIGH_SLOT :: 1

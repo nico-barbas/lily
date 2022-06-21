@@ -118,6 +118,20 @@ add_module_symbol_to_current_module :: proc(c: ^Checker, token: Token, module_id
 	return add_module_symbol_to_scope(c.current.scope, token, module_id)
 }
 
+add_fn_symbol :: proc {
+	add_fn_symbol_to_scope,
+	add_fn_symbol_to_current_module,
+}
+
+add_fn_symbol_to_current_module :: proc(
+	c: ^Checker,
+	t: Token,
+	scope_id: Scope_ID,
+	return_name: string = "",
+) -> Error {
+	return add_fn_symbol_to_scope(c.current.scope, t, scope_id, return_name)
+}
+
 add_var_symbol :: proc {
 	add_var_symbol_to_scope,
 	add_var_symbol_to_current_module,
@@ -343,14 +357,14 @@ check_module_decl_symbols :: proc(c: ^Checker, module_id: int) -> (err: Error) {
 					add_var_symbol(c, field.name) or_return
 				}
 				for constructor in n.constructors {
-					add_symbol(c, constructor.identifier) or_return
-					push_scope(c.current, constructor.identifier)
-					defer pop_scope(c.current)
+					constr_scope_id := push_scope(c.current, constructor.identifier)
+					pop_scope(c.current)
+					add_scope_ref_symbol(c, constructor.identifier, constr_scope_id) or_return
 				}
 				for method in n.methods {
-					add_symbol(c, method.identifier) or_return
-					push_scope(c.current, method.identifier)
-					defer pop_scope(c.current)
+					method_scope_id := push_scope(c.current, method.identifier)
+					pop_scope(c.current)
+					add_scope_ref_symbol(c, method.identifier, method_scope_id) or_return
 				}
 			}
 		}
@@ -360,7 +374,7 @@ check_module_decl_symbols :: proc(c: ^Checker, module_id: int) -> (err: Error) {
 		if n, ok := node.(^Parsed_Fn_Declaration); ok {
 			fn_scope_id := push_scope(c.current, n.identifier)
 			pop_scope(c.current)
-			add_scope_ref_symbol(c, n.identifier, fn_scope_id) or_return
+			add_fn_symbol(c, n.identifier, fn_scope_id) or_return
 		}
 	}
 
@@ -426,10 +440,18 @@ check_module_types_inner :: proc(c: ^Checker, module_id: int) -> (err: Error) {
 			case .Class:
 				name := n.identifier.text
 				class_decl: ^Checked_Class_Declaration
+				class_symbol: Symbol
 				for node in c.current.classes {
 					class := node.(^Checked_Class_Declaration)
 					if class.identifier.text == name {
 						class_decl = class
+						break
+					}
+				}
+				for symbol in c.current.root.symbols {
+					if symbol.name == name {
+						class_symbol = symbol
+						break
 					}
 				}
 
@@ -462,8 +484,12 @@ check_module_types_inner :: proc(c: ^Checker, module_id: int) -> (err: Error) {
 						},
 					)
 					constr_signature := make_fn_signature_info(len(constructor.parameters))
+					constr_symbol, _, exist := get_scoped_symbol(c.current.scope, constructor.identifier.text)
+					if !exist {
+						assert(false)
+					}
 
-					enter_child_scope(c.current, constructor.identifier) or_return
+					enter_child_scope_by_id(c.current, constr_symbol.scope_id) or_return
 					defer pop_scope(c.current)
 					for param, i in constructor.parameters {
 						constr_decl.param_names[i] = param.name
@@ -486,6 +512,10 @@ check_module_types_inner :: proc(c: ^Checker, module_id: int) -> (err: Error) {
 						},
 					)
 					method_signature := make_fn_signature_info(len(method.parameters))
+					method_symbol, _, exist := get_scoped_symbol(c.current.scope, method.identifier.text)
+					if !exist {
+						assert(false)
+					}
 
 					if method.return_type_expr != nil {
 						return_expr, return_info := check_expr_types(c, method.return_type_expr) or_return
@@ -496,8 +526,10 @@ check_module_types_inner :: proc(c: ^Checker, module_id: int) -> (err: Error) {
 						set_fn_return_type_info(&method_signature, UNTYPED_INFO)
 					}
 
-					enter_child_scope(c.current, method.identifier) or_return
+
+					enter_child_scope_by_id(c.current, method_symbol.scope_id) or_return
 					defer pop_scope(c.current)
+
 					for param, i in method.parameters {
 						method_decl.param_names[i] = param.name
 						param_expr, param_info := check_expr_types(c, param.type_expr) or_return
@@ -525,12 +557,21 @@ check_module_types_inner :: proc(c: ^Checker, module_id: int) -> (err: Error) {
 					class_info.constructors[i].type_id_data = constr_signature
 					class_decl.constructors[i].type_info.type_id_data = constr_signature
 
-					enter_child_scope(c.current, constructor.identifier) or_return
+					constr_symbol, _, exist := get_scoped_symbol(c.current.scope, constructor.identifier.text)
+					if !exist {
+						assert(false)
+					}
+
+					enter_child_scope_by_id(c.current, constr_symbol.scope_id) or_return
 					defer pop_scope(c.current)
 					class_decl.constructors[i].body = check_node_types(c, constructor.body) or_return
 				}
 				for method, i in n.methods {
-					enter_child_scope(c.current, method.identifier) or_return
+					method_symbol, _, exist := get_scoped_symbol(c.current.scope, method.identifier.text)
+					if !exist {
+						assert(false)
+					}
+					enter_child_scope_by_id(c.current, method_symbol.scope_id) or_return
 					defer pop_scope(c.current)
 					class_decl.methods[i].body = check_node_types(c, method.body) or_return
 				}
@@ -556,8 +597,13 @@ check_module_fn_types :: proc(c: ^Checker, module_id: int) -> (err: Error) {
 				},
 			)
 			fn_signature := make_fn_signature_info(len(n.parameters))
+			fn_symbol, _, exist := get_scoped_symbol(c.current.root, n.identifier.text)
+			if !exist {
+				assert(false)
+			}
 
-			enter_child_scope(c.current, n.identifier) or_return
+
+			enter_child_scope_by_id(c.current, fn_symbol.scope_id) or_return
 			defer pop_scope(c.current)
 
 			if n.return_type_expr != nil {
@@ -895,27 +941,62 @@ check_node_symbols :: proc(c: ^Checker, node: Parsed_Node) -> (err: Error) {
 	case ^Parsed_Import_Statement:
 
 	case ^Parsed_Var_Declaration:
+		type_symbol := check_expr_symbols(c, n.type_expr) or_return
+		expr_symbol := check_expr_symbols(c, n.expr) or_return
+
+		final_type_symbol: Symbol
+		if type_symbol.name != "untyped" {
+			final_type_symbol = type_symbol
+		} else {
+			final_type_symbol = expr_symbol
+		}
+
 		if c.current.scope_depth > 0 {
 			add_var_symbol(c, n.identifier) or_return
+		} else {
+			if final_type_symbol.kind == .Scope_Ref_Symbol {
+				var_symbol, var_index, exist := get_scoped_symbol(c.current.scope, n.identifier.text)
+				assert(exist)
+				c.current.scope.symbols[var_index].scope_id = final_type_symbol.scope_id
+			}
 		}
-		check_expr_symbols(c, n.type_expr) or_return
-		check_expr_symbols(c, n.expr) or_return
 
 	case ^Parsed_Fn_Declaration:
-		// No need to check for function symbol declaration since 
-		// functions can only be declared at the file scope
-		enter_child_scope(c.current, n.identifier)
-		defer pop_scope(c.current)
-		if n.return_type_expr != nil {
-			check_expr_symbols(c, n.return_type_expr) or_return
-			add_var_symbol(c, Token{text = "result"}) or_return
+		// if c.current.scope_depth > 0 {
+		// 	err = Semantic_Error {
+		// 		kind    = .Invalid_Declaration,
+		// 		token   = n.token,
+		// 		details = "Cannot declare functions outside of the module scope",
+		// 	}
+		// 	return
+		// }
+
+		fn_symbol, fn_index, exist := get_scoped_symbol(c.current.scope, n.identifier.text)
+		return_symbol: Symbol
+		if !exist {
+			fmt.println(n.identifier.text)
+			assert(false)
 		}
-		for param in n.parameters {
-			add_var_symbol(c, param.name, true) or_return
-			check_expr_symbols(c, param.type_expr) or_return
+		enter_child_scope_by_id(c.current, fn_symbol.scope_id) or_return
+		{
+			if n.return_type_expr != nil {
+				return_symbol = check_expr_symbols(c, n.return_type_expr) or_return
+				// FIXME: Only temporary to get it working
+				add_var_symbol(c, Token{text = "result"}) or_return
+			}
+			for param in n.parameters {
+				add_var_symbol(c, param.name, true) or_return
+				check_expr_symbols(c, param.type_expr) or_return
+			}
+
+			check_node_symbols(c, n.body) or_return
+		}
+		pop_scope(c.current)
+		if return_symbol.kind == .Scope_Ref_Symbol {
+			c.current.scope.symbols[fn_index].fn_return_symbol_name = return_symbol.name
+			c.current.scope.symbols[fn_index].fn_has_return = true
 		}
 
-		check_node_symbols(c, n.body) or_return
 
 	case ^Parsed_Type_Declaration:
 		if n.type_kind == .Alias {
@@ -963,13 +1044,7 @@ check_expr_symbols :: proc(c: ^Checker, expr: Parsed_Expression) -> (result: Sym
 		check_expr_symbols(c, e.right) or_return
 
 	case ^Parsed_Identifier_Expression:
-		if !contain_symbol(c, e.name) {
-			err = Semantic_Error {
-				kind    = .Unknown_Symbol,
-				token   = e.name,
-				details = fmt.tprintf("Unknown symbol: %s", e.name.text),
-			}
-		}
+		result = get_symbol(c, e.name) or_return
 
 	case ^Parsed_Index_Expression:
 		check_expr_symbols(c, e.left) or_return
@@ -990,12 +1065,12 @@ check_expr_symbols :: proc(c: ^Checker, expr: Parsed_Expression) -> (result: Sym
 
 			case .Module_Symbol:
 				scope = c.modules[symbol.module_id].scope
-
+			case .Fn_Symbol:
 			case .Var_Symbol:
-				scope = get_class_scope_from_name(c.modules[module_id], symbol.var_type_info.name)
+				scope = get_class_scope_from_id(c.modules[module_id], symbol.scope_id)
 				if scope == nil {
-					// fmt.println(symbol)
-					// fmt.println(c.modules[module_id])
+					fmt.println(symbol)
+					fmt.println(c.modules[module_id])
 				}
 			}
 			return
@@ -1031,7 +1106,7 @@ check_expr_symbols :: proc(c: ^Checker, expr: Parsed_Expression) -> (result: Sym
 		for {
 			if nested, ok := selector.(^Parsed_Dot_Expression); ok {
 				nested_identifier := nested.left.(^Parsed_Identifier_Expression)
-				n, nested_exist := get_scoped_symbol(scope, nested_identifier.name.text)
+				n, _, nested_exist := get_scoped_symbol(scope, nested_identifier.name.text)
 				if !nested_exist {
 					err = Semantic_Error {
 						kind    = .Unknown_Symbol,
@@ -1050,7 +1125,7 @@ check_expr_symbols :: proc(c: ^Checker, expr: Parsed_Expression) -> (result: Sym
 		#partial switch a in selector {
 		case ^Parsed_Identifier_Expression:
 			exist: bool
-			result, exist = get_scoped_symbol(scope, a.name.text)
+			result, _, exist = get_scoped_symbol(scope, a.name.text)
 			if !exist {
 				err = Semantic_Error {
 					kind    = .Unknown_Symbol,
@@ -1061,16 +1136,20 @@ check_expr_symbols :: proc(c: ^Checker, expr: Parsed_Expression) -> (result: Sym
 
 		case ^Parsed_Call_Expression:
 			fn_identifier := a.func.(^Parsed_Identifier_Expression)
-			exist: bool
-			result, exist = get_scoped_symbol(scope, fn_identifier.name.text)
-			fmt.println(result)
+			fn_symbol, _, exist := get_scoped_symbol(scope, fn_identifier.name.text)
 			if !exist {
 				err = Semantic_Error {
 					kind    = .Unknown_Symbol,
 					token   = fn_identifier.name,
 					details = fmt.tprintf("Unknown Class method: %s", fn_identifier.name.text),
 				}
+				return
 			}
+			// FIXME: super temporary
+			if fn_symbol.fn_has_return {
+				result = get_symbol(c, Token{text = fn_symbol.fn_return_symbol_name}) or_return
+			}
+
 			for arg in a.args {
 				check_expr_symbols(c, arg) or_return
 			}

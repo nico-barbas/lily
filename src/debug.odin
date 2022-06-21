@@ -625,6 +625,9 @@ print_semantic_scope :: proc(p: ^Debug_Printer, c: ^Checker, s: ^Semantic_Scope)
 			case .Module_Symbol:
 				fmt.sbprintf(&p.builder, "Name: %s, Module ID: %d", symbol.name, symbol.module_id)
 
+			case .Fn_Symbol:
+				fmt.sbprintf(&p.builder, "Name: %s, Referred Scope: %d", symbol.name, symbol.scope_id)
+
 			case .Var_Symbol:
 				fmt.sbprintf(&p.builder, "Name: %s, Type: ", symbol.name)
 				print_type_info(p, c, symbol.var_type_info)
@@ -901,12 +904,12 @@ print_chunk :: proc(p: ^Debug_Printer, c: ^Chunk) {
 		case .Op_Call_Method:
 			write(p, op_code_str[op])
 			format(p, op_code_str[op], max_str)
-			fmt.sbprintf(&p.builder, " || instance addr: %d, method addr: %d", get_i16(&vm), get_i16(&vm))
+			fmt.sbprintf(&p.builder, " || method addr: %d", get_i16(&vm))
 
 		case .Op_Get_Field, .Op_Set_Field:
 			write(p, op_code_str[op])
 			format(p, op_code_str[op], max_str)
-			fmt.sbprintf(&p.builder, " || instance addr: %d, field addr: %d", get_i16(&vm), get_i16(&vm))
+			fmt.sbprintf(&p.builder, " || field addr: %d", get_i16(&vm))
 
 		case .Op_Pop_Module, .Op_Push_Module:
 		}

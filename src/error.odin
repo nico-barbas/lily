@@ -19,6 +19,7 @@ Parsing_Error :: struct {
 
 Semantic_Error :: struct {
 	kind:    enum {
+		Invalid_Declaration,
 		Invalid_Symbol,
 		Unknown_Symbol,
 		Redeclared_Symbol,
