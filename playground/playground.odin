@@ -62,7 +62,7 @@ playground :: proc() {using lily
 
 	checker := Checker{}
 	init_checker(&checker)
-	_, err := build_checked_program(&checker, "main", input)
+	checked_modules, err := build_checked_program(&checker, "main", input)
 	assert(err == nil, fmt.tprint(err))
 
 	for module in checker.parsed_results {
@@ -74,8 +74,14 @@ playground :: proc() {using lily
 	}
 
 	compiler := new_compiler()
-	compiled_module := compile_module(compiler, checker.modules, 0)
+	compiled_module := compile_module(compiler, checked_modules, 0)
 	print_compiled_module(compiled_module)
+
+	compiled_modules := [?]^Compiled_Module{compiled_module}
+
+	vm := new_vm()
+	vm.modules = compiled_modules[:]
+	run_module(vm, 0)
 
 	// when RUN_PARSER {
 	// 	// Parsing

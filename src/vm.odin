@@ -62,7 +62,9 @@ Call_Frame :: struct {
 }
 
 push_call :: proc(vm: ^Vm, module_id: int, chunk: ^Chunk) {
-	vm.call_stack[vm.call_count - 1].ip = vm.ip
+	if vm.call_count > 0 {
+		vm.call_stack[vm.call_count - 1].ip = vm.ip
+	}
 	vm.call_stack[vm.call_count] = Call_Frame {
 		module_id = module_id,
 		chunk     = chunk,
@@ -77,7 +79,6 @@ push_call :: proc(vm: ^Vm, module_id: int, chunk: ^Chunk) {
 pop_call :: proc(vm: ^Vm) {
 	vm.call_count -= 1
 	call_frame := &vm.call_stack[vm.call_count - 1]
-	assert(call_frame == nil)
 	vm.ip = call_frame.ip
 	vm.module = vm.modules[call_frame.module_id]
 	vm.chunk = call_frame.chunk
@@ -416,25 +417,23 @@ run_bytecode :: proc(vm: ^Vm) {
 			push_call(vm, vm.module.id, &constr.chunk)
 
 		case .Op_Call_Method:
-			instance_addr := get_i16(vm)
 			method_addr := get_i16(vm)
-			obj := get_stack_value(vm, get_variable_stack_id(vm, instance_addr))
+			instance_addr := get_scope_start_id(vm)
+			obj := get_stack_value(vm, instance_addr)
 			instance := cast(^Class_Object)obj.data.(^Object)
 			method := &instance.vtable.methods[method_addr]
 			push_call(vm, vm.module.id, &method.chunk)
 
 		case .Op_Get_Field:
-			instance_addr := get_i16(vm)
 			field_addr := get_i16(vm)
-			obj := get_stack_value(vm, get_variable_stack_id(vm, instance_addr))
+			obj := pop_stack_value(vm)
 			instance := cast(^Class_Object)obj.data.(^Object)
 			push_stack_value(vm, instance.fields[field_addr].value)
 
 		case .Op_Set_Field:
-			instance_addr := get_i16(vm)
 			field_addr := get_i16(vm)
+			obj := pop_stack_value(vm)
 			value := pop_stack_value(vm)
-			obj := get_stack_value(vm, get_variable_stack_id(vm, instance_addr))
 			instance := cast(^Class_Object)obj.data.(^Object)
 			instance.fields[field_addr].value = value
 		}

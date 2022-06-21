@@ -709,7 +709,7 @@ print_compiled_module :: proc(m: ^Compiled_Module) {
 			write_line(&printer, "Construtors: ")
 			increment(&printer)
 			for _, i in vtable.constructors {
-				constructor := &vtable.methods[i]
+				constructor := &vtable.constructors[i]
 				write_line(&printer, "- #")
 				fmt.sbprintf(&printer.builder, "%d: ", i)
 				print_chunk(&printer, &constructor.chunk)
