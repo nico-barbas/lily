@@ -37,32 +37,31 @@ playground :: proc() {using lily
 	RUN_COMPILER :: true
 	RUN_VM :: true
 
-	input: string = `
-		type Foo is class
-			x: number
+	// input: string = `
+	// 	type Foo is class
+	// 		x: number
 
-			constructor new(_x: number):
-				self.x = _x
-			end
+	// 		constructor new(_x: number):
+	// 			self.x = _x
+	// 		end
 
-			fn add(n: number):
-				self.x = self.x + n
-			end
-		end
-
-	    var a = Foo.new(1)
-		a.add(2)
-	`
-	// input := `
-	// 	var a = 10
-	// 	if a == 10:
-	// 		var b = false
+	// 		fn add(n: number):
+	// 			self.x = self.x + n
+	// 		end
 	// 	end
+
+	//     var a = Foo.new(1)
+	// 	a.add(2)
 	// `
+	input := `
+		import math
+
+		var a = math.Vector.new()
+	`
 
 	checker := Checker{}
 	init_checker(&checker)
-	checked_modules, err := build_checked_program(&checker, "main", input)
+	_, err := build_checked_program(&checker, "main", input)
 	assert(err == nil, fmt.tprint(err))
 
 	for module in checker.parsed_results {
@@ -73,15 +72,15 @@ playground :: proc() {using lily
 		print_checked_ast(module, &checker)
 	}
 
-	compiler := new_compiler()
-	compiled_module := compile_module(compiler, checked_modules, 0)
-	print_compiled_module(compiled_module)
+	// compiler := new_compiler()
+	// compiled_module := compile_module(compiler, checked_modules, 0)
+	// print_compiled_module(compiled_module)
 
-	compiled_modules := [?]^Compiled_Module{compiled_module}
+	// compiled_modules := [?]^Compiled_Module{compiled_module}
 
-	vm := new_vm()
-	vm.modules = compiled_modules[:]
-	run_module(vm, 0)
+	// vm := new_vm()
+	// vm.modules = compiled_modules[:]
+	// run_module(vm, 0)
 
 	// when RUN_PARSER {
 	// 	// Parsing

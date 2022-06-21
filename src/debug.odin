@@ -607,6 +607,16 @@ print_symbol_table :: proc(c: ^Checker, m: ^Checked_Module) {
 	fmt.println(strings.to_string(printer.builder))
 }
 
+print_semantic_scope_standalone :: proc(c: ^Checker, s: ^Semantic_Scope) {
+	printer := Debug_Printer {
+		builder      = strings.make_builder(),
+		indent_width = 2,
+	}
+	defer strings.destroy_builder(&printer.builder)
+	print_semantic_scope(&printer, c, s)
+	fmt.println(strings.to_string(printer.builder))
+}
+
 print_semantic_scope :: proc(p: ^Debug_Printer, c: ^Checker, s: ^Semantic_Scope) {
 	write_line(p, "Scope: ")
 	fmt.sbprintf(&p.builder, "%d", s.id)
@@ -626,11 +636,25 @@ print_semantic_scope :: proc(p: ^Debug_Printer, c: ^Checker, s: ^Semantic_Scope)
 				fmt.sbprintf(&p.builder, "Name: %s, Module ID: %d", symbol.name, symbol.module_id)
 
 			case .Fn_Symbol:
-				fmt.sbprintf(&p.builder, "Name: %s, Referred Scope: %d", symbol.name, symbol.scope_id)
+				fmt.sbprintf(
+					&p.builder,
+					"Name: %s, Scope ID: %d, Inner Scope ID: %d",
+					symbol.name,
+					symbol.scope_id,
+					symbol.fn_scope_id,
+				)
+				if symbol.fn_has_return {
+					fmt.sbprintf(
+						&p.builder,
+						", Fn return name: %s, Fn return module ID: %d",
+						symbol.fn_return_name,
+						symbol.fn_return_module_id,
+					)
+				}
 
 			case .Var_Symbol:
 				fmt.sbprintf(&p.builder, "Name: %s, Type: ", symbol.name)
-				print_type_info(p, c, symbol.var_type_info)
+				print_type_info(p, c, symbol.type_info)
 			}
 		}
 		decrement(p)

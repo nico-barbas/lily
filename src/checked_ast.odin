@@ -379,19 +379,23 @@ Semantic_Scope :: struct {
 }
 
 Symbol :: struct {
-	name:                  string,
-	kind:                  enum {
+	name:                string,
+	kind:                enum {
 		Name,
 		Scope_Ref_Symbol,
 		Fn_Symbol,
 		Var_Symbol,
 		Module_Symbol,
 	},
-	scope_id:              Scope_ID,
-	var_type_info:         Type_Info,
-	module_id:             int,
-	fn_has_return:         bool,
-	fn_return_symbol_name: string,
+	type_info:           Type_Info,
+	module_id:           int,
+	scope_id:            Scope_ID,
+	fn_scope_id:         Scope_ID,
+	fn_has_return:       bool,
+	fn_return_module_id: int,
+	fn_return_name:      string,
+	var_module_id:       int,
+	var_scope_id:        Scope_ID,
 }
 
 builtin_container_symbols :: [?]string{"len", "append"}
@@ -423,89 +427,42 @@ free_scope :: proc(s: ^Semantic_Scope) {
 	free(s)
 }
 
-add_symbol_to_scope :: proc(s: ^Semantic_Scope, token: Token, shadow := false) -> (err: Error) {
-	if !shadow && contain_scoped_symbol(s, token.text) {
+
+add_symbol_to_scope :: proc(s: ^Semantic_Scope, symbol: Symbol, shadow := false) -> (err: Error) {
+	if !shadow && contain_scoped_symbol(s, symbol.name) {
 		return Semantic_Error{
 			kind = .Redeclared_Symbol,
-			token = token,
-			details = fmt.tprintf("Redeclared symbol: %s", token.text),
+			details = fmt.tprintf("Redeclared symbol: %s", symbol.name),
 		}
-	}
-
-	append(&s.symbols, Symbol{name = token.text, kind = .Name})
-	return
-}
-
-add_scope_ref_symbol_to_scope :: proc(
-	s: ^Semantic_Scope,
-	token: Token,
-	scope_id: Scope_ID,
-	shadow := false,
-) -> (
-	err: Error,
-) {
-	if !shadow && contain_scoped_symbol(s, token.text) {
-		return Semantic_Error{
-			kind = .Redeclared_Symbol,
-			token = token,
-			details = fmt.tprintf("Redeclared symbol: %s", token.text),
-		}
-	}
-
-	append(&s.symbols, Symbol{name = token.text, kind = .Scope_Ref_Symbol, scope_id = scope_id})
-	return
-}
-
-add_module_symbol_to_scope :: proc(s: ^Semantic_Scope, t: Token, module_id: int) -> Error {
-	if contain_scoped_symbol(s, t.text) {
-		return Semantic_Error{
-			kind = .Redeclared_Symbol,
-			token = t,
-			details = fmt.tprintf("Redeclared symbol: %s", t.text),
-		}
-	}
-	append(&s.symbols, Symbol{name = t.text, kind = .Module_Symbol, module_id = module_id})
-	s.var_symbol_lookup[t.text] = len(s.symbols) - 1
-	return nil
-}
-
-add_fn_symbol_to_scope :: proc(
-	s: ^Semantic_Scope,
-	t: Token,
-	scope_id: Scope_ID,
-	return_name: string = "",
-) -> Error {
-	if contain_scoped_symbol(s, t.text) {
-		return Semantic_Error{
-			kind = .Redeclared_Symbol,
-			token = t,
-			details = fmt.tprintf("Redeclared symbol: %s", t.text),
-		}
-	}
-	symbol := Symbol {
-		name                  = t.text,
-		kind                  = .Fn_Symbol,
-		scope_id              = scope_id,
-		fn_return_symbol_name = return_name,
-	}
-	if return_name == "" {
-		symbol.fn_has_return = false
 	}
 	append(&s.symbols, symbol)
-	return nil
+	if symbol.kind == .Var_Symbol {
+		s.var_symbol_lookup[symbol.name] = len(s.symbols) - 1
+	}
+	return
 }
 
-add_var_symbol_to_scope :: proc(s: ^Semantic_Scope, t: Token, shadow := false) -> Error {
-	if !shadow && contain_scoped_symbol(s, t.text) {
-		return Semantic_Error{
-			kind = .Redeclared_Symbol,
-			token = t,
-			details = fmt.tprintf("Redeclared symbol: %s", t.text),
-		}
+update_scoped_symbol :: proc(s: ^Semantic_Scope, index: int, symbol: Symbol) {
+	s.symbols[index] = symbol
+}
+
+set_variable_type :: proc(s: ^Semantic_Scope, name: string, t: Type_Info, loc := #caller_location) {
+	index := s.var_symbol_lookup[name]
+	if index >= len(s.symbols) {
+		fmt.println(loc, name)
+		fmt.println(s)
 	}
-	append(&s.symbols, Symbol{name = t.text, kind = .Var_Symbol})
-	s.var_symbol_lookup[t.text] = len(s.symbols) - 1
-	return nil
+	symbol := s.symbols[index]
+	if symbol.kind != .Var_Symbol {
+		fmt.println("FAIL UP STACK: ", loc, "Current scope id: ", s.id)
+		fmt.println("CULPRIT: ", name, t)
+		fmt.println("REAL: ", symbol)
+		// fmt.println(s)
+		// print_symbol_table(c, s)
+		assert(false)
+	}
+	symbol.type_info = t
+	s.symbols[index] = symbol
 }
 
 contain_scoped_symbol :: proc(s: ^Semantic_Scope, name: string) -> bool {
@@ -568,13 +525,19 @@ push_scope :: proc(c: ^Checked_Module, name: Token) -> Scope_ID {
 	return scope.id
 }
 
-push_class_scope :: proc(c: ^Checked_Module, name: Token) {
+push_class_scope :: proc(c: ^Checked_Module, name: Token) -> (err: Error) {
 	assert(c.scope.id == c.root.id, "Can only declare Class at the root of a module")
 	class_scope := new_scope()
 	class_scope.id = hash_scope_id(c, name)
 	class_scope.parent = c.scope
-	add_scope_ref_symbol(c.scope, name, class_scope.id)
-	add_scope_ref_symbol(class_scope, Token{text = "self"}, class_scope.id)
+	add_symbol_to_scope(
+		c.scope,
+		Symbol{name = name.text, kind = .Scope_Ref_Symbol, scope_id = class_scope.id},
+	) or_return
+	add_symbol_to_scope(
+		class_scope,
+		Symbol{name = "self", kind = .Scope_Ref_Symbol, scope_id = class_scope.id},
+	) or_return
 	append(&c.scope.children, class_scope)
 	c.class_lookup[name.text] = {
 		name       = name.text,
@@ -583,24 +546,8 @@ push_class_scope :: proc(c: ^Checked_Module, name: Token) {
 	}
 	c.scope = class_scope
 	c.scope_depth += 1
+	return
 }
-
-// enter_child_scope :: proc(c: ^Checked_Module, name: Token, loc := #caller_location) -> (err: Error) {
-// 	scope_id := hash_scope_id(c, name)
-// 	for scope in c.scope.children {
-// 		if scope.id == scope_id {
-// 			c.scope = scope
-// 			c.scope_depth += 1
-// 			return
-// 		}
-// 	}
-// 	err = Internal_Error {
-// 		kind         = .Unknown_Scope_Name,
-// 		details      = fmt.tprintf("Scope #%i not known", scope_id),
-// 		compiler_loc = loc,
-// 	}
-// 	return
-// }
 
 enter_child_scope_by_id :: proc(c: ^Checked_Module, scope_id: Scope_ID, loc := #caller_location) -> (
 	err: Error,
