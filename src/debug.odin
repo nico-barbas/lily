@@ -33,7 +33,7 @@ print_parsed_ast :: proc(program: ^Parsed_Module) {
 		print_parsed_node(&printer, node)
 	}
 
-	fmt.sbprintf(&printer.builder, "\n== variable count: %d", len(program.types))
+	fmt.sbprintf(&printer.builder, "\n== variable count: %d", len(program.variables))
 	for node in program.variables {
 		print_parsed_node(&printer, node)
 	}
@@ -284,295 +284,295 @@ print_parsed_node :: proc(p: ^Debug_Printer, node: Parsed_Node) {
 ///////////////
 // Checked AST debugging
 
-print_checked_ast :: proc(module: ^Checked_Module, checker: ^Checker) {
-	printer := Debug_Printer {
-		builder      = strings.make_builder(),
-		indent_width = 2,
-	}
-	defer strings.destroy_builder(&printer.builder)
+// print_checked_ast :: proc(module: ^Checked_Module, checker: ^Checker) {
+// 	printer := Debug_Printer {
+// 		builder      = strings.make_builder(),
+// 		indent_width = 2,
+// 	}
+// 	defer strings.destroy_builder(&printer.builder)
 
-	write_line(&printer, "================= \n")
-	write(&printer, "== CHECKED AST ==")
+// 	write_line(&printer, "================= \n")
+// 	write(&printer, "== CHECKED AST ==")
 
-	write_line(&printer, "====================")
-	write_line(&printer, "* Module's Classes *")
-	write_line(&printer, "====================")
-	for class in module.classes {
-		print_checked_node(&printer, checker, class)
-	}
+// 	write_line(&printer, "====================")
+// 	write_line(&printer, "* Module's Classes *")
+// 	write_line(&printer, "====================")
+// 	for class in module.classes {
+// 		print_checked_node(&printer, checker, class)
+// 	}
 
-	write_line(&printer, "====================")
-	write_line(&printer, "* Module's Variables *")
-	write_line(&printer, "====================")
-	for class in module.variables {
-		print_checked_node(&printer, checker, class)
-	}
+// 	write_line(&printer, "====================")
+// 	write_line(&printer, "* Module's Variables *")
+// 	write_line(&printer, "====================")
+// 	for class in module.variables {
+// 		print_checked_node(&printer, checker, class)
+// 	}
 
-	write_line(&printer, "======================")
-	write_line(&printer, "* Module's Functions *")
-	write_line(&printer, "======================")
-	for function in module.functions {
-		print_checked_node(&printer, checker, function)
-	}
+// 	write_line(&printer, "======================")
+// 	write_line(&printer, "* Module's Functions *")
+// 	write_line(&printer, "======================")
+// 	for function in module.functions {
+// 		print_checked_node(&printer, checker, function)
+// 	}
 
-	write_line(&printer, "=================")
-	write_line(&printer, "* Module's Body *")
-	write_line(&printer, "=================")
-	for node in module.nodes {
-		print_checked_node(&printer, checker, node)
-	}
-	fmt.println(strings.to_string(printer.builder))
-}
+// 	write_line(&printer, "=================")
+// 	write_line(&printer, "* Module's Body *")
+// 	write_line(&printer, "=================")
+// 	for node in module.nodes {
+// 		print_checked_node(&printer, checker, node)
+// 	}
+// 	fmt.println(strings.to_string(printer.builder))
+// }
 
-print_checked_expr :: proc(p: ^Debug_Printer, c: ^Checker, checked_expr: Checked_Expression) {
-	switch e in checked_expr {
-	case ^Checked_Literal_Expression:
-		write(p, "Literal Expression: ")
-		fmt.sbprint(&p.builder, e.value)
+// print_checked_expr :: proc(p: ^Debug_Printer, c: ^Checker, checked_expr: Checked_Expression) {
+// 	switch e in checked_expr {
+// 	case ^Checked_Literal_Expression:
+// 		write(p, "Literal Expression: ")
+// 		fmt.sbprint(&p.builder, e.value)
 
-	case ^Checked_String_Literal_Expression:
-		write(p, "String Literal Expression: ")
-		fmt.sbprint(&p.builder, e.value)
+// 	case ^Checked_String_Literal_Expression:
+// 		write(p, "String Literal Expression: ")
+// 		fmt.sbprint(&p.builder, e.value)
 
-	case ^Checked_Array_Literal_Expression:
-		write(p, "Array Expression: ")
-		increment(p)
-		{
-			write_line(p, "Type: ")
-			print_type_info(p, c, e.type_info)
-			write_line(p, "Elements: ")
-			for element in e.values {
-				print_checked_expr(p, c, element)
-			}
+// 	case ^Checked_Array_Literal_Expression:
+// 		write(p, "Array Expression: ")
+// 		increment(p)
+// 		{
+// 			write_line(p, "Type: ")
+// 			print_type_info(p, c, e.type_info)
+// 			write_line(p, "Elements: ")
+// 			for element in e.values {
+// 				print_checked_expr(p, c, element)
+// 			}
 
-		}
-		decrement(p)
+// 		}
+// 		decrement(p)
 
 
-	case ^Checked_Unary_Expression:
-		write(p, "Unary Expression: ")
-		increment(p)
-		{
-			write_line(p, "Operator: ")
-			fmt.sbprint(&p.builder, e.op)
-			write_line(p, "Expression: ")
-			print_checked_expr(p, c, e.expr)
+// 	case ^Checked_Unary_Expression:
+// 		write(p, "Unary Expression: ")
+// 		increment(p)
+// 		{
+// 			write_line(p, "Operator: ")
+// 			fmt.sbprint(&p.builder, e.op)
+// 			write_line(p, "Expression: ")
+// 			print_checked_expr(p, c, e.expr)
 
-		}
-		decrement(p)
+// 		}
+// 		decrement(p)
 
-	case ^Checked_Binary_Expression:
-		write(p, "Binary Expression: ")
-		increment(p)
-		{
-			write_line(p, "Operator: ")
-			fmt.sbprint(&p.builder, e.op)
-			write_line(p, "Left Expression: ")
-			print_checked_expr(p, c, e.left)
-			write_line(p, "Right Expression: ")
-			print_checked_expr(p, c, e.right)
-		}
-		decrement(p)
+// 	case ^Checked_Binary_Expression:
+// 		write(p, "Binary Expression: ")
+// 		increment(p)
+// 		{
+// 			write_line(p, "Operator: ")
+// 			fmt.sbprint(&p.builder, e.op)
+// 			write_line(p, "Left Expression: ")
+// 			print_checked_expr(p, c, e.left)
+// 			write_line(p, "Right Expression: ")
+// 			print_checked_expr(p, c, e.right)
+// 		}
+// 		decrement(p)
 
-	case ^Checked_Identifier_Expression:
-		write(p, "Identifier Expression: ")
-		fmt.sbprint(&p.builder, e.name.text)
+// 	case ^Checked_Identifier_Expression:
+// 		write(p, "Identifier Expression: ")
+// 		fmt.sbprint(&p.builder, e.name.text)
 
-	case ^Checked_Index_Expression:
-		write(p, "Index Expression: ")
-		increment(p)
-		{
-			write_line(p, "Left: ")
-			write(p, e.left.text)
-			write_line(p, "Index: ")
-			print_checked_expr(p, c, e.index)
-		}
-		decrement(p)
+// 	case ^Checked_Index_Expression:
+// 		write(p, "Index Expression: ")
+// 		increment(p)
+// 		{
+// 			write_line(p, "Left: ")
+// 			write(p, e.left.text)
+// 			write_line(p, "Index: ")
+// 			print_checked_expr(p, c, e.index)
+// 		}
+// 		decrement(p)
 
-	case ^Checked_Dot_Expression:
-		write(p, "Dot Expression: ")
-		increment(p)
-		{
-			write_line(p, "Left: ")
-			write(p, e.left.text)
-			write_line(p, "Left ID: ")
-			fmt.sbprintf(&p.builder, "%d", e.left_id)
-			write_line(p, "Kind: ")
-			switch e.kind {
-			case .Module:
-				write(p, "Module")
-			case .Class:
-				write(p, "Class Constructor")
-			case .Instance_Field:
-				write(p, "Instance Field")
-			case .Instance_Call:
-				write(p, "Instance Call")
-			case .Array_Len:
-				write(p, "Array Length")
-			case .Array_Append:
-				write(p, "Array Append Call")
-			}
-			write_line(p, "Selector: ")
-			print_checked_expr(p, c, e.selector)
-			write_line(p, "Selector ID: ")
-			fmt.sbprintf(&p.builder, "%d", e.selector_id)
-		}
-		decrement(p)
+// 	case ^Checked_Dot_Expression:
+// 	// write(p, "Dot Expression: ")
+// 	// increment(p)
+// 	// {
+// 	// 	write_line(p, "Left: ")
+// 	// 	write(p, e.left.text)
+// 	// 	write_line(p, "Left ID: ")
+// 	// 	fmt.sbprintf(&p.builder, "%d", e.left_id)
+// 	// 	write_line(p, "Kind: ")
+// 	// 	switch e.kind {
+// 	// 	case .Module:
+// 	// 		write(p, "Module")
+// 	// 	case .Class:
+// 	// 		write(p, "Class Constructor")
+// 	// 	case .Instance_Field:
+// 	// 		write(p, "Instance Field")
+// 	// 	case .Instance_Call:
+// 	// 		write(p, "Instance Call")
+// 	// 	case .Array_Len:
+// 	// 		write(p, "Array Length")
+// 	// 	case .Array_Append:
+// 	// 		write(p, "Array Append Call")
+// 	// 	}
+// 	// 	write_line(p, "Selector: ")
+// 	// 	print_checked_expr(p, c, e.selector)
+// 	// 	write_line(p, "Selector ID: ")
+// 	// 	fmt.sbprintf(&p.builder, "%d", e.selector_id)
+// 	// }
+// 	// decrement(p)
 
-	case ^Checked_Call_Expression:
-		write(p, "Call Expression: ")
-		increment(p)
-		{
-			write_line(p, "Func: ")
-			print_checked_expr(p, c, e.func)
-			write_line(p, "Arguments: ")
-			increment(p)
-			for arg in e.args {
-				write_line(p)
-				print_checked_expr(p, c, arg)
-			}
-			decrement(p)
-		}
-		decrement(p)
+// 	case ^Checked_Call_Expression:
+// 		write(p, "Call Expression: ")
+// 		increment(p)
+// 		{
+// 			write_line(p, "Func: ")
+// 			print_checked_expr(p, c, e.func)
+// 			write_line(p, "Arguments: ")
+// 			increment(p)
+// 			for arg in e.args {
+// 				write_line(p)
+// 				print_checked_expr(p, c, arg)
+// 			}
+// 			decrement(p)
+// 		}
+// 		decrement(p)
 
-	}
+// 	}
 
-}
+// }
 
-print_checked_node :: proc(p: ^Debug_Printer, c: ^Checker, node: Checked_Node) {
-	switch n in node {
-	case ^Checked_Expression_Statement:
-		write_line(p, "Expression Statement: ")
-		print_checked_expr(p, c, n.expr)
+// print_checked_node :: proc(p: ^Debug_Printer, c: ^Checker, node: Checked_Node) {
+// 	switch n in node {
+// 	case ^Checked_Expression_Statement:
+// 		write_line(p, "Expression Statement: ")
+// 		print_checked_expr(p, c, n.expr)
 
-	case ^Checked_Block_Statement:
-		write_line(p, "Block Statement: ")
-		increment(p)
-		for inner in n.nodes {
-			print_checked_node(p, c, inner)
-		}
-		decrement(p)
+// 	case ^Checked_Block_Statement:
+// 		write_line(p, "Block Statement: ")
+// 		increment(p)
+// 		for inner in n.nodes {
+// 			print_checked_node(p, c, inner)
+// 		}
+// 		decrement(p)
 
-	case ^Checked_Assigment_Statement:
-		write_line(p, "Assignment Statement: ")
-		increment(p)
-		{
-			write_line(p, "Left: ")
-			print_checked_expr(p, c, n.left)
-			write_line(p, "Right: ")
-			print_checked_expr(p, c, n.right)
-		}
-		decrement(p)
+// 	case ^Checked_Assigment_Statement:
+// 		write_line(p, "Assignment Statement: ")
+// 		increment(p)
+// 		{
+// 			write_line(p, "Left: ")
+// 			print_checked_expr(p, c, n.left)
+// 			write_line(p, "Right: ")
+// 			print_checked_expr(p, c, n.right)
+// 		}
+// 		decrement(p)
 
-	case ^Checked_If_Statement:
-		write_line(p, "If Statement: ")
-		increment(p)
-		{
-			write_line(p, "Condition: ")
-			print_checked_expr(p, c, n.condition)
-			print_checked_node(p, c, n.body)
-			if n.next_branch != nil {
-				write_line(p, "Else: ")
-				print_checked_node(p, c, n.next_branch)
-			}
-		}
-		decrement(p)
+// 	case ^Checked_If_Statement:
+// 		write_line(p, "If Statement: ")
+// 		increment(p)
+// 		{
+// 			write_line(p, "Condition: ")
+// 			print_checked_expr(p, c, n.condition)
+// 			print_checked_node(p, c, n.body)
+// 			if n.next_branch != nil {
+// 				write_line(p, "Else: ")
+// 				print_checked_node(p, c, n.next_branch)
+// 			}
+// 		}
+// 		decrement(p)
 
-	case ^Checked_Range_Statement:
-		write_line(p, "For Statement: ")
-		increment(p)
-		{
-			write_line(p, "Iterator identifier name: ")
-			write(p, n.iterator_name.text)
-			write_line(p, "Operator: ")
-			fmt.sbprint(&p.builder, n.op)
-			write_line(p, "Low: ")
-			print_checked_expr(p, c, n.low)
-			write_line(p, "High: ")
-			print_checked_expr(p, c, n.high)
-			print_checked_node(p, c, n.body)
-		}
-		decrement(p)
+// 	case ^Checked_Range_Statement:
+// 		write_line(p, "For Statement: ")
+// 		increment(p)
+// 		{
+// 			write_line(p, "Iterator identifier name: ")
+// 			write(p, n.iterator_name.text)
+// 			write_line(p, "Operator: ")
+// 			fmt.sbprint(&p.builder, n.op)
+// 			write_line(p, "Low: ")
+// 			print_checked_expr(p, c, n.low)
+// 			write_line(p, "High: ")
+// 			print_checked_expr(p, c, n.high)
+// 			print_checked_node(p, c, n.body)
+// 		}
+// 		decrement(p)
 
-	case ^Checked_Var_Declaration:
-		write_line(p, "Var Declaration: ")
-		increment(p)
-		{
-			write_line(p, "Identifier name: ")
-			write(p, n.identifier.text)
-			write_line(p, "Type: ")
-			print_type_info(p, c, n.type_info)
-			write_line(p, "Expression: ")
-			print_checked_expr(p, c, n.expr)
-		}
-		decrement(p)
+// 	case ^Checked_Var_Declaration:
+// 		write_line(p, "Var Declaration: ")
+// 		increment(p)
+// 		{
+// 			write_line(p, "Identifier name: ")
+// 			write(p, n.identifier.text)
+// 			write_line(p, "Type: ")
+// 			print_type_info(p, c, n.type_info)
+// 			write_line(p, "Expression: ")
+// 			print_checked_expr(p, c, n.expr)
+// 		}
+// 		decrement(p)
 
-	case ^Checked_Fn_Declaration:
-		write_line(p, "Function Declaration: ")
-		increment(p)
-		{
-			write_line(p, "Identifier name: ")
-			write(p, n.identifier.text)
-			write_line(p, "Signature: ")
-			print_type_info(p, c, n.type_info)
-			print_checked_node(p, c, n.body)
-		}
-		decrement(p)
+// 	case ^Checked_Fn_Declaration:
+// 		write_line(p, "Function Declaration: ")
+// 		increment(p)
+// 		{
+// 			write_line(p, "Identifier name: ")
+// 			write(p, n.identifier.text)
+// 			write_line(p, "Signature: ")
+// 			print_type_info(p, c, n.type_info)
+// 			print_checked_node(p, c, n.body)
+// 		}
+// 		decrement(p)
 
-	case ^Checked_Type_Declaration:
-		write_line(p, "Type Declaration: ")
-		increment(p)
-		{
-			write_line(p, "Identifier name: ")
-			write(p, n.identifier.text)
+// 	case ^Checked_Type_Declaration:
+// 		write_line(p, "Type Declaration: ")
+// 		increment(p)
+// 		{
+// 			write_line(p, "Identifier name: ")
+// 			write(p, n.identifier.text)
 
-			write_line(p, "Type name: ")
-			print_type_info(p, c, n.type_info)
-		}
-		decrement(p)
+// 			write_line(p, "Type name: ")
+// 			print_type_info(p, c, n.type_info)
+// 		}
+// 		decrement(p)
 
-	case ^Checked_Class_Declaration:
-		write_line(p, "Type Declaration: ")
-		increment(p)
-		{
-			write_line(p, "Identifier name: ")
-			write(p, n.identifier.text)
-			class_info := n.type_info.type_id_data.(Class_Definition_Info)
-			write_line(p, "Fields: ")
-			increment(p)
-			for field, i in n.field_names {
-				write_line(p)
-				fmt.sbprintf(&p.builder, "Name: %s, Type: ", field.text)
-				print_type_info(p, c, class_info.fields[i])
-			}
-			decrement(p)
+// 	case ^Checked_Class_Declaration:
+// 		write_line(p, "Type Declaration: ")
+// 		increment(p)
+// 		{
+// 			write_line(p, "Identifier name: ")
+// 			write(p, n.identifier.text)
+// 			class_info := n.type_info.type_id_data.(Class_Definition_Info)
+// 			write_line(p, "Fields: ")
+// 			increment(p)
+// 			for field, i in n.field_names {
+// 				write_line(p)
+// 				fmt.sbprintf(&p.builder, "Name: %s, Type: ", field.text)
+// 				print_type_info(p, c, class_info.fields[i])
+// 			}
+// 			decrement(p)
 
-			write_line(p, "Constructors: ")
-			increment(p)
-			for constructor in n.constructors {
-				print_checked_node(p, c, constructor)
-			}
-			decrement(p)
+// 			write_line(p, "Constructors: ")
+// 			increment(p)
+// 			for constructor in n.constructors {
+// 				print_checked_node(p, c, constructor)
+// 			}
+// 			decrement(p)
 
-			write_line(p, "Methods: ")
-			increment(p)
-			for method in n.methods {
-				print_checked_node(p, c, method)
-			}
-			decrement(p)
-		}
-		decrement(p)
-	}
-}
+// 			write_line(p, "Methods: ")
+// 			increment(p)
+// 			for method in n.methods {
+// 				print_checked_node(p, c, method)
+// 			}
+// 			decrement(p)
+// 		}
+// 		decrement(p)
+// 	}
+// }
 
 print_type_info :: proc(p: ^Debug_Printer, c: ^Checker, t: Type_Info) {
 	switch t.type_kind {
 	case .Builtin, .Elementary_Type, .Type_Alias:
 		write(p, t.name)
 	case .Generic_Type:
-		generic_id := t.type_id_data.(Generic_Type_Info)
-		generic_info := get_type_from_id(c, generic_id.spec_type_id)
-		fmt.sbprintf(&p.builder, "%s of %s", t.name, generic_info.name)
+	// generic_id := t.type_id_data.(Generic_Type_Info)
+	// generic_info := get_type_from_id(c, generic_id.spec_type_id)
+	// fmt.sbprintf(&p.builder, "%s of %s", t.name, generic_info.name)
 	case .Fn_Type:
 		fn_signature := t.type_id_data.(Fn_Signature_Info)
 		increment(p)
@@ -624,38 +624,8 @@ print_semantic_scope :: proc(p: ^Debug_Printer, c: ^Checker, s: ^Semantic_Scope)
 	{
 		write_line(p, "Symbols: ")
 		increment(p)
-		for symbol in s.symbols {
-			write_line(p, "- ")
-			switch symbol.kind {
-			case .Name:
-				fmt.sbprintf(&p.builder, "Name: %s", symbol.name)
-			case .Scope_Ref_Symbol:
-				fmt.sbprintf(&p.builder, "Name: %s, Referred Scope: %d", symbol.name, symbol.scope_id)
-
-			case .Module_Symbol:
-				fmt.sbprintf(&p.builder, "Name: %s, Module ID: %d", symbol.name, symbol.module_id)
-
-			case .Fn_Symbol:
-				fmt.sbprintf(
-					&p.builder,
-					"Name: %s, Scope ID: %d, Inner Scope ID: %d",
-					symbol.name,
-					symbol.scope_id,
-					symbol.fn_scope_id,
-				)
-				if symbol.fn_has_return {
-					fmt.sbprintf(
-						&p.builder,
-						", Fn return name: %s, Fn return module ID: %d",
-						symbol.fn_return_name,
-						symbol.fn_return_module_id,
-					)
-				}
-
-			case .Var_Symbol:
-				fmt.sbprintf(&p.builder, "Name: %s, Type: ", symbol.name)
-				print_type_info(p, c, symbol.type_info)
-			}
+		for _, i in s.symbols {
+			print_symbol(p, &s.symbols[i])
 		}
 		decrement(p)
 		if len(s.children) > 0 {
@@ -669,6 +639,57 @@ print_semantic_scope :: proc(p: ^Debug_Printer, c: ^Checker, s: ^Semantic_Scope)
 	}
 	decrement(p)
 
+}
+
+print_symbol :: proc(p: ^Debug_Printer, symbol: ^Symbol, leading_char := "-") {
+	write_line(p, leading_char)
+	write(p, " ")
+	fmt.sbprintf(
+		&p.builder,
+		"Name: %s, Module ID: %d, Scope ID: %d, ",
+		symbol.name,
+		symbol.module_id,
+		symbol.scope_id,
+	)
+	switch symbol.kind {
+	case .Name:
+	case .Alias_Symbol:
+		increment(p)
+		print_symbol(p, symbol.alias_info.symbol, "=>")
+		decrement(p)
+
+	case .Class_Symbol:
+		fmt.sbprintf(&p.builder, "Info: Class Scope ID: %d", symbol.class_info.class_scope_id)
+
+	case .Module_Symbol:
+		fmt.sbprintf(&p.builder, "Info: Ref Module ID: %d", symbol.module_info.ref_module_id)
+
+	case .Fn_Symbol:
+		fmt.sbprintf(
+			&p.builder,
+			"Info: Inner Scope ID: %d, Has return: %t",
+			symbol.fn_info.scope_id,
+			symbol.fn_info.has_return,
+		)
+		if symbol.fn_info.has_return {
+			increment(p)
+			print_symbol(p, symbol.fn_info.return_symbol, "=>")
+			decrement(p)
+		}
+
+	case .Var_Symbol:
+		fmt.sbprintf(
+			&p.builder,
+			"Info: Immutable: %t, Is Ref: %t, ",
+			symbol.var_info.immutable,
+			symbol.var_info.is_ref,
+		)
+		if symbol.var_info.symbol != nil {
+			increment(p)
+			print_symbol(p, symbol.var_info.symbol, "=>")
+			decrement(p)
+		}
+	}
 }
 
 // Utility procedures
@@ -802,6 +823,8 @@ op_code_str := map[Op_Code]string {
 	.Op_Jump_False    = "Op_Jump_False",
 	.Op_Return_Val    = "Op_Return_Val",
 	.Op_Return        = "Op_Return",
+	.Op_Push_Module   = "Op_Push_Module",
+	.Op_Pop_Module    = "Op_Pop_Module",
 	.Op_Call          = "Op_Call",
 	.Op_Make_Array    = "Op_Make_Array",
 	.Op_Index_Array   = "Op_Index_Array",
@@ -935,7 +958,15 @@ print_chunk :: proc(p: ^Debug_Printer, c: ^Chunk) {
 			format(p, op_code_str[op], max_str)
 			fmt.sbprintf(&p.builder, " || field addr: %d", get_i16(&vm))
 
-		case .Op_Pop_Module, .Op_Push_Module:
+		case .Op_Push_Module:
+			write(p, op_code_str[op])
+			format(p, op_code_str[op], max_str)
+			fmt.sbprintf(&p.builder, " || module addr: %d", get_i16(&vm))
+
+		case .Op_Pop_Module:
+			write(p, op_code_str[op])
+			format(p, op_code_str[op], max_str)
+			fmt.sbprintf(&p.builder, " ||")
 		}
 		if vm.ip >= len(vm.chunk.bytecode) {
 			break

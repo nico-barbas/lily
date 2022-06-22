@@ -78,7 +78,7 @@ free_object :: proc(object: ^Object) {
 	case .Array:
 	case .Fn:
 		fn_object := cast(^Fn_Object)object
-		delete_chunk(&fn_object.chunk)
+	// delete_chunk(&fn_object.chunk)
 	case .Class:
 		class_object := cast(^Class_Object)object
 		// FIXME: Need to recursively delete fields

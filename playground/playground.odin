@@ -10,20 +10,20 @@ main :: proc() {
 	context.allocator = mem.tracking_allocator(&track)
 	playground()
 
-	fmt.println()
-	if len(track.allocation_map) > 0 {
-		fmt.printf("Leaks:")
-		for _, v in track.allocation_map {
-			fmt.printf("\t%v\n\n", v)
-		}
-	}
-	fmt.printf("Leak count: %d\n", len(track.allocation_map))
-	if len(track.bad_free_array) > 0 {
-		fmt.printf("Bad Frees:")
-		for v in track.bad_free_array {
-			fmt.printf("\t%v\n\n", v)
-		}
-	}
+	// fmt.println()
+	// if len(track.allocation_map) > 0 {
+	// 	fmt.printf("Leaks:")
+	// 	for _, v in track.allocation_map {
+	// 		fmt.printf("\t%v\n\n", v)
+	// 	}
+	// }
+	// fmt.printf("Leak count: %d\n", len(track.allocation_map))
+	// if len(track.bad_free_array) > 0 {
+	// 	fmt.printf("Bad Frees:")
+	// 	for v in track.bad_free_array {
+	// 		fmt.printf("\t%v\n\n", v)
+	// 	}
+	// }
 }
 
 playground :: proc() {using lily
@@ -37,46 +37,48 @@ playground :: proc() {using lily
 	RUN_COMPILER :: true
 	RUN_VM :: true
 
-	// input: string = `
-	// 	type Foo is class
-	// 		x: number
+	input: string = `
+		type Foo is class
+			x: number
 
-	// 		constructor new(_x: number):
-	// 			self.x = _x
-	// 		end
+			constructor new(_x: number):
+				self.x = _x
+			end
 
-	// 		fn add(n: number):
-	// 			self.x = self.x + n
-	// 		end
-	// 	end
+			fn add(n: number):
+				self.x = self.x + n
+			end
+		end
 
-	//     var a = Foo.new(1)
-	// 	a.add(2)
-	// `
-	input := `
-		import math
-
-		var a = math.Vector.new()
+	    var a = Foo.new(10)
 	`
+	// input := `
+	// 	fn add(a: number): number
+	// 		result = a +4
+	// 	end
+	// `
 
 	checker := Checker{}
 	init_checker(&checker)
-	_, err := build_checked_program(&checker, "main", input)
+	checked_modules, err := build_checked_program(&checker, "main", input)
 	assert(err == nil, fmt.tprint(err))
 
-	for module in checker.parsed_results {
-		print_parsed_ast(module)
-	}
+	// for module in checker.parsed_results {
+	// 	print_parsed_ast(module)
+	// }
 
-	for module in checker.modules {
-		print_checked_ast(module, &checker)
+	for module in checked_modules {
+		print_symbol_table(&checker, module)
+		// print_checked_ast(module, &checker)
 	}
 
 	// compiler := new_compiler()
-	// compiled_module := compile_module(compiler, checked_modules, 0)
-	// print_compiled_module(compiled_module)
-
-	// compiled_modules := [?]^Compiled_Module{compiled_module}
+	// compiled_modules := make([]^Compiled_Module, len(checked_modules))
+	// for _, i in checked_modules {
+	// 	compiled_module := compile_module(compiler, checked_modules, i)
+	// 	print_compiled_module(compiled_module)
+	// 	compiled_modules[i] = compiled_module
+	// }
 
 	// vm := new_vm()
 	// vm.modules = compiled_modules[:]

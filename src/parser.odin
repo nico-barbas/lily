@@ -620,7 +620,9 @@ parse_identifier :: proc(p: ^Parser) -> (result: Parsed_Expression, err: Error) 
 parse_number :: proc(p: ^Parser) -> (result: Parsed_Expression, err: Error) {
 	num, ok := strconv.parse_f64(p.previous.text)
 	if ok {
-		result = new_clone(Parsed_Literal_Expression{value = Value{kind = .Number, data = num}})
+		result = new_clone(
+			Parsed_Literal_Expression{token = p.previous, value = Value{kind = .Number, data = num}},
+		)
 	} else {
 		err = Parsing_Error {
 			kind  = .Malformed_Number,
@@ -638,7 +640,10 @@ parse_boolean :: proc(p: ^Parser) -> (result: Parsed_Expression, err: Error) {
 
 parse_string :: proc(p: ^Parser) -> (result: Parsed_Expression, err: Error) {
 	result = new_clone(
-		Parsed_String_Literal_Expression{value = p.previous.text[1:len(p.previous.text) - 1]},
+		Parsed_String_Literal_Expression{
+			token = p.previous,
+			value = p.previous.text[1:len(p.previous.text) - 1],
+		},
 	)
 	return
 }

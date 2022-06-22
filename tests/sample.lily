@@ -11,5 +11,3 @@ type Vector is class
         self.x = self.x + number
     end
 end
-
-var a = 10

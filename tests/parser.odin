@@ -10,11 +10,11 @@ test_expressions :: proc(t: ^testing.T) {using lily
 	parsed_modules := [len(inputs)]^Parsed_Module{}
 
 	for input, i in inputs {
-		parsed_modules[i] = make_module()
+		parsed_modules[i] = make_parsed_module("")
 		err := parse_module(input, parsed_modules[i])
 	}
 	defer for module in parsed_modules {
-		delete_module(module)
+		delete_parsed_module(module)
 	}
 
 	// Unary not
@@ -27,11 +27,7 @@ test_expressions :: proc(t: ^testing.T) {using lily
 		if ok {
 			lit_expr, ok := unary_expr.expr.(^Parsed_Literal_Expression)
 			testing.expect(t, ok, fmt.tprintf("Expected Literal Parsed_Expression, got %v", unary_expr.expr))
-			testing.expect(
-				t,
-				unary_expr.op == .Not_Op,
-				fmt.tprintf("Expected Not_Op, got %v", unary_expr.op),
-			)
+			testing.expect(t, unary_expr.op == .Not_Op, fmt.tprintf("Expected Not_Op, got %v", unary_expr.op))
 		}
 	}
 	// Unary minus
@@ -44,11 +40,7 @@ test_expressions :: proc(t: ^testing.T) {using lily
 		if ok {
 			lit_expr, ok := unary_expr.expr.(^Parsed_Literal_Expression)
 			testing.expect(t, ok, fmt.tprintf("Expected Literal Parsed_Expression, got %v", unary_expr.expr))
-			testing.expect(
-				t,
-				unary_expr.op == .Minus_Op,
-				fmt.tprintf("Expected Minus_Op, got %v", unary_expr.op),
-			)
+			testing.expect(t, unary_expr.op == .Minus_Op, fmt.tprintf("Expected Minus_Op, got %v", unary_expr.op))
 		}
 	}
 	// Binary plus
@@ -61,16 +53,8 @@ test_expressions :: proc(t: ^testing.T) {using lily
 		if ok {
 			left_expr, left_ok := bin_expr.left.(^Parsed_Literal_Expression)
 			right_expr, right_ok := bin_expr.right.(^Parsed_Literal_Expression)
-			testing.expect(
-				t,
-				left_ok,
-				fmt.tprintf("Expected Parsed_Literal_Expression, got %v", bin_expr.left),
-			)
-			testing.expect(
-				t,
-				right_ok,
-				fmt.tprintf("Expected Parsed_Literal_Expression, got %v", bin_expr.right),
-			)
+			testing.expect(t, left_ok, fmt.tprintf("Expected Parsed_Literal_Expression, got %v", bin_expr.left))
+			testing.expect(t, right_ok, fmt.tprintf("Expected Parsed_Literal_Expression, got %v", bin_expr.right))
 			testing.expect(t, bin_expr.op == .Plus_Op, fmt.tprintf("Expected Plus_Op, got %v", bin_expr.op))
 		}
 	}
@@ -108,11 +92,11 @@ test_call_and_access_expressions :: proc(t: ^testing.T) {
 	parsed_modules := [len(inputs)]^Parsed_Module{}
 
 	for input, i in inputs {
-		parsed_modules[i] = make_module()
+		parsed_modules[i] = make_parsed_module("")
 		err := parse_module(input, parsed_modules[i])
 	}
 	defer for module in parsed_modules {
-		delete_module(module)
+		delete_parsed_module(module)
 	}
 
 	// Call
@@ -124,11 +108,7 @@ test_call_and_access_expressions :: proc(t: ^testing.T) {
 		testing.expect(t, ok, fmt.tprintf("Expected Parsed_Call_Expression, got %v", node.expr))
 		if ok {
 			identifier, ok := call_expr.func.(^Parsed_Identifier_Expression)
-			testing.expect(
-				t,
-				ok,
-				fmt.tprintf("Expected Parsed_Identifier_Expression, got %v", call_expr.func),
-			)
+			testing.expect(t, ok, fmt.tprintf("Expected Parsed_Identifier_Expression, got %v", call_expr.func))
 			testing.expect(
 				t,
 				len(call_expr.args) == 0,
@@ -145,11 +125,7 @@ test_call_and_access_expressions :: proc(t: ^testing.T) {
 		testing.expect(t, ok, fmt.tprintf("Expected Parsed_Call_Expression, got %v", node.expr))
 		if ok {
 			identifier, ok := call_expr.func.(^Parsed_Identifier_Expression)
-			testing.expect(
-				t,
-				ok,
-				fmt.tprintf("Expected Parsed_Identifier_Expression, got %v", call_expr.func),
-			)
+			testing.expect(t, ok, fmt.tprintf("Expected Parsed_Identifier_Expression, got %v", call_expr.func))
 			testing.expect(
 				t,
 				len(call_expr.args) == 2,
@@ -178,11 +154,7 @@ test_call_and_access_expressions :: proc(t: ^testing.T) {
 		testing.expect(t, ok, fmt.tprintf("Expected Parsed_Call_Expression, got %v", node.expr))
 		if ok {
 			identifier, ok := call_expr.func.(^Parsed_Identifier_Expression)
-			testing.expect(
-				t,
-				ok,
-				fmt.tprintf("Expected Parsed_Identifier_Expression, got %v", call_expr.func),
-			)
+			testing.expect(t, ok, fmt.tprintf("Expected Parsed_Identifier_Expression, got %v", call_expr.func))
 			testing.expect(
 				t,
 				len(call_expr.args) == 1,
@@ -196,11 +168,7 @@ test_call_and_access_expressions :: proc(t: ^testing.T) {
 			)
 			if nested_ok {
 				identifier, ok := nested_call.func.(^Parsed_Identifier_Expression)
-				testing.expect(
-					t,
-					ok,
-					fmt.tprintf("Expected Parsed_Identifier_Expression, got %v", nested_call.func),
-				)
+				testing.expect(t, ok, fmt.tprintf("Expected Parsed_Identifier_Expression, got %v", nested_call.func))
 				testing.expect(
 					t,
 					len(nested_call.args) == 0,
@@ -224,11 +192,7 @@ test_call_and_access_expressions :: proc(t: ^testing.T) {
 				fmt.tprintf("Expected Parsed_Identifier_Expression, got %v", dot_expr.left),
 			)
 			accessor, acc_ok := dot_expr.selector.(^Parsed_Identifier_Expression)
-			testing.expect(
-				t,
-				acc_ok,
-				fmt.tprintf("Expected Parsed_Identifier_Expression, got %v", dot_expr.left),
-			)
+			testing.expect(t, acc_ok, fmt.tprintf("Expected Parsed_Identifier_Expression, got %v", dot_expr.left))
 		}
 	}
 	// Dot expression (accessing methods)
@@ -272,11 +236,11 @@ test_array_expressions :: proc(t: ^testing.T) {
 	parsed_modules := [len(inputs)]^Parsed_Module{}
 
 	for input, i in inputs {
-		parsed_modules[i] = make_module()
+		parsed_modules[i] = make_parsed_module("")
 		err := parse_module(input, parsed_modules[i])
 	}
 	defer for module in parsed_modules {
-		delete_module(module)
+		delete_parsed_module(module)
 	}
 
 	// Empty Array type expression 

@@ -86,6 +86,19 @@ pop_call :: proc(vm: ^Vm) {
 	// vm.chunk = call_frame.fn.chunk if call_frame.fn != nil else vm.module.main
 }
 
+push_module :: proc(vm: ^Vm, module_id: int) {
+	vm.call_stack[vm.call_count] = vm.call_stack[vm.call_count - 1]
+	vm.call_stack[vm.call_count].module_id = module_id
+	vm.module = vm.modules[module_id]
+	vm.call_count += 1
+}
+
+pop_module :: proc(vm: ^Vm) {
+	vm.call_count -= 1
+	call_frame := &vm.call_stack[vm.call_count - 1]
+	vm.module = vm.modules[call_frame.module_id]
+}
+
 push_stack :: proc(vm: ^Vm) {
 	vm.stack[vm.stack_ptr] = Value {
 		data = f64(vm.header_ptr),
@@ -363,7 +376,12 @@ run_bytecode :: proc(vm: ^Vm) {
 			pop_call(vm)
 			pop_stack(vm)
 
-		case .Op_Push_Module, .Op_Pop_Module:
+		case .Op_Push_Module:
+			module_addr := get_i16(vm)
+			push_module(vm, int(module_addr))
+
+		case .Op_Pop_Module:
+			pop_module(vm)
 
 		case .Op_Make_Array:
 			array := make([dynamic]Value)

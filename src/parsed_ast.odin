@@ -53,13 +53,14 @@ Parsed_Expression :: union {
 }
 
 Parsed_Literal_Expression :: struct {
+	token: Token,
 	value: Value,
 }
 
 // We separate this from the other fixed sized native value types
-// to avoid having to allocate a Object_Ref during parsing and let
-// the vm/interpreter do that at runtime
+// since strings are reference types in Lily
 Parsed_String_Literal_Expression :: struct {
+	token: Token,
 	value: string,
 }
 
@@ -114,6 +115,41 @@ Parsed_Array_Type_Expression :: struct {
 	token:     Token, // The "array" token
 	of_token:  Token, //The "of" token
 	elem_type: Parsed_Expression, // Either Identifier or another Type Parsed_Expression. Allows for multi-arrays
+}
+
+token_from_parsed_expression :: proc(expr: Parsed_Expression) -> (result: Token) {
+	switch e in expr {
+	case ^Parsed_Literal_Expression:
+		result = e.token
+
+	case ^Parsed_String_Literal_Expression:
+		result = e.token
+
+	case ^Parsed_Array_Literal_Expression:
+		result = e.token
+
+	case ^Parsed_Unary_Expression:
+		result = e.token
+
+	case ^Parsed_Binary_Expression:
+		result = e.token
+
+	case ^Parsed_Identifier_Expression:
+		result = e.name
+
+	case ^Parsed_Index_Expression:
+		result = e.token
+
+	case ^Parsed_Dot_Expression:
+		result = e.token
+
+	case ^Parsed_Call_Expression:
+		result = e.token
+
+	case ^Parsed_Array_Type_Expression:
+		result = e.token
+	}
+	return
 }
 
 free_parsed_expression :: proc(expr: Parsed_Expression) {

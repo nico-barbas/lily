@@ -70,9 +70,7 @@ Type_Alias_Info :: struct {
 	underlying_type_id: Type_ID,
 }
 
-Generic_Type_Info :: struct {
-	spec_type_id: Type_ID,
-}
+Generic_Type_Info :: []Type_Info
 
 RETURN_TYPE_INFO_LOC :: 0
 
@@ -190,10 +188,17 @@ type_equal :: proc(c: ^Checker, t0, t1: Type_Info) -> (result: bool) {
 		if t0.type_kind == t1.type_kind {
 			#partial switch t0.type_kind {
 			case .Generic_Type:
-				t0_generic_id := t0.type_id_data.(Generic_Type_Info)
-				t1_generic_id := t1.type_id_data.(Generic_Type_Info)
-				if t0_generic_id.spec_type_id == t1_generic_id.spec_type_id {
-					result = true
+				t0_generic_info := t0.type_id_data.(Generic_Type_Info)
+				t1_generic_info := t1.type_id_data.(Generic_Type_Info)
+				if len(t0_generic_info) == len(t0_generic_info) {
+					for spec_info, i in t0_generic_info {
+						if !type_equal(c, spec_info, t1_generic_info[i]) {
+							return false
+						}
+						return true
+					}
+				} else {
+					return false
 				}
 			case:
 				result = true
@@ -212,8 +217,10 @@ type_equal :: proc(c: ^Checker, t0, t1: Type_Info) -> (result: bool) {
 			other = t0
 		}
 		if is_untyped_type(other) {
-			parent_type := get_type_from_id(c, alias.underlying_type_id)
-			result = type_equal(c, parent_type, other)
+			assert(false)
+			// FIXME: Please do fix me
+			// parent_type := get_type_from_id(c, alias.underlying_type_id)
+			// result = type_equal(c, parent_type, other)
 		}
 
 	} else if is_untyped_type(t0) || is_untyped_type(t1) {

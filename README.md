@@ -87,6 +87,7 @@ var addResult = add(5, 10)
     - [ ] Checking
     - [ ] Compiling
 - [ ] Dot chaining
+- [ ] Immutable function parameters
 - [ ] Minimal standard library
 - [ ] Full test suite
     - [x] Lexer
