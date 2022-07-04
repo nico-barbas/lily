@@ -98,3 +98,18 @@ var addResult = add(5, 10)
 
 ## Bugs:
 - Invalid symbol definition when function parameter is a class
+
+## Dot operator rules:
+
+- **`Right-handside Dot expression`** => | `Left Dot Operand` | . | `Selector Dot Operand` |
+    - `Left Dot Operand` =>  | `Module Name` | `Class Name` | `Variable Name` | `Call Expression` | `Index Expression` |
+    - `Selector Dot Operand` => `Class Name` | `Variable Name` | `Call Expression` | `Chained Selector` |
+    - `Chained Selector` => | `Chained Selector` | . | `Call Expression` | `Field Name` | `Index Expression` |
+    - `Chained Selector` => `Call Expression` | `Field Name` | `Index Expression` |
+
+
+- **`Left-handside Dot expression`** => | `Left Dot Operand` | . | `Selector Dot Operand` |
+    - `Left Dot Operand` =>  | `Module Name` | `Variable Name` | `Call Expression` | `Index Expression` |
+    - `Selector Dot Operand` => `Variable Name` | `Chained Selector` |
+    - `Chained Selector` => | `Chained Selector` | . | `Call Expression` | `Field Name` | `Index Expression` |
+    - `Chained Selector` => `Call Expression` | `Field Name` | `Index Expression` |

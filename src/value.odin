@@ -1,5 +1,7 @@
 package lily
 
+import "core:strings"
+
 // TODO: remove the hard-coded length of parameters and arguments in functions
 
 // Values are runtime representation of different object kinds.
@@ -22,6 +24,22 @@ Value :: struct {
 		bool,
 		^Object,
 	},
+}
+
+value_equal :: proc(v1, v2: Value) -> bool {
+	if v1.kind == v2.kind {
+		switch v1.kind {
+		case .Nil:
+			return true
+		case .Number:
+			return v1.data.(f64) == v2.data.(f64)
+		case .Boolean:
+			return v1.data.(bool) == v2.data.(bool)
+		case .Object_Ref:
+			return false
+		}
+	}
+	return false
 }
 
 Object_Kind :: enum {
@@ -58,18 +76,21 @@ Fn_Object :: struct {
 
 Class_Object :: struct {
 	using base: Object,
-	fields:     []Class_Field,
+	fields:     []Value,
 	vtable:     ^Class_Vtable,
-}
-
-Class_Field :: struct {
-	name:  string,
-	value: Value,
 }
 
 Class_Vtable :: struct {
 	constructors: []Fn_Object,
 	methods:      []Fn_Object,
+}
+
+new_string_object :: proc(from := "") -> Value {
+	str_object := new_clone(String_Object{base = Object{kind = .String}, data = make([]rune, len(from))})
+	for r, i in from {
+		str_object.data[i] = r
+	}
+	return Value{kind = .Object_Ref, data = cast(^Object)str_object}
 }
 
 free_object :: proc(object: ^Object) {
@@ -83,7 +104,7 @@ free_object :: proc(object: ^Object) {
 		class_object := cast(^Class_Object)object
 		// FIXME: Need to recursively delete fields
 		for field in class_object.fields {
-			if field_object, ok := field.value.data.(^Object); ok {
+			if field_object, ok := field.data.(^Object); ok {
 				free_object(field_object)
 			}
 		}

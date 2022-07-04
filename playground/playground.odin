@@ -50,7 +50,8 @@ playground :: proc() {using lily
 			end
 		end
 
-	    var a = Foo.new(10)
+	    var a = Foo.new(1)
+		var b = a.x
 	`
 	// input := `
 	// 	fn add(a: number): number
@@ -69,7 +70,7 @@ playground :: proc() {using lily
 
 	for module in checked_modules {
 		print_symbol_table(&checker, module)
-		// print_checked_ast(module, &checker)
+		print_checked_ast(module, &checker)
 	}
 
 	// compiler := new_compiler()

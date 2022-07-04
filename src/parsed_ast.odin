@@ -222,7 +222,8 @@ Parsed_Node :: union {
 }
 
 Parsed_Expression_Statement :: struct {
-	expr: Parsed_Expression,
+	token: Token,
+	expr:  Parsed_Expression,
 }
 
 Parsed_Block_Statement :: struct {
