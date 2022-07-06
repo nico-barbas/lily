@@ -1,7 +1,5 @@
 package lily
 
-import "core:strings"
-
 // TODO: remove the hard-coded length of parameters and arguments in functions
 
 // Values are runtime representation of different object kinds.

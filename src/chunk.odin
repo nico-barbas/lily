@@ -3,8 +3,8 @@ package lily
 Op_Code :: enum byte {
 	Op_Push,
 	Op_Pop,
-	Op_Module,
 	Op_Const,
+	Op_Module,
 	Op_Prototype,
 
 	// Operation related Op_Codes
@@ -49,6 +49,49 @@ Op_Code :: enum byte {
 	Op_Make_Array,
 	Op_Make_Instance,
 	Op_Append_Array,
+}
+
+instr_length := map[Op_Code]int {
+	.Op_Push          = 1,
+	.Op_Pop           = 1,
+	.Op_Const         = 3,
+	.Op_Module        = 3,
+	.Op_Prototype     = 3,
+	.Op_Inc           = 1,
+	.Op_Dec           = 1,
+	.Op_Neg           = 1,
+	.Op_Not           = 1,
+	.Op_Add           = 1,
+	.Op_Mul           = 1,
+	.Op_Div           = 1,
+	.Op_Rem           = 1,
+	.Op_And           = 1,
+	.Op_Or            = 1,
+	.Op_Eq            = 1,
+	.Op_Greater       = 1,
+	.Op_Greater_Eq    = 1,
+	.Op_Lesser        = 1,
+	.Op_Lesser_Eq     = 1,
+	.Op_Begin         = 1,
+	.Op_End           = 1,
+	.Op_Call          = 3,
+	.Op_Call_Method   = 3,
+	.Op_Call_Constr   = 3,
+	.Op_Return        = 3,
+	.Op_Jump          = 3,
+	.Op_Cond_Jump     = 3,
+	.Op_Get           = 3,
+	.Op_Get_Global    = 3,
+	.Op_Get_Elem      = 1,
+	.Op_Get_Field     = 3,
+	.Op_Bind          = 5,
+	.Op_Set           = 3,
+	.Op_Set_Global    = 3,
+	.Op_Set_Elem      = 1,
+	.Op_Set_Field     = 3,
+	.Op_Make_Instance = 1,
+	.Op_Make_Array    = 1,
+	.Op_Append_Array  = 1,
 }
 
 Const_Pool :: distinct [dynamic]Value
@@ -99,11 +142,13 @@ Variable :: struct {
 }
 
 make_chunk :: proc(with_consts: bool, var_count: int) -> Chunk {
-	return Chunk{
-		bytecode = make([dynamic]byte, CHUNK_INIT_CAP),
+	c := Chunk {
+		bytecode  = make([dynamic]byte),
 		constants = make(Const_Pool) if with_consts else nil,
 		variables = make([]Variable, var_count),
 	}
+	reserve(&c.bytecode, CHUNK_INIT_CAP)
+	return c
 }
 
 push_byte :: proc(c: ^Chunk, b: byte) {

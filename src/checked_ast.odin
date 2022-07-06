@@ -255,7 +255,7 @@ Checked_Call_Expression :: struct {
 }
 
 Accessor_Kind :: enum {
-	Invalid,
+	None,
 	Module_Access,
 	Class_Access,
 	Instance_Access,

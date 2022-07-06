@@ -61,16 +61,22 @@ playground :: proc() {using lily
 
 	checker := Checker{}
 	init_checker(&checker)
-	checked_modules, err := build_checked_program(&checker, "main", input)
+	checked, err := build_checked_program(&checker, "main", input)
 	assert(err == nil, fmt.tprint(err))
 
 	// for module in checker.parsed_results {
 	// 	print_parsed_ast(module)
 	// }
 
-	for module in checked_modules {
+	for module in checked.modules {
 		print_symbol_table(&checker, module)
 		print_checked_ast(module, &checker)
+	}
+
+	compiled_program := make_compiled_program(checked)
+	for i in 0 ..< len(compiled_program) {
+		compile_module(checked, compiled_program, i)
+		print_compiled_module(compiled_program[i])
 	}
 
 	// compiler := new_compiler()

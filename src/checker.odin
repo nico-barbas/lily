@@ -113,7 +113,7 @@ gen_type_id :: proc(c: ^Checker) -> Type_ID {
 
 
 build_checked_program :: proc(c: ^Checker, module_name: string, entry_point: string) -> (
-	result: []^Checked_Module,
+	result: Checked_Output,
 	err: Error,
 ) {
 	c.import_names_lookup = make(map[string]int)
@@ -147,7 +147,10 @@ build_checked_program :: proc(c: ^Checker, module_name: string, entry_point: str
 		build_checked_ast(c, index) or_return
 	}
 
-	result = c.modules
+	result = Checked_Output {
+		import_names = c.import_names_lookup,
+		modules      = c.modules,
+	}
 	return
 }
 
