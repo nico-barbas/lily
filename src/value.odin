@@ -91,6 +91,16 @@ new_string_object :: proc(from := "") -> Value {
 	return Value{kind = .Object_Ref, data = cast(^Object)str_object}
 }
 
+new_array_object :: proc() -> Value {
+	return Value{
+		kind = .Object_Ref,
+		data = cast(^Object)new_clone(Array_Object{
+			base = Object{kind = .Array},
+			data = make([dynamic]Value),
+		})
+	}
+}
+
 free_object :: proc(object: ^Object) {
 	switch object.kind {
 	case .String:

@@ -23,17 +23,13 @@ Compiled_Module :: struct {
 	class_fields:       []map[string]i16,
 	class_constructors: []map[string]i16,
 	class_methods:      []map[string]i16,
-	protypes:           []Class_Prototype,
+	protypes:           []Class_Object,
 	vtables:            []Class_Vtable,
 	fn_addr:            map[string]i16,
 	functions:          []Fn_Object,
 	var_addr:           map[string]i16,
 	variables:          []Value,
 	main:               Chunk,
-}
-
-Class_Prototype :: struct {
-	field_count: int,
 }
 
 // Allocate the right amount of compiled modules.
@@ -50,7 +46,7 @@ make_compiled_program :: proc(input: Checked_Output) -> []^Compiled_Module {
 					class_fields = make([]map[string]i16, len(module.classes)),
 					class_constructors = make([]map[string]i16, len(module.classes)),
 					class_methods = make([]map[string]i16, len(module.classes)),
-					protypes = make([]Class_Prototype, len(module.classes)),
+					protypes = make([]Class_Object, len(module.classes)),
 					vtables = make([]Class_Vtable, len(module.classes)),
 					fn_addr = make(map[string]i16),
 					functions = make([]Fn_Object, len(module.functions)),
@@ -153,6 +149,7 @@ compile_module :: proc(input: Checked_Output, output: []^Compiled_Module, index:
 			defer pop_scope(c.current)
 
 			c.chunk = make_chunk(false, len(c.current.scope.var_lookup) + 1)
+			c.chunk.constants = c.output.class_consts[i]
 
 			push_op_code(&c.chunk, .Op_Make_Instance)
 			self_var_addr := add_variable(&c, "self")
@@ -175,7 +172,7 @@ compile_module :: proc(input: Checked_Output, output: []^Compiled_Module, index:
 			defer pop_scope(c.current)
 
 			c.chunk = make_chunk(false, len(c.current.scope.var_lookup) + 1)
-
+			c.chunk.constants = c.output.class_consts[i]
 
 			self_addr := add_variable(&c, "self")
 			push_double_instruction(&c.chunk, .Op_Bind, self_addr, SELF_STACK_ADDR)
@@ -189,6 +186,8 @@ compile_module :: proc(input: Checked_Output, output: []^Compiled_Module, index:
 
 			if symbol.fn_info.has_return {
 				push_simple_instruction(&c.chunk, .Op_Return, METHOD_RESULT_STACK_ADDR)
+			} else {
+				push_simple_instruction(&c.chunk, .Op_Return, -1)
 			}
 
 			vtable.methods[j] = Fn_Object {
@@ -198,8 +197,10 @@ compile_module :: proc(input: Checked_Output, output: []^Compiled_Module, index:
 			reset_compiler(&c)
 		}
 
-		c.output.protypes[i] = Class_Prototype {
-			field_count = len(n.fields),
+		c.output.protypes[i] = Class_Object {
+			base = Object{kind = .Class},
+			fields = make([]Value, len(n.fields)),
+			vtable = vtable,
 		}
 	}
 
@@ -214,14 +215,16 @@ compile_module :: proc(input: Checked_Output, output: []^Compiled_Module, index:
 
 		if symbol.fn_info.has_return {
 			result_addr := add_variable(&c, "result")
-			push_double_instruction(&c.chunk, .Op_Bind, result_addr, METHOD_RESULT_STACK_ADDR)
+			push_double_instruction(&c.chunk, .Op_Bind, result_addr, FN_RESULT_STACK_ADDR)
 		}
 
 		compile_fn_parameters(&c, n.params, 1 if symbol.fn_info.has_return else 0)
 		compile_node(&c, n.body)
 
 		if symbol.fn_info.has_return {
-			push_simple_instruction(&c.chunk, .Op_Return, METHOD_RESULT_STACK_ADDR)
+			push_simple_instruction(&c.chunk, .Op_Return, FN_RESULT_STACK_ADDR)
+		} else {
+			push_simple_instruction(&c.chunk, .Op_Return, -1)
 		}
 
 		c.output.functions[i] = Fn_Object {
