@@ -72,6 +72,7 @@ var addResult = add(5, 10)
 ```
 
 ## Status and Roadmap:
+- [ ] Memory management (either GC or RC)
 - [ ] += (and others) assignment operators
 - [x] Control flow
 - [ ] Container iterators
