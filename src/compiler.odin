@@ -84,9 +84,7 @@ make_compiled_program :: proc(input: Checked_Output) -> []^Compiled_Module {
 
 add_variable :: proc(c: ^Compiler, name: string) -> (addr: i16) {
 	addr = c.var_count
-	c.chunk.variables[addr] = Variable {
-		stack_id = -1,
-	}
+	append(&c.chunk.variables, Variable{stack_addr = -1})
 	c.chunk_variables[name] = addr
 	c.var_count += 1
 	return
@@ -148,17 +146,18 @@ compile_module :: proc(input: Checked_Output, output: []^Compiled_Module, index:
 			enter_child_scope_by_id(c.current, symbol.fn_info.scope_id)
 			defer pop_scope(c.current)
 
-			c.chunk = make_chunk(false, len(c.current.scope.var_lookup) + 1)
-			c.chunk.constants = c.output.class_consts[i]
+			c.chunk = make_chunk(false)
 
 			push_op_code(&c.chunk, .Op_Make_Instance)
+			push_simple_instruction(&c.chunk, .Op_Move, SELF_STACK_ADDR)
 			self_var_addr := add_variable(&c, "self")
-			push_simple_instruction(&c.chunk, .Op_Set, self_var_addr)
+			push_double_instruction(&c.chunk, .Op_Bind, self_var_addr, SELF_STACK_ADDR)
 
 			compile_fn_parameters(&c, constructor.params, 1)
 			compile_node(&c, constructor.body)
 			push_simple_instruction(&c.chunk, .Op_Return, SELF_STACK_ADDR)
 
+			c.chunk.constants = c.output.class_consts[i]
 			vtable.constructors[j] = Fn_Object {
 				base = Object{kind = .Fn},
 				chunk = c.chunk,
@@ -171,8 +170,7 @@ compile_module :: proc(input: Checked_Output, output: []^Compiled_Module, index:
 			enter_child_scope_by_id(c.current, symbol.fn_info.scope_id)
 			defer pop_scope(c.current)
 
-			c.chunk = make_chunk(false, len(c.current.scope.var_lookup) + 1)
-			c.chunk.constants = c.output.class_consts[i]
+			c.chunk = make_chunk(false)
 
 			self_addr := add_variable(&c, "self")
 			push_double_instruction(&c.chunk, .Op_Bind, self_addr, SELF_STACK_ADDR)
@@ -190,12 +188,14 @@ compile_module :: proc(input: Checked_Output, output: []^Compiled_Module, index:
 				push_simple_instruction(&c.chunk, .Op_Return, -1)
 			}
 
+			c.chunk.constants = c.output.class_consts[i]
 			vtable.methods[j] = Fn_Object {
 				base = Object{kind = .Fn},
 				chunk = c.chunk,
 			}
 			reset_compiler(&c)
 		}
+
 
 		c.output.protypes[i] = Class_Object {
 			base = Object{kind = .Class},
@@ -210,7 +210,7 @@ compile_module :: proc(input: Checked_Output, output: []^Compiled_Module, index:
 		enter_child_scope_by_id(c.current, symbol.fn_info.scope_id)
 		defer pop_scope(c.current)
 
-		c.chunk = make_chunk(true, len(c.current.scope.var_lookup))
+		c.chunk = make_chunk(true)
 		c.constants = &c.chunk.constants
 
 		if symbol.fn_info.has_return {
@@ -234,9 +234,12 @@ compile_module :: proc(input: Checked_Output, output: []^Compiled_Module, index:
 		reset_compiler(&c)
 	}
 
-	c.chunk = make_chunk(true, len(c.current.root.var_lookup))
+	c.chunk = make_chunk(true)
 	c.constants = &c.chunk.constants
 	for node in c.current.variables {
+		compile_node(&c, node)
+	}
+	for node in c.current.nodes {
 		compile_node(&c, node)
 	}
 	reset_compiler(&c)
@@ -277,8 +280,51 @@ compile_node :: proc(c: ^Compiler, node: Checked_Node) {
 		}
 
 	case ^Checked_If_Statement:
+		push_op_code(&c.chunk, .Op_Begin)
+		compile_expr(c, n.condition)
+		jmp_start := reserve_bytes(&c.chunk, instr_length[.Op_Cond_Jump])
+		compile_node(c, n.body)
+
+		jmp_addr := i16(len(c.chunk.bytecode))
+		c.chunk.bytecode[jmp_start] = byte(Op_Code.Op_Cond_Jump)
+		c.chunk.bytecode[jmp_start + 1] = byte(jmp_addr)
+		c.chunk.bytecode[jmp_start + 2] = byte(jmp_addr >> 8)
+		if n.next_branch != nil {
+			compile_node(c, n.next_branch)
+		}
+		push_op_code(&c.chunk, .Op_End)
 
 	case ^Checked_Range_Statement:
+		push_op_code(&c.chunk, .Op_Begin)
+		iterator_addr := add_variable(c, n.iterator.name)
+		compile_expr(c, n.low)
+		compile_expr(c, n.high)
+		push_double_instruction(&c.chunk, .Op_Bind, iterator_addr, 0)
+
+		loop_addr := i16(len(c.chunk.bytecode))
+		push_simple_instruction(&c.chunk, .Op_Get, iterator_addr)
+		push_simple_instruction(&c.chunk, .Op_Copy, 1)
+		switch n.op {
+		case .Exclusive:
+			push_op_code(&c.chunk, .Op_Lesser)
+		case .Inclusive:
+			push_op_code(&c.chunk, .Op_Lesser_Eq)
+		}
+		jmp_start := reserve_bytes(&c.chunk, instr_length[.Op_Cond_Jump])
+
+		compile_node(c, n.body)
+
+		push_simple_instruction(&c.chunk, .Op_Copy, 0)
+		push_op_code(&c.chunk, .Op_Inc)
+		push_simple_instruction(&c.chunk, .Op_Move, 0)
+		push_simple_instruction(&c.chunk, .Op_Jump, loop_addr)
+		jmp_addr := i16(len(c.chunk.bytecode))
+		c.chunk.bytecode[jmp_start] = byte(Op_Code.Op_Cond_Jump)
+		c.chunk.bytecode[jmp_start + 1] = byte(jmp_addr)
+		c.chunk.bytecode[jmp_start + 2] = byte(jmp_addr >> 8)
+
+		push_op_code(&c.chunk, .Op_End)
+
 
 	case ^Checked_Var_Declaration:
 		var_addr := add_variable(c, n.identifier.name)
@@ -362,6 +408,7 @@ compile_expr :: proc(c: ^Compiler, expr: Checked_Expression) {
 			push_simple_instruction(&c.chunk, .Op_Get, var_addr)
 
 		case:
+			fmt.println(e.symbol, c.current.name)
 			assert(false)
 		}
 
@@ -447,7 +494,8 @@ compile_dot_expr :: proc(c: ^Compiler, expr: ^Checked_Dot_Expression, lhs: bool)
 		#partial switch c.current_access {
 		case .Instance_Access:
 			op = .Op_Set_Field if lhs else .Op_Get_Field
-			field_addr := get_field_addr(c.output, c.selected_class.name, selector.symbol.name)
+			class_module := c.modules[c.selected_class.module_id]
+			field_addr := get_field_addr(class_module, c.selected_class.name, selector.symbol.name)
 			push_simple_instruction(&c.chunk, op, field_addr)
 
 		case .Module_Access:
@@ -460,7 +508,8 @@ compile_dot_expr :: proc(c: ^Compiler, expr: ^Checked_Dot_Expression, lhs: bool)
 		case .Instance_Access:
 			op = .Op_Set_Elem if lhs else .Op_Get_Elem
 			compile_expr(c, selector.index)
-			field_addr := get_field_addr(c.output, c.selected_class.name, inner_symbol.name)
+			class_module := c.modules[c.selected_class.module_id]
+			field_addr := get_field_addr(class_module, c.selected_class.name, inner_symbol.name)
 			push_simple_instruction(&c.chunk, .Op_Get_Field, field_addr)
 			push_op_code(&c.chunk, op)
 
@@ -476,7 +525,6 @@ compile_dot_expr :: proc(c: ^Compiler, expr: ^Checked_Dot_Expression, lhs: bool)
 			compile_method_call_expr(c, selector)
 
 		case .Class_Access:
-			fmt.println("boop")
 			compile_constructor_call_expr(c, selector)
 
 		case .Module_Access:
@@ -501,8 +549,15 @@ compile_method_call_expr :: proc(c: ^Compiler, expr: ^Checked_Call_Expression) {
 	for arg_expr in expr.args {
 		compile_expr(c, arg_expr)
 	}
-	method_addr := get_method_addr(c.output, c.selected_class.name, symbol.name)
+	class_module := c.modules[c.selected_class.module_id]
+	method_addr := get_method_addr(class_module, c.selected_class.name, symbol.name)
 	push_simple_instruction(&c.chunk, .Op_Call_Method, method_addr)
+	if symbol.fn_info.has_return {
+		push_op_code(&c.chunk, .Op_Push_Back)
+	} else {
+		push_op_code(&c.chunk, .Op_Pop)
+	}
+
 }
 
 compile_constructor_call_expr :: proc(c: ^Compiler, expr: ^Checked_Call_Expression) {
@@ -512,6 +567,8 @@ compile_constructor_call_expr :: proc(c: ^Compiler, expr: ^Checked_Call_Expressi
 	for arg_expr in expr.args {
 		compile_expr(c, arg_expr)
 	}
-	constructor_addr := get_constructor_addr(c.output, c.selected_class.name, symbol.name)
+	class_module := c.modules[c.selected_class.module_id]
+	constructor_addr := get_constructor_addr(class_module, c.selected_class.name, symbol.name)
 	push_simple_instruction(&c.chunk, .Op_Call_Constr, constructor_addr)
+	push_op_code(&c.chunk, .Op_Push_Back)
 }

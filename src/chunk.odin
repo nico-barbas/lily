@@ -1,8 +1,12 @@
 package lily
 
 Op_Code :: enum byte {
+	Op_None,
 	Op_Push,
 	Op_Pop,
+	Op_Push_Back,
+	Op_Move,
+	Op_Copy,
 	Op_Const,
 	Op_Module,
 	Op_Prototype,
@@ -52,8 +56,12 @@ Op_Code :: enum byte {
 }
 
 instr_length := map[Op_Code]int {
+	.Op_None          = 1,
 	.Op_Push          = 1,
 	.Op_Pop           = 1,
+	.Op_Push_Back     = 1,
+	.Op_Move          = 3,
+	.Op_Copy          = 3,
 	.Op_Const         = 3,
 	.Op_Module        = 3,
 	.Op_Prototype     = 3,
@@ -134,18 +142,18 @@ FN_RESULT_STACK_ADDR :: 0
 Chunk :: struct {
 	bytecode:  [dynamic]byte,
 	constants: Const_Pool,
-	variables: []Variable,
+	variables: [dynamic]Variable,
 }
 
 Variable :: struct {
-	stack_id: int,
+	stack_addr: int,
 }
 
-make_chunk :: proc(with_consts: bool, var_count: int) -> Chunk {
+make_chunk :: proc(with_consts: bool) -> Chunk {
 	c := Chunk {
 		bytecode  = make([dynamic]byte),
 		constants = make(Const_Pool) if with_consts else nil,
-		variables = make([]Variable, var_count),
+		variables = make([dynamic]Variable),
 	}
 	reserve(&c.bytecode, CHUNK_INIT_CAP)
 	return c
@@ -153,6 +161,14 @@ make_chunk :: proc(with_consts: bool, var_count: int) -> Chunk {
 
 push_byte :: proc(c: ^Chunk, b: byte) {
 	append(&c.bytecode, b)
+}
+
+reserve_bytes :: proc(c: ^Chunk, length: int) -> (start: int) {
+	start = len(c.bytecode)
+	for _ in 0 ..< length {
+		push_byte(c, 0)
+	}
+	return start
 }
 
 push_op_code :: proc(c: ^Chunk, op: Op_Code) {

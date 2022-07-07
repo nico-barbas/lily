@@ -94,10 +94,7 @@ new_string_object :: proc(from := "") -> Value {
 new_array_object :: proc() -> Value {
 	return Value{
 		kind = .Object_Ref,
-		data = cast(^Object)new_clone(Array_Object{
-			base = Object{kind = .Array},
-			data = make([dynamic]Value),
-		})
+		data = cast(^Object)new_clone(Array_Object{base = Object{kind = .Array}, data = make([dynamic]Value)}),
 	}
 }
 

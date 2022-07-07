@@ -14,6 +14,11 @@ Checker :: struct {
 	builtin_symbols:     [5]Symbol,
 	types:               [dynamic]Type_ID,
 	type_id_ptr:         Type_ID,
+
+	// Temp data for checking dot expressions
+	chain_depth:         int,
+	initial_module:      int,
+	initial_scope:       ^Semantic_Scope,
 }
 
 UNTYPED_SYMBOL :: 0
@@ -74,7 +79,7 @@ contain_symbol :: proc(c: ^Checker, token: Token) -> bool {
 	return false
 }
 
-get_symbol :: proc(c: ^Checker, token: Token) -> (result: ^Symbol, err: Error) {
+get_symbol :: proc(c: ^Checker, token: Token, loc := #caller_location) -> (result: ^Symbol, err: Error) {
 	builtins: for symbol, i in c.builtin_symbols {
 		if symbol.name == token.text {
 			result = &c.builtin_symbols[i]
@@ -94,11 +99,15 @@ get_symbol :: proc(c: ^Checker, token: Token) -> (result: ^Symbol, err: Error) {
 	}
 
 	// The symbol wasn't found
-	err = Semantic_Error {
-		kind    = .Unknown_Symbol,
-		token   = token,
-		details = fmt.tprintf("Unknown symbol: %s", token.text),
-	}
+	err =
+		format_semantic_err(
+			Semantic_Error{
+				kind = .Unknown_Symbol,
+				token = token,
+				details = fmt.tprintf("Unknown symbol: %s", token.text),
+			},
+			loc,
+		)
 	return
 }
 
@@ -394,38 +403,56 @@ check_node_symbols :: proc(c: ^Checker, node: Parsed_Node) -> (err: Error) {
 		}
 
 	case ^Parsed_Assignment_Statement:
-		left_symbol := symbol_from_expr(c, n.left) or_return
+		left_symbol: ^Symbol
 		right_symbol := symbol_from_expr(c, n.right) or_return
 
-		if left_symbol.kind != .Var_Symbol {
-			err = Semantic_Error {
-				kind    = .Invalid_Symbol,
-				token   = n.token,
-				details = fmt.tprintf("Cannot assign to %s", left_symbol.name),
+		#partial switch left in n.left {
+		case ^Parsed_Identifier_Expression, ^Parsed_Dot_Expression:
+			left_symbol = symbol_from_expr(c, left) or_return
+			if left_symbol.kind != .Var_Symbol {
+				err =
+					format_semantic_err(
+						Semantic_Error{
+							kind = .Invalid_Symbol,
+							token = n.token,
+							details = fmt.tprintf("Cannot assign to %s", left_symbol.name),
+						},
+					)
+				return
 			}
-			return
+		case ^Parsed_Index_Expression:
+			left_symbol = symbol_from_expr(c, left) or_return
 		}
+
 		if right_symbol.kind == .Class_Symbol ||
 		   right_symbol.kind == .Module_Symbol ||
 		   right_symbol.kind == .Alias_Symbol {
-			err = Semantic_Error {
-				kind    = .Invalid_Symbol,
-				token   = n.token,
-				details = fmt.tprintf("%s is not a value symbol", right_symbol.name),
-			}
+			err =
+				format_semantic_err(
+					Semantic_Error{
+						kind = .Invalid_Symbol,
+						token = n.token,
+						details = fmt.tprintf("%s is not a value symbol", right_symbol.name),
+					},
+				)
 			return
 		}
+
+
 		if !types_equal(c, left_symbol, right_symbol) {
-			err = Semantic_Error {
-				kind    = .Mismatched_Types,
-				token   = n.token,
-				details = fmt.tprintf(
-					"Cannot assign %s to variable %s of type %s",
-					right_symbol.name,
-					left_symbol.name,
-					left_symbol.var_info.symbol.name,
-				),
-			}
+			err =
+				format_semantic_err(
+					Semantic_Error{
+						kind = .Mismatched_Types,
+						token = n.token,
+						details = fmt.tprintf(
+							"Cannot assign %s to variable %s of type %s",
+							right_symbol.name,
+							left_symbol.name,
+							left_symbol.var_info.symbol.name,
+						),
+					},
+				)
 			return
 		}
 
@@ -468,27 +495,33 @@ check_node_symbols :: proc(c: ^Checker, node: Parsed_Node) -> (err: Error) {
 			if !types_equal(c, type_symbol, expr_symbol) {
 				type_symbol = expr_symbol
 			} else {
-				err = Semantic_Error {
-					kind    = .Mismatched_Types,
-					token   = n.identifier,
-					details = fmt.tprintf(
-						"Cannot assign %s to variable %s of type %s",
-						expr_symbol.name,
-						n.identifier.text,
-						type_symbol.name,
-					),
-				}
+				err =
+					format_semantic_err(
+						Semantic_Error{
+							kind = .Mismatched_Types,
+							token = n.identifier,
+							details = fmt.tprintf(
+								"Cannot assign %s to variable %s of type %s",
+								expr_symbol.name,
+								n.identifier.text,
+								type_symbol.name,
+							),
+						},
+					)
 				return
 			}
 		}
 
 		#partial switch type_symbol.kind {
 		case .Module_Symbol:
-			err = Semantic_Error {
-				kind    = .Invalid_Symbol,
-				token   = n.token,
-				details = fmt.tprintf("%s is not a value symbol", type_symbol.name),
-			}
+			err =
+				format_semantic_err(
+					Semantic_Error{
+						kind = .Invalid_Symbol,
+						token = n.token,
+						details = fmt.tprintf("%s is not a value symbol", type_symbol.name),
+					},
+				)
 			return
 
 		case .Var_Symbol:
@@ -618,40 +651,52 @@ symbol_from_expr :: proc(c: ^Checker, expr: Parsed_Expression) -> (result: ^Symb
 		if types_equal(c, left_symbol, right_symbol) {
 			result = left_symbol
 		} else {
-			err = Semantic_Error {
-				kind    = .Mismatched_Types,
-				token   = e.token,
-				details = "Cannot perform binary operation on different types",
-			}
+			err =
+				format_semantic_err(
+					Semantic_Error{
+						kind = .Mismatched_Types,
+						token = e.token,
+						details = "Cannot perform binary operation on different types",
+					},
+				)
 		}
 
 	case ^Parsed_Identifier_Expression:
 		result, err = get_symbol(c, e.name)
 		if result.kind == .Class_Symbol {
-			err = Semantic_Error {
-				kind    = .Invalid_Symbol,
-				token   = e.name,
-				details = fmt.tprintf("%s is a class and not a value", result.name),
-			}
+			err =
+				format_semantic_err(
+					Semantic_Error{
+						kind = .Invalid_Symbol,
+						token = e.name,
+						details = fmt.tprintf("%s is a class and not a value", result.name),
+					},
+				)
 		}
 
 	case ^Parsed_Index_Expression:
 		left_symbol := symbol_from_expr(c, e.left) or_return
 		if left_symbol.kind != .Var_Symbol {
-			err = Semantic_Error {
-				kind    = .Invalid_Symbol,
-				token   = e.token,
-				details = fmt.tprintf("Cannot index symbol %s", left_symbol.name),
-			}
+			err =
+				format_semantic_err(
+					Semantic_Error{
+						kind = .Invalid_Symbol,
+						token = e.token,
+						details = fmt.tprintf("Cannot index symbol %s", left_symbol.name),
+					},
+				)
 			return
 		}
 		inner_symbol := left_symbol.var_info.symbol
-		if inner_symbol.kind == .Name || inner_symbol.generic_info.is_generic {
-			err = Semantic_Error {
-				kind    = .Invalid_Symbol,
-				token   = e.token,
-				details = fmt.tprintf("Cannot index symbol %s", left_symbol.name),
-			}
+		if !(inner_symbol.kind == .Name || inner_symbol.generic_info.is_generic) {
+			err =
+				format_semantic_err(
+					Semantic_Error{
+						kind = .Invalid_Symbol,
+						token = e.token,
+						details = fmt.tprintf("Cannot index symbol %s", left_symbol.name),
+					},
+				)
 			return
 		}
 		result = inner_symbol.generic_info.symbol
@@ -692,49 +737,64 @@ symbol_from_type_expr :: proc(c: ^Checker, expr: Parsed_Expression) -> (result: 
 	case ^Parsed_Dot_Expression:
 		left_symbol := symbol_from_type_expr(c, e.left) or_return
 		if left_symbol.kind != .Module_Symbol {
-			err = Semantic_Error {
-				kind    = .Invalid_Symbol,
-				token   = e.token,
-				details = fmt.tprintf("Invalid Dot type expression: %s", left_symbol.name),
-			}
+			err =
+				format_semantic_err(
+					Semantic_Error{
+						kind = .Invalid_Symbol,
+						token = e.token,
+						details = fmt.tprintf("Invalid Dot type expression: %s", left_symbol.name),
+					},
+				)
 			return
 		}
 		module_root := c.modules[left_symbol.module_info.ref_module_id].root
 		if selector, ok := e.selector.(^Parsed_Identifier_Expression); ok {
 			inner_symbol, inner_err := get_scoped_symbol(module_root, selector.name)
 			if inner_err != nil {
-				err = Semantic_Error {
-					kind    = .Unknown_Symbol,
-					token   = selector.name,
-					details = fmt.tprintf("Unknown selector symbol: %s", selector.name.text),
-				}
+				err =
+					format_semantic_err(
+						Semantic_Error{
+							kind = .Unknown_Symbol,
+							token = selector.name,
+							details = fmt.tprintf("Unknown selector symbol: %s", selector.name.text),
+						},
+					)
 				return
 			}
 			if !is_type_symbol(inner_symbol) {
-				err = Semantic_Error {
-					kind    = .Invalid_Symbol,
-					token   = selector.name,
-					details = fmt.tprintf("Invalid Dot type expression: %s is not a Type", selector.name.text),
-				}
+				err =
+					format_semantic_err(
+						Semantic_Error{
+							kind = .Invalid_Symbol,
+							token = selector.name,
+							details = fmt.tprintf("Invalid Dot type expression: %s is not a Type", selector.name.text),
+						},
+					)
 			}
 			result = inner_symbol
 
 		} else {
-			err = Semantic_Error {
-				kind    = .Invalid_Symbol,
-				token   = e.token,
-				details = fmt.tprintf("Invalid Dot type expression: %s", left_symbol.name),
-			}
+			err =
+				format_semantic_err(
+					Semantic_Error{
+						kind = .Invalid_Symbol,
+						token = e.token,
+						details = fmt.tprintf("Invalid Dot type expression: %s", left_symbol.name),
+					},
+				)
 			return
 		}
 
 	case:
 		expr_token := token_from_parsed_expression(e)
-		err = Semantic_Error {
-			kind    = .Invalid_Symbol,
-			token   = expr_token,
-			details = fmt.tprintf("%s is not a valid type expression", expr_token.text),
-		}
+		err =
+			format_semantic_err(
+				Semantic_Error{
+					kind = .Invalid_Symbol,
+					token = expr_token,
+					details = fmt.tprintf("%s is not a valid type expression", expr_token.text),
+				},
+			)
 	}
 	return
 }
@@ -765,11 +825,14 @@ symbol_from_dot_expr :: proc(c: ^Checker, expr: Parsed_Expression) -> (result: ^
 			symbol = fn_symbol.fn_info.return_symbol
 		case:
 			expr_token := token_from_parsed_expression(expr)
-			err = Semantic_Error {
-				kind    = .Invalid_Dot_Operand,
-				token   = expr_token,
-				details = fmt.tprintf("Invalid left dot operand: %s", expr_token.text),
-			}
+			err =
+				format_semantic_err(
+					Semantic_Error{
+						kind = .Invalid_Dot_Operand,
+						token = expr_token,
+						details = fmt.tprintf("Invalid left dot operand: %s", expr_token.text),
+					},
+				)
 		}
 		return
 	}
@@ -790,11 +853,14 @@ symbol_from_dot_expr :: proc(c: ^Checker, expr: Parsed_Expression) -> (result: ^
 				check_dot_expr_rules(dot_expr.token, left_symbol, fn_symbol, true) or_return
 				result = fn_symbol.fn_info.return_symbol
 			} else {
-				err = Semantic_Error {
-					kind    = .Invalid_Dot_Operand,
-					token   = dot_expr.token,
-					details = "Function literal are not a valid dot operand",
-				}
+				err =
+					format_semantic_err(
+						Semantic_Error{
+							kind = .Invalid_Dot_Operand,
+							token = dot_expr.token,
+							details = "Function literal are not a valid dot operand",
+						},
+					)
 				return
 			}
 			break chain
@@ -816,14 +882,17 @@ scope_from_dot_operand_symbol :: proc(c: ^Checker, symbol: ^Symbol, token: Token
 	#partial switch symbol.kind {
 	case .Alias_Symbol:
 		if symbol.alias_info.symbol.kind != .Class_Symbol {
-			err = Semantic_Error {
-				kind    = .Invalid_Dot_Operand,
-				token   = token,
-				details = fmt.tprintf(
-					"Invalid Dot Expression operand: Type alias %s does not refer to an addressable type",
-					symbol.name,
-				),
-			}
+			err =
+				format_semantic_err(
+					Semantic_Error{
+						kind = .Invalid_Dot_Operand,
+						token = token,
+						details = fmt.tprintf(
+							"Invalid Dot Expression operand: Type alias %s does not refer to an addressable type",
+							symbol.name,
+						),
+					},
+				)
 			return
 		}
 		result = scope_from_dot_operand_symbol(c, symbol.alias_info.symbol, token) or_return
@@ -842,26 +911,32 @@ scope_from_dot_operand_symbol :: proc(c: ^Checker, symbol: ^Symbol, token: Token
 	case .Fn_Symbol:
 		// get the return symbol and check if ref
 		if !symbol.fn_info.has_return {
-			err = Semantic_Error {
-				kind    = .Invalid_Dot_Operand,
-				token   = token,
-				details = fmt.tprintf(
-					"Invalid Dot Expression operand: function %s does not return an addressable symbol",
-					symbol.name,
-				),
-			}
+			err =
+				format_semantic_err(
+					Semantic_Error{
+						kind = .Invalid_Dot_Operand,
+						token = token,
+						details = fmt.tprintf(
+							"Invalid Dot Expression operand: function %s does not return an addressable symbol",
+							symbol.name,
+						),
+					},
+				)
 			return
 		}
 		return_symbol := symbol.fn_info.return_symbol
 		if return_symbol.kind != .Class_Symbol {
-			err = Semantic_Error {
-				kind    = .Invalid_Dot_Operand,
-				token   = token,
-				details = fmt.tprintf(
-					"Invalid Dot Expression operand: function %s does not return an addressable symbol",
-					symbol.name,
-				),
-			}
+			err =
+				format_semantic_err(
+					Semantic_Error{
+						kind = .Invalid_Dot_Operand,
+						token = token,
+						details = fmt.tprintf(
+							"Invalid Dot Expression operand: function %s does not return an addressable symbol",
+							symbol.name,
+						),
+					},
+				)
 			return
 		}
 
@@ -870,46 +945,62 @@ scope_from_dot_operand_symbol :: proc(c: ^Checker, symbol: ^Symbol, token: Token
 	case .Var_Symbol:
 		// get the var symbol and check if ref
 		if !is_ref_symbol(symbol.var_info.symbol) {
-			err = Semantic_Error {
-				kind    = .Invalid_Dot_Operand,
-				token   = token,
-				details = fmt.tprintf("Invalid Dot Expression operand: %s is not addressable", symbol.name),
-			}
+			err =
+				format_semantic_err(
+					Semantic_Error{
+						kind = .Invalid_Dot_Operand,
+						token = token,
+						details = fmt.tprintf("Invalid Dot Expression operand: %s is not addressable", symbol.name),
+					},
+				)
 			return
 		}
 		result = scope_from_dot_operand_symbol(c, symbol.var_info.symbol, token) or_return
 
 	case:
-		err = Semantic_Error {
-			kind    = .Invalid_Dot_Operand,
-			token   = token,
-			details = fmt.tprintf(
-				"Invalid Dot Expression operand: %s does not refer to an addressable symbol",
-				symbol.name,
-			),
-		}
+		err =
+			format_semantic_err(
+				Semantic_Error{
+					kind = .Invalid_Dot_Operand,
+					token = token,
+					details = fmt.tprintf(
+						"Invalid Dot Expression operand: %s does not refer to an addressable symbol",
+						symbol.name,
+					),
+				},
+			)
 	}
 
 	return
 }
 
+// FIXME: Don't allocate errors if nothing is triggered
 check_dot_expr_rules :: proc(token: Token, left, selector: ^Symbol, is_leaf: bool) -> (err: Error) {
-	invalid_left := Semantic_Error {
-		kind    = .Invalid_Dot_Operand,
-		token   = token,
-		details = fmt.tprintf("%s is not a valid dot operand", left.name),
-	}
-	invalid_selector := Semantic_Error {
-		kind    = .Invalid_Dot_Operand,
-		token   = token,
-		details = fmt.tprintf("%s is not a valid selector", selector.name),
-	}
+	invalid_left :=
+		format_semantic_err(
+			Semantic_Error{
+				kind = .Invalid_Dot_Operand,
+				token = token,
+				details = fmt.tprintf("%s is not a valid dot operand", left.name),
+			},
+		)
+	invalid_selector :=
+		format_semantic_err(
+			Semantic_Error{
+				kind = .Invalid_Dot_Operand,
+				token = token,
+				details = fmt.tprintf("%s is not a valid selector", selector.name),
+			},
+		)
 	if is_leaf && selector.kind == .Class_Symbol {
-		err = Semantic_Error {
-			kind    = .Invalid_Dot_Operand,
-			token   = token,
-			details = fmt.tprintf("%s is a class and not a value", selector.name),
-		}
+		err =
+			format_semantic_err(
+				Semantic_Error{
+					kind = .Invalid_Dot_Operand,
+					token = token,
+					details = fmt.tprintf("%s is a class and not a value", selector.name),
+				},
+			)
 	}
 
 	#partial switch left.kind {
@@ -919,18 +1010,24 @@ check_dot_expr_rules :: proc(token: Token, left, selector: ^Symbol, is_leaf: boo
 		#partial switch selector.kind {
 		case .Fn_Symbol:
 			if !selector.fn_info.constructor {
-				err = Semantic_Error {
-					kind    = .Invalid_Dot_Operand,
-					token   = token,
-					details = fmt.tprintf("Cannot call method %s. %s is a class", selector.name, left.name),
-				}
+				err =
+					format_semantic_err(
+						Semantic_Error{
+							kind = .Invalid_Dot_Operand,
+							token = token,
+							details = fmt.tprintf("Cannot call method %s. %s is a class", selector.name, left.name),
+						},
+					)
 			}
 		case .Var_Symbol:
-			err = Semantic_Error {
-				kind    = .Invalid_Dot_Operand,
-				token   = token,
-				details = fmt.tprintf("Cannot access fields %s. %s is a class", selector.name, left.name),
-			}
+			err =
+				format_semantic_err(
+					Semantic_Error{
+						kind = .Invalid_Dot_Operand,
+						token = token,
+						details = fmt.tprintf("Cannot access fields %s. %s is a class", selector.name, left.name),
+					},
+				)
 		case:
 			err = invalid_selector
 		}
@@ -938,21 +1035,27 @@ check_dot_expr_rules :: proc(token: Token, left, selector: ^Symbol, is_leaf: boo
 		err = check_dot_expr_rules(token, left.fn_info.return_symbol, selector, is_leaf)
 	case .Module_Symbol:
 		if selector.kind == .Module_Symbol {
-			err = Semantic_Error {
-				kind    = .Invalid_Dot_Operand,
-				token   = token,
-				details = "Cannot access a module symbol from another module symbol",
-			}
+			err =
+				format_semantic_err(
+					Semantic_Error{
+						kind = .Invalid_Dot_Operand,
+						token = token,
+						details = "Cannot access a module symbol from another module symbol",
+					},
+				)
 		}
 	case .Var_Symbol:
 		#partial switch selector.kind {
 		case .Fn_Symbol:
 			if selector.fn_info.constructor {
-				err = Semantic_Error {
-					kind    = .Invalid_Dot_Operand,
-					token   = token,
-					details = fmt.tprintf("Cannot call constructor %s. %s is an instance", selector.name, left.name),
-				}
+				err =
+					format_semantic_err(
+						Semantic_Error{
+							kind = .Invalid_Dot_Operand,
+							token = token,
+							details = fmt.tprintf("Cannot call constructor %s. %s is an instance", selector.name, left.name),
+						},
+					)
 			}
 		case .Var_Symbol:
 		case:
@@ -1169,6 +1272,7 @@ build_checked_expr :: proc(c: ^Checker, expr: Parsed_Expression) -> (
 	case ^Parsed_Index_Expression:
 		index_expr := new_clone(Checked_Index_Expression{token = e.token})
 		index_expr.left = build_checked_expr(c, e.left) or_return
+		index_expr.index = build_checked_expr(c, e.index) or_return
 		left_symbol := symbol_from_expr(c, e.left) or_return
 		switch left_symbol.type_id {
 		case ARRAY_ID:
@@ -1178,12 +1282,16 @@ build_checked_expr :: proc(c: ^Checker, expr: Parsed_Expression) -> (
 		result = index_expr
 
 	case ^Parsed_Dot_Expression:
+		if c.chain_depth == 0 {
+			c.initial_module = c.current.id
+			c.initial_scope = c.current.scope
+		}
+		c.chain_depth += 1
+
 		dot_expr := new_clone(Checked_Dot_Expression{token = e.token})
 		dot_expr.left = build_checked_expr(c, e.left) or_return
 		left_symbol := checked_expr_symbol(dot_expr.left)
 
-		previous_module := c.current.id
-		previous_scope := c.current.scope
 		#partial switch left_symbol.kind {
 		case .Alias_Symbol:
 			assert(false)
@@ -1192,22 +1300,63 @@ build_checked_expr :: proc(c: ^Checker, expr: Parsed_Expression) -> (
 		case .Fn_Symbol:
 			return_symbol := left_symbol.fn_info.return_symbol
 			c.current = c.modules[return_symbol.module_id]
-			enter_child_scope_by_id(c.current, return_symbol.scope_id) or_return
+			enter_class_scope(c.current, Token{text = return_symbol.name}) or_return
 		case .Var_Symbol:
 			var_symbol := left_symbol.var_info.symbol
 			c.current = c.modules[var_symbol.module_id]
 			enter_class_scope(c.current, Token{text = var_symbol.name}) or_return
 
 		case .Module_Symbol:
-		// c.current = c.modules[left_symbol.module_info.ref_module_id]
+			c.current = c.modules[left_symbol.module_info.ref_module_id]
 
 		case:
 			assert(false)
 		}
-		dot_expr.selector = build_checked_expr(c, e.selector) or_return
 
-		c.current = c.modules[previous_module]
-		c.current.scope = previous_scope
+
+		#partial switch selector in e.selector {
+		case ^Parsed_Identifier_Expression:
+			dot_expr.selector = build_checked_expr(c, e.selector) or_return
+			c.chain_depth = 0
+			c.current = c.modules[c.initial_module]
+			c.current.scope = c.initial_scope
+
+		case ^Parsed_Index_Expression:
+			index_expr := new_clone(Checked_Index_Expression{token = selector.token})
+			index_expr.left = build_checked_expr(c, selector.left) or_return
+			left_symbol := symbol_from_expr(c, selector.left) or_return
+			switch left_symbol.type_id {
+			case ARRAY_ID:
+				index_expr.kind = .Array
+			// case MAP_ID:
+			}
+			c.chain_depth = 0
+			c.current = c.modules[c.initial_module]
+			c.current.scope = c.initial_scope
+			index_expr.index = build_checked_expr(c, selector.index) or_return
+			dot_expr.selector = index_expr
+
+		case ^Parsed_Call_Expression:
+			call_expr :=
+				new_clone(
+					Checked_Call_Expression{
+						token = selector.token,
+						args = make([]Checked_Expression, len(selector.args)),
+					},
+				)
+			call_expr.func = build_checked_expr(c, selector.func) or_return
+			c.chain_depth = 0
+			c.current = c.modules[c.initial_module]
+			c.current.scope = c.initial_scope
+			for arg, i in selector.args {
+				call_expr.args[i] = build_checked_expr(c, arg) or_return
+			}
+			dot_expr.selector = call_expr
+
+
+		case ^Parsed_Dot_Expression:
+			dot_expr.selector = build_checked_expr(c, e.selector) or_return
+		}
 		result = dot_expr
 
 	case ^Parsed_Call_Expression:

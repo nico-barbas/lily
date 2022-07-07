@@ -18,7 +18,7 @@ Parsing_Error :: struct {
 }
 
 Semantic_Error :: struct {
-	kind:    enum {
+	kind:         enum {
 		Invalid_Declaration,
 		Invalid_Symbol,
 		Unknown_Symbol,
@@ -31,8 +31,15 @@ Semantic_Error :: struct {
 		Invalid_Class_Constructor_Usage,
 		Invalid_Class_Field_Access,
 	},
-	token:   Token,
-	details: string,
+	compiler_loc: runtime.Source_Code_Location,
+	token:        Token,
+	details:      string,
+}
+
+format_semantic_err :: proc(err: Semantic_Error, loc := #caller_location) -> Semantic_Error {
+	result := err
+	result.compiler_loc = loc
+	return result
 }
 
 Internal_Error :: struct {
@@ -41,4 +48,17 @@ Internal_Error :: struct {
 	},
 	details:      string,
 	compiler_loc: runtime.Source_Code_Location,
+}
+
+error_message :: proc(err: Error) -> string {
+	switch e in err {
+	case Parsing_Error:
+		return e.details
+	case Semantic_Error:
+		return e.details
+	case Internal_Error:
+		return e.details
+	case:
+		return ""
+	}
 }

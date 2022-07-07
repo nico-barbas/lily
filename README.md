@@ -78,15 +78,15 @@ var addResult = add(5, 10)
 - [x] Array Type
 - [ ] Map Type
 - [x] Custom functions
-- [x] Custom Types
+- [ ] Custom Types
 - [x] Custom Class Types
 - [x] Class constructors
 - [x] Class methods
-- [ ] Modules
+- [x] Modules
     - [x] Parsing
-    - [ ] Checking
-    - [ ] Compiling
-- [ ] Dot chaining
+    - [x] Checking
+    - [x] Compiling
+- [x] Dot chaining
 - [ ] Immutable function parameters
 - [ ] Minimal standard library
 - [ ] Full test suite

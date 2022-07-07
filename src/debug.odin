@@ -741,8 +741,12 @@ print_compiled_module :: proc(m: ^Compiled_Module) {
 }
 
 op_code_str := map[Op_Code]string {
+	.Op_None          = "Op_None",
 	.Op_Push          = "Op_Push",
 	.Op_Pop           = "Op_Pop",
+	.Op_Push_Back     = "Op_Push_Back",
+	.Op_Move          = "Op_Move",
+	.Op_Copy          = "Op_Copy",
 	.Op_Const         = "Op_Const",
 	.Op_Module        = "Op_Module",
 	.Op_Prototype     = "Op_Prototype",
@@ -826,8 +830,14 @@ print_chunk :: proc(p: ^Debug_Printer, c: ^Chunk) {
 		write(p, op_code_str[op])
 		format(p, op_code_str[op], max_str)
 		switch op {
-		case .Op_Push, .Op_Pop:
+		case .Op_None, .Op_Push, .Op_Pop, .Op_Push_Back:
 			fmt.sbprintf(&p.builder, " ||")
+
+		case .Op_Move:
+			fmt.sbprintf(&p.builder, " || move addr: %d", debug_get_i16(c, &ip))
+
+		case .Op_Copy:
+			fmt.sbprintf(&p.builder, " || copy addr: %d", debug_get_i16(c, &ip))
 
 		case .Op_Const:
 			fmt.sbprintf(&p.builder, " || const addr: %d", debug_get_i16(c, &ip))
@@ -885,67 +895,67 @@ print_chunk :: proc(p: ^Debug_Printer, c: ^Chunk) {
 
 }
 
-// print_stack :: proc(vm: ^Vm) {
-// 	printer := Debug_Printer {
-// 		builder      = strings.make_builder(),
-// 		indent_width = 2,
-// 	}
-// 	defer strings.destroy_builder(&printer.builder)
+print_stack :: proc(vm: ^Vm, op := Op_Code.Op_None) {
+	printer := Debug_Printer {
+		builder      = strings.make_builder(),
+		indent_width = 2,
+	}
+	defer strings.destroy_builder(&printer.builder)
 
-// 	write_line(&printer, "========================= \n")
-// 	write(&printer, "== VM STACK DEBUG VIEW == \n")
+	write_line(&printer, "========================= \n")
+	write(&printer, "== VM STACK DEBUG VIEW == \n")
+	fmt.sbprintf(&printer.builder, "Current Op Code: %s\n", op_code_str[op])
 
-// 	for value, i in vm.stack[:vm.stack_ptr] {
-// 		fmt.sbprintf(&printer.builder, "%03d   ", i)
-// 		print_value(&printer, value)
-// 		if i == vm.header_ptr && vm.stack_depth > 0 {
-// 			write(&printer, "     <- Scope Header")
-// 		} else if i == vm.header_ptr + 1 && vm.stack_depth > 0 {
-// 			write(&printer, "     <- Scope Start")
-// 		}
-// 		write_line(&printer)
-// 	}
+	for value, i in vm.stack[:vm.stack_ptr] {
+		fmt.sbprintf(&printer.builder, "%03d   ", i)
+		print_value(&printer, value)
+		if i == vm.header_addr && vm.stack_depth > 0 {
+			write(&printer, "     <- Scope Header")
+		} else if i == vm.header_addr + 1 && vm.stack_depth > 0 {
+			write(&printer, "     <- Scope Start")
+		}
+		write_line(&printer)
+	}
 
-// 	fmt.println(strings.to_string(printer.builder))
-// }
+	fmt.println(strings.to_string(printer.builder))
+}
 
-// print_value :: proc(p: ^Debug_Printer, value: Value) {
-// 	switch data in value.data {
-// 	case f64:
-// 		fmt.sbprintf(&p.builder, "%01f", data)
-// 	case bool:
-// 		fmt.sbprintf(&p.builder, "%t", data)
-// 	case ^Object:
-// 		switch data.kind {
-// 		case .String:
-// 			str_object := cast(^String_Object)data
-// 			write(p, `"`)
-// 			for r in str_object.data {
-// 				strings.write_rune_builder(&p.builder, r)
-// 			}
-// 			write(p, `"`)
-// 		case .Array:
-// 			array_object := cast(^Array_Object)data
-// 			write(p, `[`)
-// 			for element in array_object.data {
-// 				print_value(p, element)
-// 				write(p, `,`)
-// 			}
-// 			write(p, `]`)
-// 		case .Fn:
-// 		case .Class:
-// 			class_object := cast(^Class_Object)data
-// 			write(p, `[`)
-// 			for field in class_object.fields {
-// 				write(p, field.name)
-// 				write(p, ": ")
-// 				// fmt.sbprintf(&p.builder, "%v", field.value)
-// 				print_value(p, field.value)
-// 				write(p, `,`)
-// 			}
-// 			write(p, `]`)
-// 		}
-// 	case:
-// 		write(p, "Nil")
-// 	}
-// }
+print_value :: proc(p: ^Debug_Printer, value: Value) {
+	switch data in value.data {
+	case f64:
+		fmt.sbprintf(&p.builder, "%01f", data)
+	case bool:
+		fmt.sbprintf(&p.builder, "%t", data)
+	case ^Object:
+		switch data.kind {
+		case .String:
+			str_object := cast(^String_Object)data
+			write(p, `"`)
+			for r in str_object.data {
+				strings.write_rune_builder(&p.builder, r)
+			}
+			write(p, `"`)
+		case .Array:
+			array_object := cast(^Array_Object)data
+			write(p, `[`)
+			for element in array_object.data {
+				print_value(p, element)
+				write(p, `,`)
+			}
+			write(p, `]`)
+		case .Fn:
+		case .Class:
+			class_object := cast(^Class_Object)data
+			fmt.sbprintf(&p.builder, "%p [", class_object)
+			// write(p, `[`)
+			for field, i in class_object.fields {
+				fmt.sbprintf(&p.builder, "%d: ", i)
+				print_value(p, field)
+				write(p, `,`)
+			}
+			write(p, `]`)
+		}
+	case:
+		write(p, "Nil")
+	}
+}

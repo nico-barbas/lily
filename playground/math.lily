@@ -8,7 +8,7 @@ type Vector is class
     end
 
     fn add(n: number):
-        self.x = self.x + number
+        self.x = self.x + n
     end
 end
 

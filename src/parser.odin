@@ -600,8 +600,24 @@ parse_type_decl :: proc(p: ^Parser) -> (result: ^Parsed_Type_Declaration, err: E
 parse_expr :: proc(p: ^Parser, prec: Precedence) -> (result: Parsed_Expression, err: Error) {
 	consume_token(p)
 	if rule, exist := parser_rules[p.previous.kind]; exist {
+		if rule.prefix_fn == nil {
+			err = Parsing_Error {
+				kind    = .Invalid_Syntax,
+				token   = p.previous,
+				details = fmt.tprintf("No expression starts with prefix operator %s", p.previous.text),
+			}
+			return
+		}
 		result = rule.prefix_fn(p) or_return
 	}
+	// else {
+	// 	err = Parsing_Error {
+	// 		kind    = .Invalid_Syntax,
+	// 		token   = p.previous,
+	// 		details = fmt.tprintf("No expression starts with prefix operator %s", p.previous.text),
+	// 	}
+	// 	return
+	// }
 	for p.current.kind != .EOF && prec < parser_rules[p.current.kind].prec {
 		consume_token(p)
 		if rule, exist := parser_rules[p.previous.kind]; exist {
@@ -620,9 +636,8 @@ parse_identifier :: proc(p: ^Parser) -> (result: Parsed_Expression, err: Error) 
 parse_number :: proc(p: ^Parser) -> (result: Parsed_Expression, err: Error) {
 	num, ok := strconv.parse_f64(p.previous.text)
 	if ok {
-		result = new_clone(
-			Parsed_Literal_Expression{token = p.previous, value = Value{kind = .Number, data = num}},
-		)
+		result =
+			new_clone(Parsed_Literal_Expression{token = p.previous, value = Value{kind = .Number, data = num}})
 	} else {
 		err = Parsing_Error {
 			kind  = .Malformed_Number,
@@ -639,12 +654,13 @@ parse_boolean :: proc(p: ^Parser) -> (result: Parsed_Expression, err: Error) {
 }
 
 parse_string :: proc(p: ^Parser) -> (result: Parsed_Expression, err: Error) {
-	result = new_clone(
-		Parsed_String_Literal_Expression{
-			token = p.previous,
-			value = p.previous.text[1:len(p.previous.text) - 1],
-		},
-	)
+	result =
+		new_clone(
+			Parsed_String_Literal_Expression{
+				token = p.previous,
+				value = p.previous.text[1:len(p.previous.text) - 1],
+			},
+		)
 	return
 }
 
@@ -717,9 +733,8 @@ parse_infix_open_bracket :: proc(p: ^Parser, left: Parsed_Expression) -> (
 }
 
 parse_array :: proc(p: ^Parser, left: Parsed_Expression) -> (result: Parsed_Expression, err: Error) {
-	array := new_clone(
-		Parsed_Array_Literal_Expression{type_expr = left, values = make([dynamic]Parsed_Expression)},
-	)
+	array :=
+		new_clone(Parsed_Array_Literal_Expression{type_expr = left, values = make([dynamic]Parsed_Expression)})
 	array_elements: for {
 		element := parse_expr(p, .Lowest) or_return
 		append(&array.values, element)
