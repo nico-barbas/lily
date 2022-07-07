@@ -409,7 +409,7 @@ check_node_symbols :: proc(c: ^Checker, node: Parsed_Node) -> (err: Error) {
 		#partial switch left in n.left {
 		case ^Parsed_Identifier_Expression, ^Parsed_Dot_Expression:
 			left_symbol = symbol_from_expr(c, left) or_return
-			if left_symbol.kind != .Var_Symbol {
+			if left_symbol.kind != .Var_Symbol || left_symbol.var_info.immutable {
 				err =
 					format_semantic_err(
 						Semantic_Error{

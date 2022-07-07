@@ -92,7 +92,7 @@ var addResult = add(5, 10)
     - [x] Checking
     - [x] Compiling
 - [x] Dot chaining
-- [ ] Immutable function parameters
+- [x] Immutable function parameters
 - [ ] Variadic function parameters
 - [ ] Foreign functions
 - [ ] Minimal standard library
