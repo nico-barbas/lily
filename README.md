@@ -12,13 +12,13 @@ type Entity is class
     y: number
 
     constructor new(_id: number, _x: number, _y: number):
-        id = _id
-        x = _x
-        y = _y
+        self.id = _id
+        self.x = _x
+        self.y = _y
     end
 
     fn update():
-        x += 1
+        self.x += 1
     end
 end
 
@@ -76,18 +76,24 @@ var addResult = add(5, 10)
 - [x] Control flow
 - [ ] Container iterators
 - [x] Array Type
+- [ ] Array builtin procedures 
 - [ ] Map Type
+- [ ] Map builtin procedures 
 - [x] Custom functions
-- [ ] Custom Types
+- [ ] Custom Type Alias
 - [x] Custom Class Types
 - [x] Class constructors
 - [x] Class methods
+- [ ] Custom Enumeration types
+- [ ] Custom ADTs
 - [x] Modules
     - [x] Parsing
     - [x] Checking
     - [x] Compiling
 - [x] Dot chaining
 - [ ] Immutable function parameters
+- [ ] Variadic function parameters
+- [ ] Foreign functions
 - [ ] Minimal standard library
 - [ ] Full test suite
     - [x] Lexer
