@@ -2,7 +2,7 @@
 
 :warning: This project is still in early development :warning:
 
-A small scripting language somewhere between Lua and Pascal, with some inspiration from Ada.
+A small scripting language somewhere between Lua and (Object)Pascal, with some inspiration from Ada.
 
 ```lua
 type Entity is class
