@@ -97,10 +97,10 @@ foreign fn sub(a: number, b: number): number
 - [x] Dot chaining
 - [x] Immutable function parameters
 - [ ] Variadic function parameters
-- [ ] Foreign functions
-    - [ ] Parsing
-    - [ ] Checking
-    - [ ] Compiling
+- [x] Foreign functions
+    - [x] Parsing
+    - [x] Checking
+    - [x] Compiling
 - [ ] Minimal standard library
 - [ ] Full test suite
     - [x] Lexer

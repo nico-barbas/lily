@@ -125,15 +125,22 @@ contain_scoped_symbol :: proc(s: ^Semantic_Scope, name: string) -> bool {
 	return false
 }
 
-get_scoped_symbol :: proc(s: ^Semantic_Scope, name: Token) -> (result: ^Symbol, err: Error) {
+get_scoped_symbol :: proc(s: ^Semantic_Scope, name: Token, loc := #caller_location) -> (
+	result: ^Symbol,
+	err: Error,
+) {
 	if symbol, exist := s.lookup[name.text]; exist {
 		result = symbol
 	} else {
-		err = Semantic_Error {
-			kind    = .Unknown_Symbol,
-			token   = name,
-			details = fmt.tprintf("Unknown symbol %s in scope %d", name.text, s.id),
-		}
+		err =
+			format_semantic_err(
+				Semantic_Error{
+					kind = .Unknown_Symbol,
+					token = name,
+					details = fmt.tprintf("Unknown symbol %s in scope %d", name.text, s.id),
+				},
+				loc,
+			)
 	}
 	return
 }

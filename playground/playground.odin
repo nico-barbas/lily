@@ -37,39 +37,47 @@ playground :: proc() {using lily
 	RUN_COMPILER :: true
 	RUN_VM :: true
 
-	input: string = `
-		type Foo is class
-			x: number
+	// input: string = `
+	// 	type Foo is class
+	// 		x: number
 
-			constructor new(_x: number):
-				self.x = _x
-			end
+	// 		constructor new(_x: number):
+	// 			self.x = _x
+	// 		end
 
-			fn add(n: number):
-				self.x = self.x + n
-			end
-		end
-
-	    var a = Foo.new(1)
-		a.add(13)
-	`
-	// input := `
-	// 	fn print(n: number):
+	// 		fn add(n: number):
+	// 			self.x = self.x + n
+	// 		end
 	// 	end
 
-	// 	var a = 10
-	// 	print(10)
+	//     var a = Foo.new(1)
+	// 	a.add(13)
 	// `
+	input := `
+		import std
+		import math
 
-	checker := Checker{}
-	init_checker(&checker)
-	checked, err := build_checked_program(&checker, "main", input)
+		var a = math.Vector.new()
+		a.add(10)
+		std.print(a)
+	`
+
+	// checker := Checker{}
+	// init_checker(&checker)
+	// checked, err := build_checked_program(&checker, "main", input)
+	// assert(err == nil, fmt.tprint(err))
+
+	// for module in checked.modules {
+	// 	print_symbol_table(&checker, module)
+	// 	print_checked_ast(module, &checker)
+	// }
+
+	state := new_state(Config{})
+	err := compile_source(state, "main", input)
 	assert(err == nil, fmt.tprint(err))
 
-	for module in checked.modules {
-		print_symbol_table(&checker, module)
-		print_checked_ast(module, &checker)
-	}
+	run_module(state, "main")
+	fmt.println("finished")
 
 	// compiled_program := make_compiled_program(checked)
 	// for i in 0 ..< len(compiled_program) {

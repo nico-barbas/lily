@@ -25,6 +25,39 @@ Config :: struct {
 	bind_fn: proc(state: ^State, info: Foreign_Decl_Info) -> Foreign_Procedure,
 }
 
+new_state :: proc(c: Config) -> ^State {
+	//odinfmt: disable
+	return new_clone(State{
+		std_builder = strings.make_builder(0, 200),
+		get_value = proc(state: ^State, at: int) -> Value {
+			return state.value_buf[at]
+		},
+		internal_bind_fn = bind_foreign_fn,
+	})
+	//odinfmt: enable
+}
+
+compile_source :: proc(s: ^State, module_name: string, source: string) -> (err: Error) {
+	checker := Checker{}
+	init_checker(&checker)
+	s.checked_modules = build_checked_program(&checker, module_name, source) or_return
+	s.import_modules_id = checker.import_names_lookup
+	for name, id in s.import_modules_id {
+		s.import_modules_name[id] = name
+	}
+	s.compiled_modules = make_compiled_program(s)
+	for i in 0 ..< len(s.compiled_modules) {
+		// print_checked_ast(s.checked_modules[i], &checker)
+		compile_module(s, i)
+		print_compiled_module(s.compiled_modules[i])
+	}
+	return
+}
+
+run_module :: proc(s: ^State, module_name: string) {
+	run_program(s, s.import_modules_id[module_name])
+}
+
 Foreign_Decl_Info :: struct {
 	identifier:  string,
 	arity:       int,
@@ -63,11 +96,11 @@ call_foreign_fn :: proc(state: ^State, fn: Foreign_Procedure, values: []Value) {
 }
 
 std_source :: `
-foreign print(s: any):
+foreign fn print(s: any):
 `
 
 std_print :: proc(state: ^State) {
-	value := state->get_value(1)
+	value := state->get_value(0)
 	strings.reset_builder(&state.std_builder)
 	switch value.kind {
 	case .Nil:

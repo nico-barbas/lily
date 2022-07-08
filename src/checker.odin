@@ -39,15 +39,16 @@ Type_ID :: distinct int
 BUILT_IN_ID_COUNT :: ARRAY_ID + 1
 
 UNTYPED_ID :: 0
-NUMBER_ID :: 1
-BOOL_ID :: 2
-STRING_ID :: 3
-ARRAY_ID :: 4
+ANY_ID :: 1
+NUMBER_ID :: 2
+BOOL_ID :: 3
+STRING_ID :: 4
+ARRAY_ID :: 5
 
 init_checker :: proc(c: ^Checker) {
 	c.builtin_symbols = {
 		Symbol{name = "untyped", kind = .Name, type_id = UNTYPED_ID, module_id = -1},
-		Symbol{name = "any", kind = .Name, type_id = UNTYPED_ID, module_id = -1},
+		Symbol{name = "any", kind = .Name, type_id = ANY_ID, module_id = -1},
 		Symbol{name = "number", kind = .Name, type_id = NUMBER_ID, module_id = -1},
 		Symbol{name = "bool", kind = .Name, type_id = BOOL_ID, module_id = -1},
 		Symbol{name = "string", kind = .Name, type_id = STRING_ID, module_id = -1},
@@ -132,7 +133,11 @@ reset_dot_operand_info :: proc(c: ^Checker, restore: bool) {
 }
 
 types_equal :: proc(c: ^Checker, s1, s2: ^Symbol) -> bool {
-	return s1.type_id == s2.type_id
+	if s1.type_id == ANY_ID || s2.type_id == ANY_ID {
+		return true
+	} else {
+		return s1.type_id == s2.type_id
+	}
 }
 
 expect_type :: proc(c: ^Checker, expr: Checked_Expression, s: ^Symbol) -> (err: Error) {
@@ -157,7 +162,7 @@ gen_type_id :: proc(c: ^Checker) -> Type_ID {
 
 
 build_checked_program :: proc(c: ^Checker, module_name: string, entry_point: string) -> (
-	result: Checked_Output,
+	result: []^Checked_Module,
 	err: Error,
 ) {
 	c.import_names_lookup = make(map[string]int)
@@ -187,10 +192,7 @@ build_checked_program :: proc(c: ^Checker, module_name: string, entry_point: str
 		build_checked_ast(c, index) or_return
 	}
 
-	result = Checked_Output {
-		import_names = c.import_names_lookup,
-		modules      = c.modules,
-	}
+	result = c.modules
 	return
 }
 
@@ -361,6 +363,7 @@ add_module_class_type :: proc(c: ^Checker, decl: ^Parsed_Type_Declaration) -> (e
 
 check_module_signatures_symbols :: proc(c: ^Checker, module_id: int) -> (err: Error) {
 	c.current = c.modules[module_id]
+	c.current.scope = c.current.root
 	c.current_parsed = c.parsed_results[module_id]
 
 	// Signatures to check:
@@ -539,6 +542,7 @@ add_inner_symbols :: proc(c: ^Checker, node: Parsed_Node) -> (err: Error) {
 
 build_checked_ast :: proc(c: ^Checker, module_id: int) -> (err: Error) {
 	c.current = c.modules[module_id]
+	c.current.scope = c.current.root
 	c.current_parsed = c.parsed_results[module_id]
 
 	for node in c.current_parsed.types {
@@ -667,6 +671,7 @@ build_checked_node :: proc(c: ^Checker, node: Parsed_Node) -> (result: Checked_N
 		} else {
 			var_info.symbol = expr_symbol
 		}
+		fmt.println(var_decl.expr)
 		var_decl.identifier.info = var_info
 		result = var_decl
 
@@ -704,7 +709,10 @@ build_checked_node :: proc(c: ^Checker, node: Parsed_Node) -> (result: Checked_N
 						methods = make([]^Checked_Fn_Declaration, len(n.methods)),
 					},
 				)
-			class_decl.identifier = get_scoped_symbol(c.current.scope, n.identifier) or_return
+			class_decl.identifier, err = get_scoped_symbol(c.current.scope, n.identifier)
+			if err != nil {
+				print_semantic_scope_standalone(c, c.current.scope)
+			}
 			enter_class_scope(c.current, n.identifier) or_return
 			defer pop_scope(c.current)
 
@@ -864,7 +872,7 @@ build_checked_expr :: proc(c: ^Checker, expr: Parsed_Expression) -> (
 			c.dot_info.current = checked_expr_symbol(l)
 			#partial switch c.dot_info.current.kind {
 			case .Class_Symbol:
-				if c.dot_info.depth > 1 {
+				if c.dot_info.depth > 2 {
 					err = dot_operand_semantic_err(c.dot_info.current, e.token)
 					return
 				}
@@ -886,6 +894,7 @@ build_checked_expr :: proc(c: ^Checker, expr: Parsed_Expression) -> (
 				}
 				module_info := c.dot_info.current.info.(Module_Symbol_Info)
 				c.current = c.modules[module_info.ref_mod_id]
+				c.current.scope = c.current.root
 
 			case:
 				err = dot_operand_semantic_err(c.dot_info.current, e.token)
@@ -1062,6 +1071,9 @@ build_checked_expr :: proc(c: ^Checker, expr: Parsed_Expression) -> (
 
 		case ^Parsed_Dot_Expression:
 			dot_expr.selector = build_checked_expr(c, selector) or_return
+			inner := dot_expr.selector.(^Checked_Dot_Expression)
+			dot_expr.symbol = inner.symbol
+			dot_expr.leaf_symbol = inner.leaf_symbol
 		}
 		result = dot_expr
 

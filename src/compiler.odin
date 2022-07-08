@@ -249,6 +249,7 @@ compile_module :: proc(state: ^State, index: int) {
 	for node in c.current_read.nodes {
 		compile_node(&c, node)
 	}
+	// fmt.println("boop")
 	reset_compiler(&c)
 	c.current_write.main = c.chunk
 }
@@ -555,7 +556,7 @@ compile_dot_expr :: proc(c: ^Compiler, expr: ^Checked_Dot_Expression, lhs: bool)
 }
 
 compile_method_call_expr :: proc(c: ^Compiler, expr: ^Checked_Call_Expression) {
-	symbol := checked_expr_symbol(expr)
+	symbol := checked_expr_symbol(expr.func)
 	fn_info := symbol.info.(Fn_Symbol_Info)
 	push_op_code(&c.chunk, .Op_Begin)
 	push_op_code(&c.chunk, .Op_Push)
@@ -577,7 +578,7 @@ compile_method_call_expr :: proc(c: ^Compiler, expr: ^Checked_Call_Expression) {
 }
 
 compile_constructor_call_expr :: proc(c: ^Compiler, expr: ^Checked_Call_Expression) {
-	symbol := checked_expr_symbol(expr)
+	symbol := checked_expr_symbol(expr.func)
 	push_op_code(&c.chunk, .Op_Begin)
 	push_op_code(&c.chunk, .Op_Push)
 	for arg_expr in expr.args {

@@ -774,6 +774,7 @@ op_code_str := map[Op_Code]string {
 	.Op_Begin         = "Op_Begin",
 	.Op_End           = "Op_End",
 	.Op_Call          = "Op_Call",
+	.Op_Call_Foreign  = "Op_Call_Foreign",
 	.Op_Call_Method   = "Op_Call_Method",
 	.Op_Call_Constr   = "Op_Call_Constr",
 	.Op_Return        = "Op_Return",
@@ -794,9 +795,12 @@ op_code_str := map[Op_Code]string {
 }
 
 print_chunk :: proc(p: ^Debug_Printer, c: ^Chunk) {
+	if len(c.bytecode) == 0 {
+		return
+	}
 	write_line(p, "=======================")
 	write_line(p, "== CHUNK DISASSEMBLY ==")
-	fmt.sbprintf(&p.builder, "byte count: %d", len(c.bytecode))
+	fmt.sbprintf(&p.builder, "\nbyte count: %d", len(c.bytecode))
 	write_line(p)
 	max_str := -1
 	for k, v in op_code_str {

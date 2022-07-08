@@ -434,11 +434,13 @@ parse_var_decl :: proc(p: ^Parser) -> (result: ^Parsed_Var_Declaration, err: Err
 parse_fn_decl :: proc(p: ^Parser) -> (result: ^Parsed_Fn_Declaration, err: Error) {
 	result = new(Parsed_Fn_Declaration)
 	result.token = p.current
-	#partial switch consume_token(p).kind {
-	case .Identifier:
+	#partial switch p.current.kind {
+	case .Fn, .Constructor:
+		match_token_kind_next(p, .Identifier) or_return
 		result.identifier = p.current
 		result.kind = .Function
-	case .Fn:
+	case .Foreign:
+		match_token_kind_next(p, .Fn) or_return
 		match_token_kind_next(p, .Identifier) or_return
 		result.identifier = p.current
 		result.kind = .Foreign
@@ -446,7 +448,13 @@ parse_fn_decl :: proc(p: ^Parser) -> (result: ^Parsed_Fn_Declaration, err: Error
 		err = Parsing_Error {
 			kind    = .Invalid_Syntax,
 			token   = p.current,
-			details = fmt.tprintf("Expected %s, got %s", Token_Kind.Identifier, p.current.kind),
+			details = fmt.tprintf(
+				"Expected one of : [%s, %s, %s], got %s",
+				Token_Kind.Fn,
+				Token_Kind.Constructor,
+				Token_Kind.Foreign,
+				p.current.kind,
+			),
 		}
 	}
 	match_token_kind_next(p, .Open_Paren) or_return
