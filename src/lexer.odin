@@ -9,6 +9,7 @@ Token_Kind :: enum {
 	// Keywords
 	_keyword_start_,
 	Import,
+	Foreign,
 	Var,
 	Fn,
 	Type,
@@ -25,6 +26,7 @@ Token_Kind :: enum {
 	End,
 	True,
 	False,
+	Any,
 	Number,
 	Boolean,
 	String,
@@ -81,6 +83,7 @@ Token :: struct {
 
 keywords := map[string]Token_Kind {
 	"import"      = .Import,
+	"foreign"     = .Foreign,
 	"var"         = .Var,
 	"fn"          = .Fn,
 	"type"        = .Type,
@@ -100,6 +103,7 @@ keywords := map[string]Token_Kind {
 	"or"          = .Or,
 	"true"        = .True,
 	"false"       = .False,
+	"any"         = .Any,
 	"number"      = .Number,
 	"bool"        = .Boolean,
 	"string"      = .String,

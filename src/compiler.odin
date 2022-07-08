@@ -3,10 +3,9 @@ package lily
 import "core:fmt"
 
 Compiler :: struct {
-	input:           Checked_Output,
-	current:         ^Checked_Module,
-	modules:         []^Compiled_Module,
-	output:          ^Compiled_Module,
+	state:           ^State,
+	current_read:    ^Checked_Module,
+	current_write:   ^Compiled_Module,
 
 	// Data for the current chunk compiling
 	chunk:           Chunk,
@@ -34,9 +33,9 @@ Compiled_Module :: struct {
 
 // Allocate the right amount of compiled modules.
 // This procedure does not compiled the input!
-make_compiled_program :: proc(input: Checked_Output) -> []^Compiled_Module {
-	output := make([]^Compiled_Module, len(input.modules))
-	for module, i in input.modules {
+make_compiled_program :: proc(state: ^State) -> []^Compiled_Module {
+	output := make([]^Compiled_Module, len(state.checked_modules))
+	for module, i in state.checked_modules {
 		current := output[i]
 		current =
 			new_clone(
@@ -125,26 +124,25 @@ reset_compiler :: proc(c: ^Compiler) {
 	c.constants = nil
 }
 
-compile_module :: proc(input: Checked_Output, output: []^Compiled_Module, index: int) {
+compile_module :: proc(state: ^State, index: int) {
 	c := Compiler {
-		input           = input,
-		current         = input.modules[index],
-		modules         = output,
-		output          = output[index],
+		state           = state,
+		current_read    = state.checked_modules[index],
+		current_write   = state.compiled_modules[index],
 		chunk_variables = make(map[string]i16),
 	}
 
-	for node, i in c.current.classes {
+	for node, i in c.current_read.classes {
 		n := node.(^Checked_Class_Declaration)
-		enter_class_scope(c.current, Token{text = n.identifier.name})
-		defer pop_scope(c.current)
+		enter_class_scope(c.current_read, Token{text = n.identifier.name})
+		defer pop_scope(c.current_read)
 
-		vtable := &c.output.vtables[i]
-		c.constants = &c.output.class_consts[i]
+		vtable := &c.current_write.vtables[i]
+		c.constants = &c.current_write.class_consts[i]
 		for constructor, j in n.constructors {
-			symbol := constructor.identifier
-			enter_child_scope_by_id(c.current, symbol.fn_info.scope_id)
-			defer pop_scope(c.current)
+			fn_info := constructor.identifier.info.(Fn_Symbol_Info)
+			enter_child_scope_by_id(c.current_read, fn_info.sub_scope_id)
+			defer pop_scope(c.current_read)
 
 			c.chunk = make_chunk(false)
 
@@ -157,7 +155,7 @@ compile_module :: proc(input: Checked_Output, output: []^Compiled_Module, index:
 			compile_node(&c, constructor.body)
 			push_simple_instruction(&c.chunk, .Op_Return, SELF_STACK_ADDR)
 
-			c.chunk.constants = c.output.class_consts[i]
+			c.chunk.constants = c.current_write.class_consts[i]
 			vtable.constructors[j] = Fn_Object {
 				base = Object{kind = .Fn},
 				chunk = c.chunk,
@@ -166,29 +164,29 @@ compile_module :: proc(input: Checked_Output, output: []^Compiled_Module, index:
 		}
 
 		for method, j in n.methods {
-			symbol := method.identifier
-			enter_child_scope_by_id(c.current, symbol.fn_info.scope_id)
-			defer pop_scope(c.current)
+			fn_info := method.identifier.info.(Fn_Symbol_Info)
+			enter_child_scope_by_id(c.current_read, fn_info.sub_scope_id)
+			defer pop_scope(c.current_read)
 
 			c.chunk = make_chunk(false)
 
 			self_addr := add_variable(&c, "self")
 			push_double_instruction(&c.chunk, .Op_Bind, self_addr, SELF_STACK_ADDR)
-			if symbol.fn_info.has_return {
+			if fn_info.has_return {
 				result_addr := add_variable(&c, "result")
 				push_double_instruction(&c.chunk, .Op_Bind, result_addr, METHOD_RESULT_STACK_ADDR)
 			}
 
-			compile_fn_parameters(&c, method.params, 2 if symbol.fn_info.has_return else 1)
+			compile_fn_parameters(&c, method.params, 2 if fn_info.has_return else 1)
 			compile_node(&c, method.body)
 
-			if symbol.fn_info.has_return {
+			if fn_info.has_return {
 				push_simple_instruction(&c.chunk, .Op_Return, METHOD_RESULT_STACK_ADDR)
 			} else {
 				push_simple_instruction(&c.chunk, .Op_Return, -1)
 			}
 
-			c.chunk.constants = c.output.class_consts[i]
+			c.chunk.constants = c.current_write.class_consts[i]
 			vtable.methods[j] = Fn_Object {
 				base = Object{kind = .Fn},
 				chunk = c.chunk,
@@ -197,53 +195,62 @@ compile_module :: proc(input: Checked_Output, output: []^Compiled_Module, index:
 		}
 
 
-		c.output.protypes[i] = Class_Object {
+		c.current_write.protypes[i] = Class_Object {
 			base = Object{kind = .Class},
 			fields = make([]Value, len(n.fields)),
 			vtable = vtable,
 		}
 	}
 
-	for node, i in c.current.functions {
+	for node, i in c.current_read.functions {
 		n := node.(^Checked_Fn_Declaration)
-		symbol := n.identifier
-		enter_child_scope_by_id(c.current, symbol.fn_info.scope_id)
-		defer pop_scope(c.current)
+		#partial switch n.kind {
+		case .Foreign:
+			c.current_write.functions[i] = Fn_Object {
+				base = Object{kind = .Fn},
+				foreign_fn = c.state->internal_bind_fn(n),
+			}
 
-		c.chunk = make_chunk(true)
-		c.constants = &c.chunk.constants
+		case .Function:
+			fn_info := n.identifier.info.(Fn_Symbol_Info)
+			enter_child_scope_by_id(c.current_read, fn_info.sub_scope_id)
+			defer pop_scope(c.current_read)
 
-		if symbol.fn_info.has_return {
-			result_addr := add_variable(&c, "result")
-			push_double_instruction(&c.chunk, .Op_Bind, result_addr, FN_RESULT_STACK_ADDR)
-		}
+			c.chunk = make_chunk(true)
+			c.constants = &c.chunk.constants
 
-		compile_fn_parameters(&c, n.params, 1 if symbol.fn_info.has_return else 0)
-		compile_node(&c, n.body)
+			if fn_info.has_return {
+				result_addr := add_variable(&c, "result")
+				push_double_instruction(&c.chunk, .Op_Bind, result_addr, FN_RESULT_STACK_ADDR)
+			}
 
-		if symbol.fn_info.has_return {
-			push_simple_instruction(&c.chunk, .Op_Return, FN_RESULT_STACK_ADDR)
-		} else {
-			push_simple_instruction(&c.chunk, .Op_Return, -1)
-		}
+			compile_fn_parameters(&c, n.params, 1 if fn_info.has_return else 0)
+			compile_node(&c, n.body)
 
-		c.output.functions[i] = Fn_Object {
-			base = Object{kind = .Fn},
-			chunk = c.chunk,
+			if fn_info.has_return {
+				push_simple_instruction(&c.chunk, .Op_Return, FN_RESULT_STACK_ADDR)
+			} else {
+				push_simple_instruction(&c.chunk, .Op_Return, -1)
+			}
+
+			c.current_write.functions[i] = Fn_Object {
+				base = Object{kind = .Fn},
+				chunk = c.chunk,
+			}
 		}
 		reset_compiler(&c)
 	}
 
 	c.chunk = make_chunk(true)
 	c.constants = &c.chunk.constants
-	for node in c.current.variables {
+	for node in c.current_read.variables {
 		compile_node(&c, node)
 	}
-	for node in c.current.nodes {
+	for node in c.current_read.nodes {
 		compile_node(&c, node)
 	}
 	reset_compiler(&c)
-	c.output.main = c.chunk
+	c.current_write.main = c.chunk
 }
 
 compile_fn_parameters :: proc(c: ^Compiler, params: []^Symbol, offset: i16) {
@@ -408,7 +415,7 @@ compile_expr :: proc(c: ^Compiler, expr: Checked_Expression) {
 			push_simple_instruction(&c.chunk, .Op_Get, var_addr)
 
 		case:
-			fmt.println(e.symbol, c.current.name)
+			fmt.println(e.symbol, c.current_read.name)
 			assert(false)
 		}
 
@@ -429,27 +436,34 @@ compile_expr :: proc(c: ^Compiler, expr: Checked_Expression) {
 
 	case ^Checked_Call_Expression:
 		symbol := checked_expr_symbol(e.func)
+		fn_info := symbol.info.(Fn_Symbol_Info)
 		push_op_code(&c.chunk, .Op_Begin)
-		if symbol.fn_info.has_return {
+		if fn_info.has_return {
 			push_op_code(&c.chunk, .Op_Push)
 		}
 		for arg_expr in e.args {
 			compile_expr(c, arg_expr)
 		}
-		fn_addr := get_fn_addr(c.output, symbol.name)
-		push_simple_instruction(&c.chunk, .Op_Call, fn_addr)
+		fn_addr := get_fn_addr(c.current_write, symbol.name)
+		#partial switch fn_info.kind {
+		case .Foreign:
+			push_simple_instruction(&c.chunk, .Op_Call_Foreign, fn_addr)
+		case .Function:
+			push_simple_instruction(&c.chunk, .Op_Call, fn_addr)
+		}
 	}
 }
 
 compile_dot_expr :: proc(c: ^Compiler, expr: ^Checked_Dot_Expression, lhs: bool) {
-	current_module := c.current.id
+	current_module := c.current_read.id
 	#partial switch left in expr.left {
 	case ^Checked_Identifier_Expression:
 		#partial switch left.symbol.kind {
 		case .Var_Symbol:
+			var_info := left.symbol.info.(Var_Symbol_Info)
 			var_addr := get_var_addr(c, left.symbol.name)
 			push_simple_instruction(&c.chunk, .Op_Get, var_addr)
-			c.selected_class = left.symbol.var_info.symbol
+			c.selected_class = var_info.symbol
 			c.current_access = .Instance_Access
 
 		case .Class_Symbol:
@@ -459,9 +473,10 @@ compile_dot_expr :: proc(c: ^Compiler, expr: ^Checked_Dot_Expression, lhs: bool)
 			c.selected_class = left.symbol
 
 		case .Module_Symbol:
-			module_addr := left.symbol.module_info.ref_module_id
+			module_info := left.symbol.info.(Module_Symbol_Info)
+			module_addr := module_info.ref_mod_id
 			push_simple_instruction(&c.chunk, .Op_Module, i16(module_addr))
-			c.output = c.modules[module_addr]
+			c.current_write = c.state.compiled_modules[module_addr]
 			c.current_access = .Module_Access
 		}
 
@@ -472,7 +487,7 @@ compile_dot_expr :: proc(c: ^Compiler, expr: ^Checked_Dot_Expression, lhs: bool)
 		compile_expr(c, left.left)
 		push_op_code(&c.chunk, .Op_Get_Elem)
 		c.current_access = .Instance_Access
-		c.selected_class = symbol.generic_info.symbol
+		c.selected_class = left.symbol
 
 	case ^Checked_Call_Expression:
 		switch c.current_access {
@@ -483,7 +498,7 @@ compile_dot_expr :: proc(c: ^Compiler, expr: ^Checked_Dot_Expression, lhs: bool)
 		case .Instance_Access:
 			compile_method_call_expr(c, left)
 		}
-		c.selected_class = checked_expr_symbol(left.func).fn_info.return_symbol
+		c.selected_class = left.symbol
 		c.current_access = .Instance_Access
 	}
 
@@ -494,7 +509,7 @@ compile_dot_expr :: proc(c: ^Compiler, expr: ^Checked_Dot_Expression, lhs: bool)
 		#partial switch c.current_access {
 		case .Instance_Access:
 			op = .Op_Set_Field if lhs else .Op_Get_Field
-			class_module := c.modules[c.selected_class.module_id]
+			class_module := c.state.compiled_modules[c.selected_class.module_id]
 			field_addr := get_field_addr(class_module, c.selected_class.name, selector.symbol.name)
 			push_simple_instruction(&c.chunk, op, field_addr)
 
@@ -508,7 +523,7 @@ compile_dot_expr :: proc(c: ^Compiler, expr: ^Checked_Dot_Expression, lhs: bool)
 		case .Instance_Access:
 			op = .Op_Set_Elem if lhs else .Op_Get_Elem
 			compile_expr(c, selector.index)
-			class_module := c.modules[c.selected_class.module_id]
+			class_module := c.state.compiled_modules[c.selected_class.module_id]
 			field_addr := get_field_addr(class_module, c.selected_class.name, inner_symbol.name)
 			push_simple_instruction(&c.chunk, .Op_Get_Field, field_addr)
 			push_op_code(&c.chunk, op)
@@ -533,26 +548,27 @@ compile_dot_expr :: proc(c: ^Compiler, expr: ^Checked_Dot_Expression, lhs: bool)
 	case ^Checked_Dot_Expression:
 		compile_dot_expr(c, selector, lhs)
 	}
-	if c.output != c.modules[current_module] {
-		c.output = c.modules[current_module]
+	if c.current_write != c.state.compiled_modules[current_module] {
+		c.current_write = c.state.compiled_modules[current_module]
 		push_simple_instruction(&c.chunk, .Op_Module, i16(current_module))
 	}
 }
 
 compile_method_call_expr :: proc(c: ^Compiler, expr: ^Checked_Call_Expression) {
 	symbol := checked_expr_symbol(expr)
+	fn_info := symbol.info.(Fn_Symbol_Info)
 	push_op_code(&c.chunk, .Op_Begin)
 	push_op_code(&c.chunk, .Op_Push)
-	if symbol.fn_info.has_return {
+	if fn_info.has_return {
 		push_op_code(&c.chunk, .Op_Push)
 	}
 	for arg_expr in expr.args {
 		compile_expr(c, arg_expr)
 	}
-	class_module := c.modules[c.selected_class.module_id]
+	class_module := c.state.compiled_modules[c.selected_class.module_id]
 	method_addr := get_method_addr(class_module, c.selected_class.name, symbol.name)
 	push_simple_instruction(&c.chunk, .Op_Call_Method, method_addr)
-	if symbol.fn_info.has_return {
+	if fn_info.has_return {
 		push_op_code(&c.chunk, .Op_Push_Back)
 	} else {
 		push_op_code(&c.chunk, .Op_Pop)
@@ -567,7 +583,7 @@ compile_constructor_call_expr :: proc(c: ^Compiler, expr: ^Checked_Call_Expressi
 	for arg_expr in expr.args {
 		compile_expr(c, arg_expr)
 	}
-	class_module := c.modules[c.selected_class.module_id]
+	class_module := c.state.compiled_modules[c.selected_class.module_id]
 	constructor_addr := get_constructor_addr(class_module, c.selected_class.name, symbol.name)
 	push_simple_instruction(&c.chunk, .Op_Call_Constr, constructor_addr)
 	push_op_code(&c.chunk, .Op_Push_Back)

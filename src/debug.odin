@@ -582,7 +582,7 @@ print_semantic_scope :: proc(p: ^Debug_Printer, c: ^Checker, s: ^Semantic_Scope)
 		if len(s.children) > 0 {
 			write_line(p, "Inner Scopes: ")
 			increment(p)
-			for child in s.children {
+			for _, child in s.children {
 				print_semantic_scope(p, c, child)
 			}
 			decrement(p)
@@ -607,38 +607,44 @@ print_symbol :: proc(p: ^Debug_Printer, symbol: ^Symbol, leading_char := "-") {
 	case .Name:
 	case .Alias_Symbol:
 		increment(p)
-		print_symbol(p, symbol.alias_info.symbol, "=>")
+		alias_info := symbol.info.(Alias_Symbol_Info)
+		print_symbol(p, alias_info.symbol, "=>")
+		decrement(p)
+
+	case .Generic_Symbol:
+		increment(p)
+		generic_info := symbol.info.(Generic_Symbol_Info)
+		print_symbol(p, generic_info.symbol, "=>")
 		decrement(p)
 
 	case .Class_Symbol:
-		fmt.sbprintf(&p.builder, "Info: Class Scope ID: %d", symbol.class_info.class_scope_id)
+		class_info := symbol.info.(Class_Symbol_Info)
+		fmt.sbprintf(&p.builder, "Info: Class Scope ID: %d", class_info.sub_scope_id)
 
 	case .Module_Symbol:
-		fmt.sbprintf(&p.builder, "Info: Ref Module ID: %d", symbol.module_info.ref_module_id)
+		module_info := symbol.info.(Module_Symbol_Info)
+		fmt.sbprintf(&p.builder, "Info: Ref Module ID: %d", module_info.ref_mod_id)
 
 	case .Fn_Symbol:
+		fn_info := symbol.info.(Fn_Symbol_Info)
 		fmt.sbprintf(
 			&p.builder,
 			"Info: Inner Scope ID: %d, Has return: %t",
-			symbol.fn_info.scope_id,
-			symbol.fn_info.has_return,
+			fn_info.sub_scope_id,
+			fn_info.has_return,
 		)
-		if symbol.fn_info.has_return {
+		if fn_info.has_return {
 			increment(p)
-			print_symbol(p, symbol.fn_info.return_symbol, "=>")
+			print_symbol(p, fn_info.return_symbol, "=>")
 			decrement(p)
 		}
 
 	case .Var_Symbol:
-		fmt.sbprintf(
-			&p.builder,
-			"Info: Immutable: %t, Is Ref: %t, ",
-			symbol.var_info.immutable,
-			symbol.var_info.is_ref,
-		)
-		if symbol.var_info.symbol != nil {
+		var_info := symbol.info.(Var_Symbol_Info)
+		fmt.sbprintf(&p.builder, "Info: Mutable: %t", var_info.mutable)
+		if var_info.symbol != nil {
 			increment(p)
-			print_symbol(p, symbol.var_info.symbol, "=>")
+			print_symbol(p, var_info.symbol, "=>")
 			decrement(p)
 		}
 	}
@@ -857,7 +863,7 @@ print_chunk :: proc(p: ^Debug_Printer, c: ^Chunk) {
 		case .Op_Begin, .Op_End:
 			fmt.sbprintf(&p.builder, " ||")
 
-		case .Op_Call, .Op_Call_Method, .Op_Call_Constr:
+		case .Op_Call, .Op_Call_Foreign, .Op_Call_Method, .Op_Call_Constr:
 			fmt.sbprintf(&p.builder, " || fn addr: %d", debug_get_i16(c, &ip))
 
 		case .Op_Return:

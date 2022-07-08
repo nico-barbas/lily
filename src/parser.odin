@@ -14,6 +14,7 @@ parser_rules := map[Token_Kind]struct {
 	.Identifier =      {prec = .Lowest,  prefix_fn = parse_identifier, infix_fn = nil},
 	.Self=             {prec = .Lowest,  prefix_fn = parse_identifier, infix_fn = nil},
 	.Result =          {prec = .Lowest,  prefix_fn = parse_identifier, infix_fn = nil},
+	.Any =             {prec = .Lowest,  prefix_fn = parse_identifier, infix_fn = nil},
 	.Number =          {prec = .Lowest,  prefix_fn = parse_identifier, infix_fn = nil},
 	.Boolean =         {prec = .Lowest,  prefix_fn = parse_identifier, infix_fn = nil},
 	.String =          {prec = .Lowest,  prefix_fn = parse_identifier, infix_fn = nil},
@@ -79,14 +80,21 @@ parse_dependencies :: proc(
 		if _, exist := lookup[import_stmt.identifier.text]; exist {
 			continue
 		}
-		module_path := strings.concatenate({import_stmt.identifier.text, ".lily"}, context.temp_allocator)
-		imported_module := make_parsed_module(import_stmt.identifier.text)
-		// FIXME: check for read errros
-		imported_source, _ := os.read_entire_file(module_path)
-		defer delete(imported_source)
-		parse_module(string(imported_source), imported_module) or_return
-		append(buf, imported_module)
-		lookup[imported_module.name] = len(buf) - 1
+		if import_stmt.identifier.text == "std" {
+			std_module := make_parsed_module("std")
+			parse_module(std_source, std_module) or_return
+			append(buf, std_module)
+			lookup["std"] = len(buf) - 1
+		} else {
+			module_path := strings.concatenate({import_stmt.identifier.text, ".lily"}, context.temp_allocator)
+			imported_module := make_parsed_module(import_stmt.identifier.text)
+			// FIXME: check for read errros
+			imported_source, _ := os.read_entire_file(module_path)
+			defer delete(imported_source)
+			parse_module(string(imported_source), imported_module) or_return
+			append(buf, imported_module)
+			lookup[imported_module.name] = len(buf) - 1
+		}
 	}
 	imported_modules := buf[start:len(buf)]
 	for module in imported_modules {
@@ -167,7 +175,7 @@ parse_node :: proc(p: ^Parser) -> (result: Parsed_Node, err: Error) {
 		result, err = parse_import_stmt(p)
 	case .Var:
 		result, err = parse_var_decl(p)
-	case .Fn:
+	case .Fn, .Foreign:
 		result, err = parse_fn_decl(p)
 	case .Type:
 		result, err = parse_type_decl(p)
@@ -374,7 +382,6 @@ parse_var_decl :: proc(p: ^Parser) -> (result: ^Parsed_Var_Declaration, err: Err
 			consume_token(p)
 			result.type_expr = &unresolved_identifier
 			result.expr, err = parse_expr(p, .Lowest)
-			result.initialized = true
 
 		case .Colon:
 			consume_token(p)
@@ -383,12 +390,10 @@ parse_var_decl :: proc(p: ^Parser) -> (result: ^Parsed_Var_Declaration, err: Err
 			case .Assign:
 				consume_token(p)
 				result.expr, err = parse_expr(p, .Lowest)
-				result.initialized = true
 
 			// Uninitialized variable declaration. We mark it as is and let
 			// the checker and vm deal with it
 			case .Newline:
-				result.initialized = false
 
 			case:
 				err = Parsing_Error {
@@ -429,73 +434,85 @@ parse_var_decl :: proc(p: ^Parser) -> (result: ^Parsed_Var_Declaration, err: Err
 parse_fn_decl :: proc(p: ^Parser) -> (result: ^Parsed_Fn_Declaration, err: Error) {
 	result = new(Parsed_Fn_Declaration)
 	result.token = p.current
-	name_token := consume_token(p)
-	if name_token.kind == .Identifier {
-		result.identifier = name_token
-		match_token_kind_next(p, .Open_Paren) or_return
+	#partial switch consume_token(p).kind {
+	case .Identifier:
+		result.identifier = p.current
+		result.kind = .Function
+	case .Fn:
+		match_token_kind_next(p, .Identifier) or_return
+		result.identifier = p.current
+		result.kind = .Foreign
+	case:
+		err = Parsing_Error {
+			kind    = .Invalid_Syntax,
+			token   = p.current,
+			details = fmt.tprintf("Expected %s, got %s", Token_Kind.Identifier, p.current.kind),
+		}
+	}
+	match_token_kind_next(p, .Open_Paren) or_return
 
-		// We check if the function has parameters or not 
-		#partial switch peek_next_token(p).kind {
-		// If it has, we loop and gather all their relevant data (name and type expression) 
-		case .Identifier:
-			params: for {
-				param: Typed_Identifier
-				match_token_kind_next(p, .Identifier) or_return
-				param.name = p.current
-				match_token_kind_next(p, .Colon) or_return
-				consume_token(p)
-				param.type_expr = parse_expr(p, .Lowest) or_return
-				append(&result.parameters, param)
-
-				#partial switch p.current.kind {
-				case .Comma:
-					continue params
-				case .Close_Paren:
-					break params
-				case:
-					err = Parsing_Error {
-						kind    = .Invalid_Syntax,
-						token   = p.current,
-						details = fmt.tprintf(
-							"Expected one of: %s, %s, got %s",
-							Token_Kind.Comma,
-							Token_Kind.Close_Paren,
-							p.current.kind,
-						),
-					}
-					return
-				}
-			}
-
-		// Otherwise, we just move on
-		case .Close_Paren:
+	// We check if the function has parameters or not 
+	#partial switch peek_next_token(p).kind {
+	// If it has, we loop and gather all their relevant data (name and type expression) 
+	case .Identifier:
+		params: for {
+			param: Typed_Identifier
+			match_token_kind_next(p, .Identifier) or_return
+			param.name = p.current
+			match_token_kind_next(p, .Colon) or_return
 			consume_token(p)
+			param.type_expr = parse_expr(p, .Lowest) or_return
+			append(&result.parameters, param)
 
-		// Any other token kind is an error
-		case:
-			err = Parsing_Error {
-				kind    = .Invalid_Syntax,
-				token   = p.current,
-				details = fmt.tprintf(
-					"Expected one of: %s, %s, got %s",
-					Token_Kind.Identifier,
-					Token_Kind.Close_Paren,
-					p.current.kind,
-				),
+			#partial switch p.current.kind {
+			case .Comma:
+				continue params
+			case .Close_Paren:
+				break params
+			case:
+				err = Parsing_Error {
+					kind    = .Invalid_Syntax,
+					token   = p.current,
+					details = fmt.tprintf(
+						"Expected one of: %s, %s, got %s",
+						Token_Kind.Comma,
+						Token_Kind.Close_Paren,
+						p.current.kind,
+					),
+				}
+				return
 			}
 		}
 
-		// The after ':' after the parameters parenthesis
-		match_token_kind_next(p, .Colon) or_return
+	// Otherwise, we just move on
+	case .Close_Paren:
+		consume_token(p)
 
-		// We check if the function has a return value or if it is void
-		// A newline is the delimiter for the function declaration signature 
-		if consume_token(p).kind != .Newline {
-			result.return_type_expr = parse_expr(p, .Lowest) or_return
-			match_token_kind(p, .Newline)
+	// Any other token kind is an error
+	case:
+		err = Parsing_Error {
+			kind    = .Invalid_Syntax,
+			token   = p.current,
+			details = fmt.tprintf(
+				"Expected one of: %s, %s, got %s",
+				Token_Kind.Identifier,
+				Token_Kind.Close_Paren,
+				p.current.kind,
+			),
 		}
+	}
 
-		// FIXME: Refactor into separate procedure
+	// The after ':' after the parameters parenthesis
+	match_token_kind_next(p, .Colon) or_return
+
+	// We check if the function has a return value or if it is void
+	// A newline is the delimiter for the function declaration signature 
+	if consume_token(p).kind != .Newline {
+		result.return_type_expr = parse_expr(p, .Lowest) or_return
+		match_token_kind(p, .Newline)
+	}
+
+	if result.kind == .Function {
 		result.body = new_clone(Parsed_Block_Statement{nodes = make([dynamic]Parsed_Node)})
 		body: for {
 			body_node := parse_node(p) or_return
@@ -505,12 +522,6 @@ parse_fn_decl :: proc(p: ^Parser) -> (result: ^Parsed_Fn_Declaration, err: Error
 			if p.current.kind == .End {
 				break body
 			}
-		}
-	} else {
-		err = Parsing_Error {
-			kind    = .Invalid_Syntax,
-			token   = p.current,
-			details = fmt.tprintf("Expected %s, got %s", Token_Kind.Identifier, p.current.kind),
 		}
 	}
 	return
@@ -610,14 +621,6 @@ parse_expr :: proc(p: ^Parser, prec: Precedence) -> (result: Parsed_Expression, 
 		}
 		result = rule.prefix_fn(p) or_return
 	}
-	// else {
-	// 	err = Parsing_Error {
-	// 		kind    = .Invalid_Syntax,
-	// 		token   = p.previous,
-	// 		details = fmt.tprintf("No expression starts with prefix operator %s", p.previous.text),
-	// 	}
-	// 	return
-	// }
 	for p.current.kind != .EOF && prec < parser_rules[p.current.kind].prec {
 		consume_token(p)
 		if rule, exist := parser_rules[p.previous.kind]; exist {

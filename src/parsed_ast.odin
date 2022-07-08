@@ -259,16 +259,16 @@ Parsed_Import_Statement :: struct {
 }
 
 Parsed_Var_Declaration :: struct {
-	token:       Token, // the "var" token
-	identifier:  Token,
-	type_expr:   Parsed_Expression,
-	expr:        Parsed_Expression,
-	initialized: bool,
+	token:      Token, // the "var" token
+	identifier: Token,
+	type_expr:  Parsed_Expression,
+	expr:       Parsed_Expression,
 }
 
 Parsed_Fn_Declaration :: struct {
 	token:            Token,
 	identifier:       Token,
+	kind:             Fn_Kind,
 	parameters:       [dynamic]Typed_Identifier,
 	body:             ^Parsed_Block_Statement,
 	return_type_expr: Parsed_Expression,

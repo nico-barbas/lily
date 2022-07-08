@@ -69,6 +69,9 @@ fn add(a: number, b: number): number
     result = a + b
 end
 var addResult = add(5, 10)
+
+-- Foreign function declaration:
+foreign fn sub(a: number, b: number): number
 ```
 
 ## Status and Roadmap:
@@ -95,6 +98,9 @@ var addResult = add(5, 10)
 - [x] Immutable function parameters
 - [ ] Variadic function parameters
 - [ ] Foreign functions
+    - [ ] Parsing
+    - [ ] Checking
+    - [ ] Compiling
 - [ ] Minimal standard library
 - [ ] Full test suite
     - [x] Lexer

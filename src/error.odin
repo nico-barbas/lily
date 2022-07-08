@@ -1,6 +1,7 @@
 package lily
 
 import "core:runtime"
+import "core:fmt"
 
 Error :: union {
 	Parsing_Error,
@@ -19,21 +20,77 @@ Parsing_Error :: struct {
 
 Semantic_Error :: struct {
 	kind:         enum {
-		Invalid_Declaration,
 		Invalid_Symbol,
 		Unknown_Symbol,
 		Redeclared_Symbol,
-		Redeclared_Type,
 		Mismatched_Types,
-		Invalid_Arg_Count,
-		Invalid_Type_Operation,
-		Invalid_Dot_Operand,
-		Invalid_Class_Constructor_Usage,
-		Invalid_Class_Field_Access,
+		Invalid_Mutability,
 	},
 	compiler_loc: runtime.Source_Code_Location,
 	token:        Token,
 	details:      string,
+}
+
+rhs_assign_semantic_err :: proc(s: ^Symbol, t: Token, loc := #caller_location) -> Semantic_Error {
+	return format_semantic_err(
+		Semantic_Error{kind = .Invalid_Symbol, token = t, details = fmt.tprintf("Cannot assign %s", s.name)},
+		loc,
+	)
+}
+
+lhs_assign_semantic_err :: proc(s: ^Symbol, t: Token, loc := #caller_location) -> Semantic_Error {
+	return format_semantic_err(
+		Semantic_Error{
+			kind = .Invalid_Symbol,
+			token = t,
+			details = fmt.tprintf("Cannot assign to %s", s.name),
+		},
+		loc,
+	)
+}
+
+mutable_semantic_err :: proc(s: ^Symbol, t: Token, loc := #caller_location) -> Semantic_Error {
+	return format_semantic_err(
+		Semantic_Error{
+			kind = .Invalid_Mutability,
+			token = t,
+			details = fmt.tprintf("Cannot assign to %s, %s is not mutable", s.name, s.name),
+		},
+		loc,
+	)
+}
+
+index_semantic_err :: proc(s: ^Symbol, t: Token, loc := #caller_location) -> Semantic_Error {
+	return format_semantic_err(
+		Semantic_Error{
+			kind = .Invalid_Symbol,
+			token = t,
+			details = fmt.tprintf("Symbol %s is not indexable", s.name),
+		},
+		loc,
+	)
+}
+
+call_semantic_err :: proc(s: ^Symbol, t: Token, loc := #caller_location) -> Semantic_Error {
+	return format_semantic_err(
+		Semantic_Error{
+			kind = .Invalid_Symbol,
+			token = t,
+			details = fmt.tprintf("Symbol %s is not a valid call target", s.name),
+		},
+		loc,
+	)
+}
+
+dot_operand_semantic_err :: proc(s: ^Symbol, t: Token, loc := #caller_location) -> Semantic_Error {
+	return format_semantic_err(
+		Semantic_Error{
+			kind = .Invalid_Symbol,
+			token = t,
+			details = fmt.tprintf("Symbol %s is not a valid dot operand", s.name),
+		},
+		loc,
+	)
 }
 
 format_semantic_err :: proc(err: Semantic_Error, loc := #caller_location) -> Semantic_Error {

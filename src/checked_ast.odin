@@ -41,10 +41,6 @@ make_checked_module :: proc(name: string, id: int) -> ^Checked_Module {
 		)
 	m.scope = new_scope()
 	m.root = m.scope
-	m.root.class_lookup = make(map[string]struct {
-				symbol_index: int,
-				scope_index:  int,
-			})
 	m.scope_depth = 0
 	return m
 }
@@ -63,7 +59,7 @@ hash_scope_id :: proc(c: ^Checked_Module, name: Token) -> Scope_ID {
 push_scope :: proc(c: ^Checked_Module, name: Token) -> Scope_ID {
 	scope := new_scope()
 	scope.id = hash_scope_id(c, name)
-	append(&c.scope.children, scope)
+	c.scope.children[scope.id] = scope
 	scope.parent = c.scope
 	c.scope = scope
 	c.scope_depth += 1
@@ -81,22 +77,19 @@ push_class_scope :: proc(c: ^Checked_Module, name: Token) -> (err: Error) {
 	class_scope := new_scope()
 	class_scope.id = hash_scope_id(c, name)
 	class_scope.parent = c.scope
-	class_symbol, e :=
-		add_symbol_to_scope(
-			c.scope,
-			Symbol{
-				name = name.text,
-				kind = .Class_Symbol,
-				module_id = c.id,
-				scope_id = c.scope.id,
-				class_info = {class_scope_id = class_scope.id},
-			},
-		)
-	if e != nil {
-		err = e
-		return
-	}
-	class_symbol_index := len(c.scope.symbols) - 1
+	//odinfmt: disable
+	class_symbol := add_symbol_to_scope(
+		c.scope,
+		Symbol{
+			name = name.text,
+			kind = .Class_Symbol,
+			module_id = c.id,
+			scope_id = c.scope.id,
+			info = Class_Symbol_Info{sub_scope_id = class_scope.id},
+		},
+	) or_return
+	//odinfmt: enable
+	// class_symbol_index := len(c.scope.symbols) - 1
 
 
 	add_symbol_to_scope(
@@ -106,41 +99,23 @@ push_class_scope :: proc(c: ^Checked_Module, name: Token) -> (err: Error) {
 			kind = .Var_Symbol,
 			module_id = c.id,
 			scope_id = class_scope.id,
-			var_info = {symbol = class_symbol, is_ref = true, immutable = false},
+			info = Var_Symbol_Info{symbol = class_symbol, mutable = false},
 		},
 	) or_return
-	append(&c.scope.children, class_scope)
-	c.scope.class_lookup[name.text] = {
-		symbol_index = class_symbol_index,
-		scope_index  = len(c.scope.children) - 1,
-	}
+	c.scope.children[class_scope.id] = class_scope
 	c.scope = class_scope
 	c.scope_depth += 1
 	return
 }
 
 enter_class_scope :: proc(c: ^Checked_Module, name: Token) -> (err: Error) {
-	class_index := c.root.class_lookup[name.text].scope_index
-	c.scope = c.root.children[class_index]
-	c.scope_depth = 1
-	return
-}
+	class_symbol := get_scoped_symbol(c.root, name) or_return
+	if class_symbol.kind == .Class_Symbol {
+		info := class_symbol.info.(Class_Symbol_Info)
+		c.scope = c.root.children[info.sub_scope_id]
+		c.scope_depth = 1
+	} else {
 
-enter_class_scope_by_id :: proc(c: ^Checked_Module, scope_id: Scope_ID, loc := #caller_location) -> (
-	err: Error,
-) {
-	for _, lookup in c.root.class_lookup {
-		symbol := &c.root.symbols[lookup.symbol_index]
-		if symbol.class_info.class_scope_id == scope_id {
-			c.scope = c.root.children[lookup.scope_index]
-			c.scope_depth = 1
-			return
-		}
-	}
-	err = Internal_Error {
-		kind         = .Unknown_Scope_Name,
-		details      = fmt.tprintf("Scope #%i not known", scope_id),
-		compiler_loc = loc,
 	}
 	return
 }
@@ -148,17 +123,15 @@ enter_class_scope_by_id :: proc(c: ^Checked_Module, scope_id: Scope_ID, loc := #
 enter_child_scope_by_id :: proc(c: ^Checked_Module, scope_id: Scope_ID, loc := #caller_location) -> (
 	err: Error,
 ) {
-	for scope in c.scope.children {
-		if scope.id == scope_id {
-			c.scope = scope
-			c.scope_depth += 1
-			return
+	if child, exist := c.scope.children[scope_id]; exist {
+		c.scope = child
+		c.scope_depth += 1
+	} else {
+		err = Internal_Error {
+			kind         = .Unknown_Scope_Name,
+			details      = fmt.tprintf("Scope #%i not known", scope_id),
+			compiler_loc = loc,
 		}
-	}
-	err = Internal_Error {
-		kind         = .Unknown_Scope_Name,
-		details      = fmt.tprintf("Scope #%i not known", scope_id),
-		compiler_loc = loc,
 	}
 	return
 }
@@ -200,31 +173,36 @@ Checked_Expression :: union {
 }
 
 Checked_Literal_Expression :: struct {
-	token: Token,
-	value: Value,
+	token:  Token,
+	symbol: ^Symbol,
+	value:  Value,
 }
 
 Checked_String_Literal_Expression :: struct {
-	token: Token,
-	value: string,
+	token:  Token,
+	symbol: ^Symbol,
+	value:  string,
 }
 
 Checked_Array_Literal_Expression :: struct {
 	token:  Token,
+	symbol: ^Symbol,
 	values: []Checked_Expression,
 }
 
 Checked_Unary_Expression :: struct {
-	token: Token,
-	expr:  Checked_Expression,
-	op:    Operator,
+	token:  Token,
+	symbol: ^Symbol, // The "type" symbol resulting from the operation 
+	expr:   Checked_Expression,
+	op:     Operator,
 }
 
 Checked_Binary_Expression :: struct {
-	token: Token,
-	left:  Checked_Expression,
-	right: Checked_Expression,
-	op:    Operator,
+	token:  Token,
+	symbol: ^Symbol, // The "type" symbol resulting from the operation 
+	left:   Checked_Expression,
+	right:  Checked_Expression,
+	op:     Operator,
 }
 
 Checked_Identifier_Expression :: struct {
@@ -233,25 +211,29 @@ Checked_Identifier_Expression :: struct {
 }
 
 Checked_Index_Expression :: struct {
-	token: Token,
-	kind:  enum {
+	token:  Token,
+	symbol: ^Symbol, // The "type" symbol resulting from the operation 
+	kind:   enum {
 		Array,
 		Map,
 	},
-	left:  Checked_Expression,
-	index: Checked_Expression,
+	left:   Checked_Expression,
+	index:  Checked_Expression,
 }
 
 Checked_Dot_Expression :: struct {
-	token:    Token,
-	left:     Checked_Expression,
-	selector: Checked_Expression,
+	token:       Token,
+	symbol:      ^Symbol, // The "type" symbol resulting from the operation
+	leaf_symbol: ^Symbol,
+	left:        Checked_Expression,
+	selector:    Checked_Expression,
 }
 
 Checked_Call_Expression :: struct {
-	token: Token,
-	func:  Checked_Expression,
-	args:  []Checked_Expression,
+	token:  Token,
+	symbol: ^Symbol, // The "type" symbol resulting from the operation 
+	func:   Checked_Expression,
+	args:   []Checked_Expression,
 }
 
 Accessor_Kind :: enum {
@@ -261,32 +243,71 @@ Accessor_Kind :: enum {
 	Instance_Access,
 }
 
-// FIXME: very hacky
-checked_expr_symbol :: proc(expr: Checked_Expression) -> (symbol: ^Symbol) {
+checked_expr_symbol :: proc(expr: Checked_Expression, lhs := true) -> (symbol: ^Symbol) {
 	switch e in expr {
 	case ^Checked_Literal_Expression:
+		symbol = e.symbol
 
 	case ^Checked_String_Literal_Expression:
+		symbol = e.symbol
 
 	case ^Checked_Array_Literal_Expression:
+		symbol = e.symbol
 
 	case ^Checked_Unary_Expression:
-		symbol = checked_expr_symbol(e.expr)
+		symbol = e.symbol
 
 	case ^Checked_Binary_Expression:
-	// symbol = checked_expr_symbol(e.)
+		symbol = e.symbol
 
 	case ^Checked_Identifier_Expression:
 		symbol = e.symbol
 
 	case ^Checked_Index_Expression:
-		symbol = checked_expr_symbol(e.left)
+		symbol = e.symbol
 
 	case ^Checked_Dot_Expression:
-		symbol = checked_expr_symbol(e.selector)
+		if lhs {
+			symbol = e.symbol
+		} else {
+			symbol = e.leaf_symbol
+		}
 
 	case ^Checked_Call_Expression:
-		symbol = checked_expr_symbol(e.func)
+		symbol = e.symbol
+
+	}
+	return
+}
+
+checked_expr_token :: proc(expr: Checked_Expression) -> (t: Token) {
+	switch e in expr {
+	case ^Checked_Literal_Expression:
+		t = e.token
+
+	case ^Checked_String_Literal_Expression:
+		t = e.token
+
+	case ^Checked_Array_Literal_Expression:
+		t = e.token
+
+	case ^Checked_Unary_Expression:
+		t = e.token
+
+	case ^Checked_Binary_Expression:
+		t = e.token
+
+	case ^Checked_Identifier_Expression:
+		t = e.token
+
+	case ^Checked_Index_Expression:
+		t = e.token
+
+	case ^Checked_Dot_Expression:
+		t = e.token
+
+	case ^Checked_Call_Expression:
+		t = e.token
 
 	}
 	return
@@ -393,6 +414,7 @@ Checked_Var_Declaration :: struct {
 Checked_Fn_Declaration :: struct {
 	token:      Token,
 	identifier: ^Symbol,
+	kind:       Fn_Kind,
 	body:       Checked_Node,
 	params:     []^Symbol,
 }

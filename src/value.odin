@@ -15,13 +15,15 @@ Value_Kind :: enum {
 	Object_Ref,
 }
 
+Value_Data :: union {
+	f64,
+	bool,
+	^Object,
+}
+
 Value :: struct {
 	kind: Value_Kind,
-	data: union {
-		f64,
-		bool,
-		^Object,
-	},
+	data: Value_Data,
 }
 
 value_equal :: proc(v1, v2: Value) -> bool {
@@ -67,9 +69,17 @@ Map_Object :: struct {
 	data:       map[Value]Value,
 }
 
+Fn_Kind :: enum {
+	Foreign,
+	Constructor,
+	Method,
+	Function,
+}
+
 Fn_Object :: struct {
 	using base: Object,
 	chunk:      Chunk,
+	foreign_fn: Foreign_Procedure,
 }
 
 Class_Object :: struct {
@@ -173,38 +183,37 @@ Range_Operator :: enum {
 	Exclusive,
 }
 
-Iterator :: struct {
-	next:  proc(i: ^Iterator) -> (Value, bool),
-	index: int,
-}
+// Iterator :: struct {
+// 	next:  proc(i: ^Iterator) -> (Value, bool),
+// 	index: int,
+// }
 
-base_iterator_next :: proc(i: ^Iterator) {
-	i.index += 1
-}
+// base_iterator_next :: proc(i: ^Iterator) {
+// 	i.index += 1
+// }
 
-Range_Iterator :: struct {
-	using base: Iterator,
-	low:        f64,
-	high:       f64,
-	reverse:    bool,
-}
+// Range_Iterator :: struct {
+// 	using base: Iterator,
+// 	low:        f64,
+// 	high:       f64,
+// 	reverse:    bool,
+// }
 
-//odinfmt: disable
-RANGE_ITERATOR_IMPL :: Range_Iterator {
-	base = Iterator {
-		next = proc(i: ^Iterator) -> (value: Value, done: bool) {
-			r := cast(^Range_Iterator)i
-			value.kind = .Number
-			if r.reverse {
-				value.data = r.high - f64(r.index)
-				done = value.data.(f64) < r.low
-			} else {
-				value.data = r.low + f64(r.index)
-				done = value.data.(f64) > r.high
-			}
-			base_iterator_next(r)
-			return
-		},
-	},
-}
-//odinfmt: enable
+
+// RANGE_ITERATOR_IMPL :: Range_Iterator {
+// 	base = Iterator {
+// 		next = proc(i: ^Iterator) -> (value: Value, done: bool) {
+// 			r := cast(^Range_Iterator)i
+// 			value.kind = .Number
+// 			if r.reverse {
+// 				value.data = r.high - f64(r.index)
+// 				done = value.data.(f64) < r.low
+// 			} else {
+// 				value.data = r.low + f64(r.index)
+// 				done = value.data.(f64) > r.high
+// 			}
+// 			base_iterator_next(r)
+// 			return
+// 		},
+// 	},
+// }

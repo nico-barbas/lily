@@ -111,11 +111,11 @@ get_var_stack_addr :: proc(vm: ^Vm, var_addr: i16) -> int {
 	return vm.chunk.variables[var_addr].stack_addr
 }
 
-run_program :: proc(c: []^Compiled_Module, entry_point: int) {
+run_program :: proc(state: ^State, entry_point: int) {
 	vm := Vm {
-		modules = c,
-		current = c[entry_point],
-		chunk   = &c[entry_point].main,
+		modules = state.compiled_modules,
+		current = state.compiled_modules[entry_point],
+		chunk   = &state.compiled_modules[entry_point].main,
 	}
 
 	run: for {
@@ -236,6 +236,11 @@ run_program :: proc(c: []^Compiled_Module, entry_point: int) {
 		case .Op_Call:
 			fn_addr := get_i16(&vm)
 			push_call_frame(&vm, &vm.current.functions[fn_addr].chunk)
+
+		case .Op_Call_Foreign:
+			fn_addr := get_i16(&vm)
+			fn_values := vm.stack[get_scope_start_addr(&vm):vm.stack_ptr]
+			call_foreign_fn(state, vm.current.functions[fn_addr].foreign_fn, fn_values)
 
 		case .Op_Call_Method:
 			method_addr := get_i16(&vm)

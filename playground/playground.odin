@@ -37,31 +37,29 @@ playground :: proc() {using lily
 	RUN_COMPILER :: true
 	RUN_VM :: true
 
-	// input: string = `
-	// 	type Foo is class
-	// 		x: number
+	input: string = `
+		type Foo is class
+			x: number
 
-	// 		constructor new(_x: number):
-	// 			self.x = _x
-	// 		end
+			constructor new(_x: number):
+				self.x = _x
+			end
 
-	// 		fn add(n: number):
-	// 			self.x = self.x + n
-	// 		end
+			fn add(n: number):
+				self.x = self.x + n
+			end
+		end
+
+	    var a = Foo.new(1)
+		a.add(13)
+	`
+	// input := `
+	// 	fn print(n: number):
 	// 	end
 
-	//     var a = Foo.new(1)
-	// 	a.add(13)
+	// 	var a = 10
+	// 	print(10)
 	// `
-	input := `
-		import math 
-		
-		var foo = math.Vector.new()
-		var b = true
-		for i in 0..10:
-			foo.add(i)
-		end
-	`
 
 	checker := Checker{}
 	init_checker(&checker)
@@ -73,10 +71,10 @@ playground :: proc() {using lily
 		print_checked_ast(module, &checker)
 	}
 
-	compiled_program := make_compiled_program(checked)
-	for i in 0 ..< len(compiled_program) {
-		compile_module(checked, compiled_program, i)
-		print_compiled_module(compiled_program[i])
-	}
-	run_program(compiled_program, 0)
+	// compiled_program := make_compiled_program(checked)
+	// for i in 0 ..< len(compiled_program) {
+	// 	compile_module(checked, compiled_program, i)
+	// 	print_compiled_module(compiled_program[i])
+	// }
+	// run_program(compiled_program, 0)
 }
