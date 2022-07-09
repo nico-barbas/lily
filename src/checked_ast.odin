@@ -13,6 +13,7 @@ Checked_Output :: struct {
 // allowed at the file scope. This means that all the
 // type infos can be kept at one place,
 Checked_Module :: struct {
+	source:      string,
 	name:        string,
 	id:          int,
 	// This is all the nodes at the file level
@@ -150,6 +151,10 @@ delete_checked_module :: proc(m: ^Checked_Module) {
 		free_checked_node(function)
 	}
 	delete(m.functions)
+	for node in m.variables {
+		free_checked_node(node)
+	}
+	delete(m.variables)
 	for node in m.nodes {
 		free_checked_node(node)
 	}

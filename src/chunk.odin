@@ -162,6 +162,14 @@ make_chunk :: proc(with_consts: bool) -> Chunk {
 	return c
 }
 
+delete_chunk :: proc(c: ^Chunk) {
+	delete(c.bytecode)
+	if c.constants != nil {
+		delete(c.constants)
+	}
+	delete(c.variables)
+}
+
 push_byte :: proc(c: ^Chunk, b: byte) {
 	append(&c.bytecode, b)
 }

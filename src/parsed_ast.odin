@@ -23,6 +23,18 @@ make_parsed_module :: proc(name: string) -> ^Parsed_Module {
 }
 
 delete_parsed_module :: proc(p: ^Parsed_Module) {
+	for node in p.import_nodes {
+		free_parsed_node(node)
+	}
+	delete(p.import_nodes)
+	for node in p.types {
+		free_parsed_node(node)
+	}
+	delete(p.types)
+	for node in p.functions {
+		free_parsed_node(node)
+	}
+	delete(p.functions)
 	for node in p.nodes {
 		free_parsed_node(node)
 	}
@@ -332,7 +344,9 @@ free_parsed_node :: proc(node: Parsed_Node) {
 			free_parsed_expression(identifier.type_expr)
 		}
 		delete(n.parameters)
-		free_parsed_node(n.body)
+		if n.body != nil {
+			free_parsed_node(n.body)
+		}
 		free_parsed_expression(n.return_type_expr)
 		free(n)
 

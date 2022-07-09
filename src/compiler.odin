@@ -271,14 +271,8 @@ compile_module :: proc(state: ^State, index: int) {
 	for node in module_body {
 		compile_node(&c, node)
 	}
-	// for node in c.current_read.variables {
-	// 	compile_node(&c, node)
-	// }
-	// for node in c.current_read.nodes {
-	// 	compile_node(&c, node)
-	// }
-	reset_compiler(&c)
 	c.current_write.main = c.chunk
+	delete(c.chunk_variables)
 }
 
 compile_fn_parameters :: proc(c: ^Compiler, params: []^Symbol, offset: i16) {

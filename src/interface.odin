@@ -8,6 +8,7 @@ State :: struct {
 	import_modules_id:   map[string]int,
 	import_modules_name: map[int]string,
 	compiled_modules:    []^Compiled_Module,
+	checker:             Checker,
 	vm:                  Vm,
 	std_builder:         strings.Builder,
 
@@ -27,7 +28,8 @@ Config :: struct {
 
 new_state :: proc(c: Config) -> ^State {
 	//odinfmt: disable
-	return new_clone(State{
+	s := new_clone(State{
+		checker = Checker{},
 		std_builder = strings.make_builder(0, 200),
 		get_value = proc(state: ^State, at: int) -> Value {
 			return state.value_buf[at]
@@ -35,13 +37,22 @@ new_state :: proc(c: Config) -> ^State {
 		internal_bind_fn = bind_foreign_fn,
 	})
 	//odinfmt: enable
+	init_checker(&s.checker)
+	return s
+}
+
+free_state :: proc(s: ^State) {
+	strings.destroy_builder(&s.std_builder)
+	free_checker(&s.checker)
+	delete(s.import_modules_name)
+	free(s)
 }
 
 compile_source :: proc(s: ^State, module_name: string, source: string) -> (err: Error) {
-	checker := Checker{}
-	init_checker(&checker)
-	s.checked_modules = build_checked_program(&checker, module_name, source) or_return
-	s.import_modules_id = checker.import_names_lookup
+	s.checked_modules = build_checked_program(&s.checker, module_name, source) or_return
+
+
+	s.import_modules_id = s.checker.import_names_lookup
 	for name, id in s.import_modules_id {
 		s.import_modules_name[id] = name
 	}

@@ -101,7 +101,17 @@ init_checker :: proc(c: ^Checker) {
 }
 
 free_checker :: proc(c: ^Checker) {
+	for scope in c.builtin_fn {
+		if scope != nil {
+			free_scope(scope)
+		}
+	}
+	for module in c.modules {
+		delete_checked_module(module)
+	}
 	delete(c.modules)
+	delete(c.types)
+	delete(c.import_names_lookup)
 }
 
 contain_symbol :: proc(c: ^Checker, token: Token) -> bool {
@@ -213,6 +223,7 @@ build_checked_program :: proc(c: ^Checker, module_name: string, entry_point: str
 	for module, i in c.parsed_results {
 		index := c.import_names_lookup[module.name]
 		c.modules[index] = make_checked_module(module.name, i)
+		c.modules[index].source = module.source
 		add_module_import_symbols(c, index) or_return
 		add_module_decl_symbols(c, index) or_return
 		add_module_type_decl(c, index) or_return
@@ -226,6 +237,10 @@ build_checked_program :: proc(c: ^Checker, module_name: string, entry_point: str
 		build_checked_ast(c, index) or_return
 	}
 
+	for module in c.parsed_results {
+		delete_parsed_module(module)
+	}
+	delete(c.parsed_results)
 	result = c.modules
 	return
 }

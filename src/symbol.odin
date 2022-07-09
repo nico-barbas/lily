@@ -86,17 +86,6 @@ is_valis_accessor :: proc(s: ^Symbol) -> bool {
 	}
 }
 
-// builtin_container_symbols :: [?]string{"len", "append"}
-
-// is_builtin_container_symbol :: proc(s: string) -> bool {
-// 	for symbol in builtin_container_symbols {
-// 		if s == symbol {
-// 			return true
-// 		}
-// 	}
-// 	return false
-// }
-
 new_scope :: proc() -> ^Semantic_Scope {
 	scope := new(Semantic_Scope)
 	scope.symbols = make([dynamic]Symbol)

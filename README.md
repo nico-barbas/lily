@@ -113,6 +113,7 @@ foreign fn sub(a: number, b: number): number
 ## Known Bugs:
 - Nested function calls are crashing the compiler
 - User defined foreign fn declaration are not supported in the standalone compiler and should be disallowed
+- Many, many compiler memory leaks (will be fixed very soon)
 
 <!-- ## Dot operator rules:
 

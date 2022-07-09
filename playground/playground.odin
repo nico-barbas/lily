@@ -10,20 +10,20 @@ main :: proc() {
 	context.allocator = mem.tracking_allocator(&track)
 	playground()
 
-	// fmt.println()
-	// if len(track.allocation_map) > 0 {
-	// 	fmt.printf("Leaks:")
-	// 	for _, v in track.allocation_map {
-	// 		fmt.printf("\t%v\n\n", v)
-	// 	}
-	// }
-	// fmt.printf("Leak count: %d\n", len(track.allocation_map))
-	// if len(track.bad_free_array) > 0 {
-	// 	fmt.printf("Bad Frees:")
-	// 	for v in track.bad_free_array {
-	// 		fmt.printf("\t%v\n\n", v)
-	// 	}
-	// }
+	fmt.println()
+	if len(track.allocation_map) > 0 {
+		fmt.printf("Leaks:")
+		for _, v in track.allocation_map {
+			fmt.printf("\t%v\n\n", v)
+		}
+	}
+	fmt.printf("Leak count: %d\n", len(track.allocation_map))
+	if len(track.bad_free_array) > 0 {
+		fmt.printf("Bad Frees:")
+		for v in track.bad_free_array {
+			fmt.printf("\t%v\n\n", v)
+		}
+	}
 }
 
 playground :: proc() {using lily
@@ -79,6 +79,7 @@ playground :: proc() {using lily
 
 	run_module(state, "main")
 	fmt.println("finished")
+	free_state(state)
 
 	// compiled_program := make_compiled_program(checked)
 	// for i in 0 ..< len(compiled_program) {
