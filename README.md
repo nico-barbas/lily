@@ -127,8 +127,8 @@ foreign fn sub(a: number, b: number): number
     - `Chained Selector` => `Call Expression` | `Field Name` | `Index Expression` | -->
 
 
-- **`Left-handside Dot expression`** => | `Left Dot Operand` | . | `Selector Dot Operand` |
+<!-- - **`Left-handside Dot expression`** => | `Left Dot Operand` | . | `Selector Dot Operand` |
     - `Left Dot Operand` =>  | `Module Name` | `Variable Name` | `Call Expression` | `Index Expression` |
     - `Selector Dot Operand` => `Variable Name` | `Chained Selector` |
     - `Chained Selector` => | `Chained Selector` | . | `Call Expression` | `Field Name` | `Index Expression` |
-    - `Chained Selector` => `Call Expression` | `Field Name` | `Index Expression` |
+    - `Chained Selector` => `Call Expression` | `Field Name` | `Index Expression` | -->
