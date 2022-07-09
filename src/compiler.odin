@@ -1,6 +1,7 @@
 package lily
 
 import "core:fmt"
+import "core:sort"
 
 Compiler :: struct {
 	state:           ^State,
@@ -243,13 +244,39 @@ compile_module :: proc(state: ^State, index: int) {
 
 	c.chunk = make_chunk(true)
 	c.constants = &c.chunk.constants
-	for node in c.current_read.variables {
+	module_body :=
+		make([]Checked_Node, len(c.current_read.variables) + len(c.current_read.nodes), context.temp_allocator)
+	copy(module_body[:len(c.current_read.variables)], c.current_read.variables[:])
+	copy(module_body[len(c.current_read.variables):], c.current_read.nodes[:])
+
+	//odinfmt: disable
+	sort.sort(sort.Interface{
+		len = proc(it: sort.Interface) -> int {
+			buf := cast(^[]Checked_Node)it.collection
+			return len(buf)
+		}, 
+		less = proc(it: sort.Interface, i, j: int) -> bool {
+			buf := cast(^[]Checked_Node)it.collection
+			i_token, j_token := checked_node_token(buf[i]), checked_node_token(buf[j])
+			return i_token.line < j_token.line
+		},
+		swap = proc(it: sort.Interface, i, j: int) {
+			buf := cast(^[]Checked_Node)it.collection
+			buf[i], buf[j] = buf[j], buf[i]
+		},
+		collection = &module_body,
+	})
+	//odinfmt: enable
+
+	for node in module_body {
 		compile_node(&c, node)
 	}
-	for node in c.current_read.nodes {
-		compile_node(&c, node)
-	}
-	// fmt.println("boop")
+	// for node in c.current_read.variables {
+	// 	compile_node(&c, node)
+	// }
+	// for node in c.current_read.nodes {
+	// 	compile_node(&c, node)
+	// }
 	reset_compiler(&c)
 	c.current_write.main = c.chunk
 }
@@ -542,7 +569,8 @@ compile_dot_expr :: proc(c: ^Compiler, expr: ^Checked_Dot_Expression, lhs: bool)
 		case .Instance_Access:
 			symbol := checked_expr_symbol(selector.func)
 			if symbol.module_id == BUILTIN_MODULE_ID {
-				if symbol.name == "append" {
+				switch symbol.name {
+				case "append":
 					left_symbol := checked_expr_symbol(expr.left)
 					var_addr := get_var_addr(c, left_symbol.name)
 					for i := len(selector.args) - 1; i >= 0; i -= 1 {
@@ -553,6 +581,11 @@ compile_dot_expr :: proc(c: ^Compiler, expr: ^Checked_Dot_Expression, lhs: bool)
 						push_op_code(&c.chunk, .Op_Append_Array)
 					}
 					push_op_code(&c.chunk, .Op_Pop)
+				case "length":
+					left_symbol := checked_expr_symbol(expr.left)
+					var_addr := get_var_addr(c, left_symbol.name)
+					push_simple_instruction(&c.chunk, .Op_Get, var_addr)
+					push_op_code(&c.chunk, .Op_Length)
 				}
 			} else {
 				compile_method_call_expr(c, selector)
@@ -603,8 +636,7 @@ compile_constructor_call_expr :: proc(c: ^Compiler, expr: ^Checked_Call_Expressi
 		compile_expr(c, arg_expr)
 	}
 	class_module := c.state.compiled_modules[c.selected_class.module_id]
-	constructor_addr :=
-		get_constructor_addr(class_module, c.selected_class.name, symbol.name)
+	constructor_addr := get_constructor_addr(class_module, c.selected_class.name, symbol.name)
 	push_simple_instruction(&c.chunk, .Op_Call_Constr, constructor_addr)
 	push_op_code(&c.chunk, .Op_Push_Back)
 }

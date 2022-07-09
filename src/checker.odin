@@ -74,6 +74,19 @@ init_checker :: proc(c: ^Checker) {
 				},
 			},
 		)
+		add_symbol_to_scope(
+			c.builtin_fn[ARRAY_SYMBOL],
+			Symbol{
+				name = "length",
+				kind = .Fn_Symbol,
+				module_id = BUILTIN_MODULE_ID,
+				info = Fn_Symbol_Info{
+					has_return = true,
+					kind = .Builtin,
+					return_symbol = &c.builtin_symbols[NUMBER_SYMBOL],
+				},
+			},
+		)
 	}
 
 	c.types = make([dynamic]Type_ID)
@@ -109,10 +122,7 @@ contain_symbol :: proc(c: ^Checker, token: Token) -> bool {
 	return false
 }
 
-get_symbol :: proc(c: ^Checker, token: Token, loc := #caller_location) -> (
-	result: ^Symbol,
-	err: Error,
-) {
+get_symbol :: proc(c: ^Checker, token: Token, loc := #caller_location) -> (result: ^Symbol, err: Error) {
 	builtins: for symbol, i in c.builtin_symbols {
 		if symbol.name == token.text {
 			result = &c.builtin_symbols[i]
@@ -372,9 +382,7 @@ add_module_type_decl :: proc(c: ^Checker, module_id: int) -> (err: Error) {
 	return
 }
 
-add_module_class_type :: proc(c: ^Checker, decl: ^Parsed_Type_Declaration) -> (
-	err: Error,
-) {
+add_module_class_type :: proc(c: ^Checker, decl: ^Parsed_Type_Declaration) -> (err: Error) {
 	append(&c.types, c.type_id_ptr)
 	class_symbol := get_scoped_symbol(c.current.root, decl.identifier) or_return
 	class_symbol.type_id = c.type_id_ptr
@@ -432,9 +440,7 @@ check_module_signatures_symbols :: proc(c: ^Checker, module_id: int) -> (err: Er
 	return
 }
 
-check_fn_signature_symbols :: proc(c: ^Checker, fn_decl: ^Parsed_Fn_Declaration) -> (
-	err: Error,
-) {
+check_fn_signature_symbols :: proc(c: ^Checker, fn_decl: ^Parsed_Fn_Declaration) -> (err: Error) {
 	fn_symbol, _ := get_scoped_symbol(c.current.scope, fn_decl.identifier)
 	fn_info := fn_symbol.info.(Fn_Symbol_Info)
 	if fn_decl.return_type_expr != nil {
@@ -593,10 +599,7 @@ build_checked_ast :: proc(c: ^Checker, module_id: int) -> (err: Error) {
 	return
 }
 
-build_checked_node :: proc(c: ^Checker, node: Parsed_Node) -> (
-	result: Checked_Node,
-	err: Error,
-) {
+build_checked_node :: proc(c: ^Checker, node: Parsed_Node) -> (result: Checked_Node, err: Error) {
 	switch n in node {
 	case ^Parsed_Expression_Statement:
 		expr_stmt := new(Checked_Expression_Statement)
@@ -606,7 +609,7 @@ build_checked_node :: proc(c: ^Checker, node: Parsed_Node) -> (
 
 	case ^Parsed_Block_Statement:
 		block_stmt :=
-			new_clone(Checked_Block_Statement{nodes = make([]Checked_Node, len(n.nodes))})
+			new_clone(Checked_Block_Statement{token = n.token, nodes = make([]Checked_Node, len(n.nodes))})
 		for inner_node, i in n.nodes {
 			checked_node := build_checked_node(c, inner_node) or_return
 			block_stmt.nodes[i] = checked_node
@@ -708,11 +711,7 @@ build_checked_node :: proc(c: ^Checker, node: Parsed_Node) -> (
 	case ^Parsed_Fn_Declaration:
 		fn_decl :=
 			new_clone(
-				Checked_Fn_Declaration{
-					token = n.token,
-					kind = n.kind,
-					params = make([]^Symbol, len(n.parameters)),
-				},
+				Checked_Fn_Declaration{token = n.token, kind = n.kind, params = make([]^Symbol, len(n.parameters))},
 			)
 		fn_decl.identifier = get_scoped_symbol(c.current.scope, n.identifier) or_return
 		fn_info := fn_decl.identifier.info.(Fn_Symbol_Info)
@@ -816,11 +815,7 @@ build_checked_expr :: proc(c: ^Checker, expr: Parsed_Expression) -> (
 	case ^Parsed_Unary_Expression:
 		unary_expr :=
 			new_clone(
-				Checked_Unary_Expression{
-					token = e.token,
-					op = e.op,
-					expr = build_checked_expr(c, e.expr) or_return,
-				},
+				Checked_Unary_Expression{token = e.token, op = e.op, expr = build_checked_expr(c, e.expr) or_return},
 			)
 		unary_expr.symbol = checked_expr_symbol(unary_expr.expr)
 		#partial switch e.op {
@@ -862,12 +857,7 @@ build_checked_expr :: proc(c: ^Checker, expr: Parsed_Expression) -> (
 
 	case ^Parsed_Identifier_Expression:
 		identifier_expr :=
-			new_clone(
-				Checked_Identifier_Expression{
-					token = e.name,
-					symbol = get_symbol(c, e.name) or_return,
-				},
-			)
+			new_clone(Checked_Identifier_Expression{token = e.name, symbol = get_symbol(c, e.name) or_return})
 		result = identifier_expr
 
 	case ^Parsed_Index_Expression:
@@ -961,10 +951,7 @@ build_checked_expr :: proc(c: ^Checker, expr: Parsed_Expression) -> (
 		case ^Parsed_Index_Expression:
 			index_expr :=
 				new_clone(
-					Checked_Index_Expression{
-						token = left.token,
-						left = build_checked_expr(c, left.left) or_return,
-					},
+					Checked_Index_Expression{token = left.token, left = build_checked_expr(c, left.left) or_return},
 				)
 			left_symbol := checked_expr_symbol(index_expr.left)
 			if left_symbol.kind == .Var_Symbol {
@@ -1005,10 +992,7 @@ build_checked_expr :: proc(c: ^Checker, expr: Parsed_Expression) -> (
 		case ^Parsed_Call_Expression:
 			call_expr :=
 				new_clone(
-					Checked_Call_Expression{
-						token = left.token,
-						args = make([]Checked_Expression, len(left.args)),
-					},
+					Checked_Call_Expression{token = left.token, args = make([]Checked_Expression, len(left.args))},
 				)
 			call_expr.func = build_checked_expr(c, left.func) or_return
 
@@ -1147,12 +1131,7 @@ build_checked_expr :: proc(c: ^Checker, expr: Parsed_Expression) -> (
 
 	case ^Parsed_Call_Expression:
 		call_expr :=
-			new_clone(
-				Checked_Call_Expression{
-					token = e.token,
-					args = make([]Checked_Expression, len(e.args)),
-				},
-			)
+			new_clone(Checked_Call_Expression{token = e.token, args = make([]Checked_Expression, len(e.args))})
 		call_expr.func = build_checked_expr(c, e.func) or_return
 
 		fn_symbol := checked_expr_symbol(call_expr.func)
@@ -1183,40 +1162,32 @@ build_array_method_call :: proc(
 	err: Error,
 ) {
 	if func, ok := from.func.(^Parsed_Identifier_Expression); ok {
-		switch func.name.text {
-		case "append":
-			append_symbol := get_scoped_symbol(c.builtin_fn[ARRAY_SYMBOL], func.name) or_return
-			append_info := append_symbol.info.(Fn_Symbol_Info)
-			expr.func =
-				new_clone(Checked_Identifier_Expression{token = func.name, symbol = append_symbol})
-			fmt.println(expr.func)
-			if len(from.args) != len(append_info.param_symbols) {
-				err = arity_semantic_err(append_symbol, func.name, len(from.args))
-				return
-			}
 
-			c.current = c.modules[c.dot_info.initial_module]
-			c.current.scope = c.dot_info.initial_scope
-			elem_info := c.dot_info.previous.info.(Generic_Symbol_Info)
-			for arg, i in from.args {
-				expr.args[i] = build_checked_expr(c, arg) or_return
-				expect_type(c, expr.args[i], elem_info.symbol) or_return
-			}
-			c.current = c.modules[c.dot_info.current_module]
-			c.current.scope = c.dot_info.current_scope
-			c.dot_info.current = nil
+		builtin_symbol := get_scoped_symbol(c.builtin_fn[ARRAY_SYMBOL], func.name) or_return
+		builtin_info := builtin_symbol.info.(Fn_Symbol_Info)
+		expr.func = new_clone(Checked_Identifier_Expression{token = func.name, symbol = builtin_symbol})
+		if len(from.args) != len(builtin_info.param_symbols) {
+			err = arity_semantic_err(builtin_symbol, func.name, len(from.args))
+			return
 		}
+
+		c.current = c.modules[c.dot_info.initial_module]
+		c.current.scope = c.dot_info.initial_scope
+		elem_info := c.dot_info.previous.info.(Generic_Symbol_Info)
+		for arg, i in from.args {
+			expr.args[i] = build_checked_expr(c, arg) or_return
+			expect_type(c, expr.args[i], elem_info.symbol) or_return
+		}
+		c.current = c.modules[c.dot_info.current_module]
+		c.current.scope = c.dot_info.current_scope
+		c.dot_info.current = nil
 	} else {
 
 	}
 	return
 }
 
-symbol_from_type_expr :: proc(
-	c: ^Checker,
-	expr: Parsed_Expression,
-	loc := #caller_location,
-) -> (
+symbol_from_type_expr :: proc(c: ^Checker, expr: Parsed_Expression, loc := #caller_location) -> (
 	result: ^Symbol,
 	err: Error,
 ) {
@@ -1275,10 +1246,7 @@ symbol_from_type_expr :: proc(
 						Semantic_Error{
 							kind = .Invalid_Symbol,
 							token = selector.name,
-							details = fmt.tprintf(
-								"Invalid Dot type expression: %s is not a Type",
-								selector.name.text,
-							),
+							details = fmt.tprintf("Invalid Dot type expression: %s is not a Type", selector.name.text),
 						},
 					)
 			}

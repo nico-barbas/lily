@@ -792,6 +792,7 @@ op_code_str := map[Op_Code]string {
 	.Op_Make_Instance = "Op_Make_Instance",
 	.Op_Make_Array    = "Op_Make_Array",
 	.Op_Append_Array  = "Op_Append_Array",
+	.Op_Length        = "Op_Length",
 }
 
 print_chunk :: proc(p: ^Debug_Printer, c: ^Chunk) {
@@ -893,7 +894,7 @@ print_chunk :: proc(p: ^Debug_Printer, c: ^Chunk) {
 				debug_get_i16(c, &ip),
 			)
 
-		case .Op_Make_Instance, .Op_Make_Array, .Op_Append_Array:
+		case .Op_Make_Instance, .Op_Make_Array, .Op_Append_Array, .Op_Length:
 			fmt.sbprintf(&p.builder, " ||")
 		}
 		if ip >= len(c.bytecode) {

@@ -17,10 +17,7 @@ State :: struct {
 	get_value:           proc(state: ^State, at: int) -> Value,
 
 	// Various callbacks
-	internal_bind_fn:    proc(
-		state: ^State,
-		decl: ^Checked_Fn_Declaration,
-	) -> Foreign_Procedure,
+	internal_bind_fn:    proc(state: ^State, decl: ^Checked_Fn_Declaration) -> Foreign_Procedure,
 	user_bind_fn:        proc(state: ^State, info: Foreign_Decl_Info) -> Foreign_Procedure,
 }
 
@@ -52,7 +49,7 @@ compile_source :: proc(s: ^State, module_name: string, source: string) -> (err: 
 	for i in 0 ..< len(s.compiled_modules) {
 		// print_checked_ast(s.checked_modules[i], &checker)
 		compile_module(s, i)
-		print_compiled_module(s.compiled_modules[i])
+		// print_compiled_module(s.compiled_modules[i])
 	}
 	return
 }
@@ -70,9 +67,7 @@ Foreign_Decl_Info :: struct {
 
 Foreign_Procedure :: #type proc(state: ^State)
 
-bind_foreign_fn :: proc(state: ^State, decl: ^Checked_Fn_Declaration) -> (
-	fn: Foreign_Procedure,
-) {
+bind_foreign_fn :: proc(state: ^State, decl: ^Checked_Fn_Declaration) -> (fn: Foreign_Procedure) {
 	module_name := state.import_modules_name[decl.identifier.module_id]
 	if module_name == "std" {
 		switch decl.identifier.name {

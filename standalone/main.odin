@@ -18,16 +18,10 @@ main :: proc() {
 		fmt.println("[LILY]: Invalid file name")
 	}
 
-	checker := Checker{}
-	init_checker(&checker)
-	checked, err := build_checked_program(&checker, "main", string(input))
-	if err != nil {
-		fmt.println(error_message(err))
-	}
+	state := new_state(Config{})
+	err := compile_source(state, "main", string(input))
+	assert(err == nil, fmt.tprint(err))
 
-	compiled_program := make_compiled_program(checked)
-	for i in 0 ..< len(compiled_program) {
-		compile_module(checked, compiled_program, i)
-	}
-	run_program(compiled_program, 0)
+	run_module(state, "main")
+	fmt.println("finished")
 }

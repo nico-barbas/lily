@@ -58,7 +58,9 @@ playground :: proc() {using lily
 
 		var a = array of number[0, 4, 99]
         a.append(87)
+		var len = a.length()
         std.print(a)
+		std.print(len)
 	`
 
 	// checker := Checker{}

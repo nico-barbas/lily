@@ -185,7 +185,7 @@ parse_node :: proc(p: ^Parser) -> (result: Parsed_Node, err: Error) {
 		case .Assign:
 			result, err = parse_assign_stmt(p, lhs)
 		case:
-			result = new_clone(Parsed_Expression_Statement{expr = lhs})
+			result = new_clone(Parsed_Expression_Statement{token = token, expr = lhs})
 		}
 	case .If:
 		result, err = parse_if_stmt(p)
@@ -200,6 +200,7 @@ parse_node :: proc(p: ^Parser) -> (result: Parsed_Node, err: Error) {
 
 parse_expression_stmt :: proc(p: ^Parser) -> (result: ^Parsed_Expression_Statement, err: Error) {
 	result = new(Parsed_Expression_Statement)
+	result.token = p.current
 	result.expr = parse_expr(p, .Lowest) or_return
 	return
 }

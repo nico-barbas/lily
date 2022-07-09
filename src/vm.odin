@@ -336,6 +336,10 @@ run_program :: proc(state: ^State, entry_point: int) {
 			array := cast(^Array_Object)array_val.data.(^Object)
 			append(&array.data, pop_stack_value(&vm))
 			push_stack_value(&vm, array_val)
+
+		case .Op_Length:
+			array := cast(^Array_Object)pop_stack_value(&vm).data.(^Object)
+			push_stack_value(&vm, Value{kind = .Number, data = f64(len(array.data))})
 		}
 
 

@@ -54,6 +54,7 @@ Op_Code :: enum byte {
 	Op_Make_Array,
 	Op_Make_Instance,
 	Op_Append_Array,
+	Op_Length,
 }
 
 instr_length := map[Op_Code]int {

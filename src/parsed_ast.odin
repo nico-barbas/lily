@@ -227,6 +227,7 @@ Parsed_Expression_Statement :: struct {
 }
 
 Parsed_Block_Statement :: struct {
+	token: Token,
 	nodes: [dynamic]Parsed_Node,
 }
 

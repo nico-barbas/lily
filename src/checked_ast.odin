@@ -378,6 +378,7 @@ Checked_Expression_Statement :: struct {
 }
 
 Checked_Block_Statement :: struct {
+	token: Token,
 	nodes: []Checked_Node,
 }
 
@@ -432,6 +433,38 @@ Checked_Class_Declaration :: struct {
 	fields:       []^Symbol,
 	constructors: []^Checked_Fn_Declaration,
 	methods:      []^Checked_Fn_Declaration,
+}
+
+checked_node_token :: proc(node: Checked_Node) -> Token {
+	switch n in node {
+	case ^Checked_Expression_Statement:
+		return n.token
+
+	case ^Checked_Block_Statement:
+		return n.token
+
+	case ^Checked_Assigment_Statement:
+		return n.token
+
+	case ^Checked_If_Statement:
+		return n.token
+
+	case ^Checked_Range_Statement:
+		return n.token
+
+	case ^Checked_Var_Declaration:
+		return n.token
+
+	case ^Checked_Fn_Declaration:
+		return n.token
+
+	case ^Checked_Type_Declaration:
+		return n.token
+
+	case ^Checked_Class_Declaration:
+		return n.token
+	}
+	return {}
 }
 
 free_checked_node :: proc(node: Checked_Node) {

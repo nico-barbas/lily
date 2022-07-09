@@ -45,6 +45,7 @@ var str: string = "Hello world!"
 -- They are also growable.
 var myArray = array of number[1, 4, 9]
 myArray.append(9)
+myArray.length()
 -- Maps are associative arrays (managed and dynamically allocated).
 -- As expected, inserting a new element or retrieving one is done by indexing into
 -- the map with a key of the given type.
@@ -80,7 +81,7 @@ foreign fn sub(a: number, b: number): number
 - [x] Control flow
 - [ ] Container iterators
 - [x] Array Type
-- [ ] Array builtin procedures 
+- [x] Array builtin procedures 
 - [ ] Map Type
 - [ ] Map builtin procedures 
 - [x] Custom functions
@@ -109,16 +110,17 @@ foreign fn sub(a: number, b: number): number
     - [ ] Compiler
     - [ ] VM
 
-## Bugs:
-- Invalid symbol definition when function parameter is a class
+## Known Bugs:
+- Nested function calls are crashing the compiler
+- User defined foreign fn declaration are not supported in the standalone compiler and should be disallowed
 
-## Dot operator rules:
+<!-- ## Dot operator rules:
 
 - **`Right-handside Dot expression`** => | `Left Dot Operand` | . | `Selector Dot Operand` |
     - `Left Dot Operand` =>  | `Module Name` | `Class Name` | `Variable Name` | `Call Expression` | `Index Expression` |
     - `Selector Dot Operand` => `Class Name` | `Variable Name` | `Call Expression` | `Chained Selector` |
     - `Chained Selector` => | `Chained Selector` | . | `Call Expression` | `Field Name` | `Index Expression` |
-    - `Chained Selector` => `Call Expression` | `Field Name` | `Index Expression` |
+    - `Chained Selector` => `Call Expression` | `Field Name` | `Index Expression` | -->
 
 
 - **`Left-handside Dot expression`** => | `Left Dot Operand` | . | `Selector Dot Operand` |
