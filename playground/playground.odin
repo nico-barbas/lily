@@ -54,12 +54,11 @@ playground :: proc() {using lily
 	// 	a.add(13)
 	// `
 	input := `
-		import std
-		import math
+        import std
 
-		var a = math.Vector.new()
-		a.add(10)
-		std.print(a)
+		var a = array of number[0, 4, 99]
+        a.append(87)
+        std.print(a)
 	`
 
 	// checker := Checker{}

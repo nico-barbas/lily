@@ -462,9 +462,11 @@ compile_dot_expr :: proc(c: ^Compiler, expr: ^Checked_Dot_Expression, lhs: bool)
 		#partial switch left.symbol.kind {
 		case .Var_Symbol:
 			var_info := left.symbol.info.(Var_Symbol_Info)
-			var_addr := get_var_addr(c, left.symbol.name)
-			push_simple_instruction(&c.chunk, .Op_Get, var_addr)
-			c.selected_class = var_info.symbol
+			if var_info.symbol.kind == .Class_Symbol {
+				var_addr := get_var_addr(c, left.symbol.name)
+				push_simple_instruction(&c.chunk, .Op_Get, var_addr)
+				c.selected_class = var_info.symbol
+			}
 			c.current_access = .Instance_Access
 
 		case .Class_Symbol:
@@ -538,7 +540,23 @@ compile_dot_expr :: proc(c: ^Compiler, expr: ^Checked_Dot_Expression, lhs: bool)
 	case ^Checked_Call_Expression:
 		#partial switch c.current_access {
 		case .Instance_Access:
-			compile_method_call_expr(c, selector)
+			symbol := checked_expr_symbol(selector.func)
+			if symbol.module_id == BUILTIN_MODULE_ID {
+				if symbol.name == "append" {
+					left_symbol := checked_expr_symbol(expr.left)
+					var_addr := get_var_addr(c, left_symbol.name)
+					for i := len(selector.args) - 1; i >= 0; i -= 1 {
+						compile_expr(c, selector.args[i])
+					}
+					push_simple_instruction(&c.chunk, .Op_Get, var_addr)
+					for i in 0 ..< len(selector.args) {
+						push_op_code(&c.chunk, .Op_Append_Array)
+					}
+					push_op_code(&c.chunk, .Op_Pop)
+				}
+			} else {
+				compile_method_call_expr(c, selector)
+			}
 
 		case .Class_Access:
 			compile_constructor_call_expr(c, selector)
@@ -585,7 +603,8 @@ compile_constructor_call_expr :: proc(c: ^Compiler, expr: ^Checked_Call_Expressi
 		compile_expr(c, arg_expr)
 	}
 	class_module := c.state.compiled_modules[c.selected_class.module_id]
-	constructor_addr := get_constructor_addr(class_module, c.selected_class.name, symbol.name)
+	constructor_addr :=
+		get_constructor_addr(class_module, c.selected_class.name, symbol.name)
 	push_simple_instruction(&c.chunk, .Op_Call_Constr, constructor_addr)
 	push_op_code(&c.chunk, .Op_Push_Back)
 }

@@ -71,6 +71,21 @@ is_type_symbol :: proc(s: ^Symbol) -> bool {
 	return s.kind == .Alias_Symbol || s.kind == .Name || s.kind == .Class_Symbol
 }
 
+is_valis_accessor :: proc(s: ^Symbol) -> bool {
+	#partial switch s.kind {
+	case .Class_Symbol:
+		return true
+	case .Generic_Symbol:
+		if s.type_id == ARRAY_ID {
+			return true
+		} else {
+			return false
+		}
+	case:
+		return false
+	}
+}
+
 // builtin_container_symbols :: [?]string{"len", "append"}
 
 // is_builtin_container_symbol :: proc(s: string) -> bool {
