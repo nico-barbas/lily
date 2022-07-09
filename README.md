@@ -79,6 +79,9 @@ foreign fn sub(a: number, b: number): number
 - [ ] Memory management (either GC or RC)
 - [ ] += (and others) assignment operators
 - [x] Control flow
+    - [x] If statement
+    - [x] For statement
+    - [ ] Match statement
 - [ ] Container iterators
 - [x] Array Type
 - [x] Array builtin procedures 
