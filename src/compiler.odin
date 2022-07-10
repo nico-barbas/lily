@@ -18,6 +18,7 @@ Compiler :: struct {
 }
 
 Compiled_Module :: struct {
+	id:                 int,
 	class_addr:         map[string]i16,
 	class_consts:       []Const_Pool,
 	class_fields:       []map[string]i16,
@@ -41,6 +42,7 @@ make_compiled_program :: proc(state: ^State) -> []^Compiled_Module {
 		current =
 			new_clone(
 				Compiled_Module{
+					id = i,
 					class_addr = make(map[string]i16),
 					class_consts = make([]Const_Pool, len(module.classes)),
 					class_fields = make([]map[string]i16, len(module.classes)),
@@ -477,7 +479,7 @@ compile_expr :: proc(c: ^Compiler, expr: Checked_Expression) {
 }
 
 compile_dot_expr :: proc(c: ^Compiler, expr: ^Checked_Dot_Expression, lhs: bool) {
-	current_module := c.current_read.id
+	current_id := c.current_write.id
 	#partial switch left in expr.left {
 	case ^Checked_Identifier_Expression:
 		#partial switch left.symbol.kind {
@@ -594,9 +596,9 @@ compile_dot_expr :: proc(c: ^Compiler, expr: ^Checked_Dot_Expression, lhs: bool)
 	case ^Checked_Dot_Expression:
 		compile_dot_expr(c, selector, lhs)
 	}
-	if c.current_write != c.state.compiled_modules[current_module] {
-		c.current_write = c.state.compiled_modules[current_module]
-		push_simple_instruction(&c.chunk, .Op_Module, i16(current_module))
+	if c.current_write.id != current_id {
+		c.current_write = c.state.compiled_modules[current_id]
+		push_simple_instruction(&c.chunk, .Op_Module, i16(current_id))
 	}
 }
 

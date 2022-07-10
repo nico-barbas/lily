@@ -17,15 +17,19 @@ Checker :: struct {
 	type_id_ptr:         Type_ID,
 
 	// Temp data for checking dot expressions
-	dot_info:            struct {
-		depth:          int,
-		initial_module: int,
-		initial_scope:  ^Semantic_Scope,
-		current_module: int,
-		current_scope:  ^Semantic_Scope,
-		previous:       ^Symbol,
-		current:        ^Symbol,
-	},
+	dot_frames:          [25]Dot_Frame,
+	dot_frame_count:     int,
+	dot:                 ^Dot_Frame,
+}
+
+Dot_Frame :: struct {
+	depth:          int,
+	start_module:   int,
+	start_scope:    ^Semantic_Scope,
+	current_module: int,
+	current_scope:  ^Semantic_Scope,
+	previous:       ^Symbol,
+	symbol:         ^Symbol,
 }
 
 UNTYPED_SYMBOL :: 0
@@ -164,16 +168,30 @@ get_symbol :: proc(c: ^Checker, token: Token, loc := #caller_location) -> (resul
 	return
 }
 
-reset_dot_operand_info :: proc(c: ^Checker, restore: bool) {
-	if restore {
-		c.current = c.modules[c.dot_info.initial_module]
-		c.current.scope = c.dot_info.initial_scope
+push_dot_frame :: proc(c: ^Checker) {
+	c.dot_frames[c.dot_frame_count] = Dot_Frame {
+		start_module = c.current.id,
+		start_scope  = c.current.scope,
 	}
-	c.dot_info.depth = 0
-	c.dot_info.initial_module = c.current.id
-	c.dot_info.initial_scope = c.current.scope
-	c.dot_info.previous = nil
-	c.dot_info.current = nil
+	c.dot = &c.dot_frames[c.dot_frame_count]
+	c.dot_frame_count += 1
+}
+
+pop_dot_frame :: proc(c: ^Checker, loc := #caller_location) {
+	c.current = c.modules[c.dot.start_module]
+	c.current.scope = c.dot.start_scope
+	c.dot_frame_count -= 1
+	c.dot = &c.dot_frames[c.dot_frame_count]
+}
+
+restore_dot_frame_start :: proc(c: ^Checker) {
+	c.current = c.modules[c.dot.start_module]
+	c.current.scope = c.dot.start_scope
+}
+
+restore_dot_frame_current :: proc(c: ^Checker) {
+	c.current = c.modules[c.dot.start_module]
+	c.current.scope = c.dot.start_scope
 }
 
 types_equal :: proc(c: ^Checker, s1, s2: ^Symbol) -> bool {
@@ -907,60 +925,59 @@ build_checked_expr :: proc(c: ^Checker, expr: Parsed_Expression) -> (
 		result = index_expr
 
 	case ^Parsed_Dot_Expression:
-		if c.dot_info.depth == 0 {
-			reset_dot_operand_info(c, false)
+		if c.dot_frame_count == 0 {
+			push_dot_frame(c)
 		}
-		c.dot_info.depth += 1
+		c.dot.depth += 1
 
 		dot_expr := new_clone(Checked_Dot_Expression{token = e.token})
 
 		#partial switch left in e.left {
 		case ^Parsed_Identifier_Expression:
 			l := build_checked_expr(c, left) or_return
-			c.dot_info.current = checked_expr_symbol(l)
-			#partial switch c.dot_info.current.kind {
+			c.dot.symbol = checked_expr_symbol(l)
+			#partial switch c.dot.symbol.kind {
 			case .Class_Symbol:
-				if c.dot_info.depth > 2 {
-					err = dot_operand_semantic_err(c.dot_info.current, e.token)
+				if c.dot.depth > 2 {
+					err = dot_operand_semantic_err(c.dot.symbol, e.token)
 					return
 				}
-				enter_class_scope(c.current, Token{text = c.dot_info.current.name}) or_return
+				enter_class_scope(c.current, Token{text = c.dot.symbol.name}) or_return
 
 			case .Var_Symbol:
-				var_info := c.dot_info.current.info.(Var_Symbol_Info)
+				var_info := c.dot.symbol.info.(Var_Symbol_Info)
 				#partial switch var_info.symbol.kind {
 				case .Class_Symbol:
 					c.current = c.modules[var_info.symbol.module_id]
 					enter_class_scope(c.current, Token{text = var_info.symbol.name}) or_return
 				case .Generic_Symbol:
 					if var_info.symbol.type_id == ARRAY_ID {
-						c.dot_info.current = var_info.symbol
+						c.dot.symbol = var_info.symbol
 					} else {
-						fmt.println(var_info.symbol)
-						err = dot_operand_semantic_err(c.dot_info.current, e.token)
+						err = dot_operand_semantic_err(c.dot.symbol, e.token)
 						return
 					}
 				case:
-					err = dot_operand_semantic_err(c.dot_info.current, e.token)
+					err = dot_operand_semantic_err(c.dot.symbol, e.token)
 					return
 				}
 
 			case .Module_Symbol:
-				if c.dot_info.depth > 1 {
-					err = dot_operand_semantic_err(c.dot_info.current, e.token)
+				if c.dot.depth > 1 {
+					err = dot_operand_semantic_err(c.dot.symbol, e.token)
 					return
 				}
-				module_info := c.dot_info.current.info.(Module_Symbol_Info)
+				module_info := c.dot.symbol.info.(Module_Symbol_Info)
 				c.current = c.modules[module_info.ref_mod_id]
 				c.current.scope = c.current.root
 
 			case:
-				err = dot_operand_semantic_err(c.dot_info.current, e.token)
+				err = dot_operand_semantic_err(c.dot.symbol, e.token)
 				return
 			}
 
-			c.dot_info.current_module = c.current.id
-			c.dot_info.current_scope = c.current.scope
+			c.dot.current_module = c.current.id
+			c.dot.current_scope = c.current.scope
 			dot_expr.left = l
 
 		case ^Parsed_Index_Expression:
@@ -982,15 +999,17 @@ build_checked_expr :: proc(c: ^Checker, expr: Parsed_Expression) -> (
 				return
 			}
 
-			c.current = c.modules[c.dot_info.initial_module]
-			c.current.scope = c.dot_info.initial_scope
+			restore_dot_frame_start(c)
 			{
+				push_dot_frame(c)
+				f_count := c.dot_frame_count
 				index_expr.index = build_checked_expr(c, left.index) or_return
 				switch left_symbol.type_id {
 				case ARRAY_ID:
 					index_expr.kind = .Array
 					expect_type(c, index_expr.index, &c.builtin_symbols[NUMBER_SYMBOL]) or_return
 				}
+				if c.dot_frame_count == f_count do pop_dot_frame(c)
 			}
 			if !is_valis_accessor(index_expr.symbol) {
 				err = dot_operand_semantic_err(index_expr.symbol, left.token)
@@ -998,9 +1017,9 @@ build_checked_expr :: proc(c: ^Checker, expr: Parsed_Expression) -> (
 			}
 			c.current = c.modules[index_expr.symbol.module_id]
 			enter_class_scope(c.current, Token{text = index_expr.symbol.name}) or_return
-			c.dot_info.current = index_expr.symbol
-			c.dot_info.current_module = c.current.id
-			c.dot_info.current_scope = c.current.scope
+			c.dot.symbol = index_expr.symbol
+			c.dot.current_module = c.current.id
+			c.dot.current_scope = c.current.scope
 
 			dot_expr.left = index_expr
 
@@ -1023,11 +1042,13 @@ build_checked_expr :: proc(c: ^Checker, expr: Parsed_Expression) -> (
 			}
 			call_expr.symbol = fn_info.return_symbol
 
-			c.current = c.modules[c.dot_info.initial_module]
-			c.current.scope = c.dot_info.initial_scope
+			restore_dot_frame_start(c)
 			for arg, i in left.args {
+				push_dot_frame(c)
+				f_count := c.dot_frame_count
 				call_expr.args[i] = build_checked_expr(c, arg) or_return
 				expect_type(c, call_expr.args[i], fn_info.param_symbols[i]) or_return
+				if c.dot_frame_count == f_count do pop_dot_frame(c)
 			}
 			if !is_valis_accessor(call_expr.symbol) {
 				err = dot_operand_semantic_err(call_expr.symbol, left.token)
@@ -1035,31 +1056,31 @@ build_checked_expr :: proc(c: ^Checker, expr: Parsed_Expression) -> (
 			}
 			c.current = c.modules[call_expr.symbol.module_id]
 			enter_class_scope(c.current, Token{text = call_expr.symbol.name}) or_return
-			c.dot_info.current = call_expr.symbol
-			c.dot_info.current_module = c.current.id
-			c.dot_info.current_scope = c.current.scope
+			c.dot.symbol = call_expr.symbol
+			c.dot.current_module = c.current.id
+			c.dot.current_scope = c.current.scope
 
 			dot_expr.left = call_expr
 		}
 
-		c.dot_info.previous = c.dot_info.current
-		if c.dot_info.previous == nil {
+		c.dot.previous = c.dot.symbol
+		if c.dot.previous == nil {
 			assert(false)
 		}
 
 		#partial switch selector in e.selector {
 		case ^Parsed_Identifier_Expression:
 			s := build_checked_expr(c, selector) or_return
-			c.dot_info.current = checked_expr_symbol(s)
-			#partial switch c.dot_info.current.kind {
+			c.dot.symbol = checked_expr_symbol(s)
+			#partial switch c.dot.symbol.kind {
 			case .Var_Symbol:
-				var_info := c.dot_info.current.info.(Var_Symbol_Info)
+				var_info := c.dot.symbol.info.(Var_Symbol_Info)
 				dot_expr.symbol = var_info.symbol
-				dot_expr.leaf_symbol = c.dot_info.current
+				dot_expr.leaf_symbol = c.dot.symbol
 				dot_expr.selector = s
-				reset_dot_operand_info(c, true)
+				pop_dot_frame(c)
 			case:
-				err = dot_operand_semantic_err(c.dot_info.current, e.token)
+				err = dot_operand_semantic_err(c.dot.symbol, e.token)
 				return
 			}
 
@@ -1086,20 +1107,22 @@ build_checked_expr :: proc(c: ^Checker, expr: Parsed_Expression) -> (
 				return
 			}
 
-			c.current = c.modules[c.dot_info.initial_module]
-			c.current.scope = c.dot_info.initial_scope
+			restore_dot_frame_start(c)
 			{
+				push_dot_frame(c)
+				f_count := c.dot_frame_count
 				index_expr.index = build_checked_expr(c, selector.index) or_return
 				switch left_symbol.type_id {
 				case ARRAY_ID:
 					index_expr.kind = .Array
 					expect_type(c, index_expr.index, &c.builtin_symbols[NUMBER_SYMBOL]) or_return
 				}
+				if c.dot_frame_count == f_count do pop_dot_frame(c)
 			}
 			dot_expr.symbol = index_expr.symbol
 			dot_expr.leaf_symbol = left_symbol
 			dot_expr.selector = index_expr
-			reset_dot_operand_info(c, true)
+			pop_dot_frame(c)
 
 		case ^Parsed_Call_Expression:
 			call_expr :=
@@ -1109,10 +1132,11 @@ build_checked_expr :: proc(c: ^Checker, expr: Parsed_Expression) -> (
 						args = make([]Checked_Expression, len(selector.args)),
 					},
 				)
-			if c.dot_info.previous.kind == .Generic_Symbol {
-				if c.dot_info.previous.type_id == ARRAY_ID {
+			if c.dot.previous.kind == .Generic_Symbol {
+				if c.dot.previous.type_id == ARRAY_ID {
 					build_array_method_call(c, selector, call_expr) or_return
 				}
+
 			} else {
 				call_expr.func = build_checked_expr(c, selector.func) or_return
 
@@ -1124,17 +1148,19 @@ build_checked_expr :: proc(c: ^Checker, expr: Parsed_Expression) -> (
 				fn_info := fn_symbol.info.(Fn_Symbol_Info)
 				call_expr.symbol = fn_info.return_symbol
 
-				c.current = c.modules[c.dot_info.initial_module]
-				c.current.scope = c.dot_info.initial_scope
+				restore_dot_frame_start(c)
 				for arg, i in selector.args {
+					push_dot_frame(c)
+					f_count := c.dot_frame_count
 					call_expr.args[i] = build_checked_expr(c, arg) or_return
 					expect_type(c, call_expr.args[i], fn_info.param_symbols[i]) or_return
+					if c.dot_frame_count == f_count do pop_dot_frame(c)
 				}
 			}
 			dot_expr.symbol = call_expr.symbol
 			dot_expr.leaf_symbol = call_expr.symbol
 			dot_expr.selector = call_expr
-			reset_dot_operand_info(c, true)
+			pop_dot_frame(c)
 
 		case ^Parsed_Dot_Expression:
 			dot_expr.selector = build_checked_expr(c, selector) or_return
@@ -1181,23 +1207,22 @@ build_array_method_call :: proc(
 		builtin_symbol := get_scoped_symbol(c.builtin_fn[ARRAY_SYMBOL], func.name) or_return
 		builtin_info := builtin_symbol.info.(Fn_Symbol_Info)
 		expr.func = new_clone(Checked_Identifier_Expression{token = func.name, symbol = builtin_symbol})
+		expr.symbol = builtin_symbol
 		if len(from.args) != len(builtin_info.param_symbols) {
 			err = arity_semantic_err(builtin_symbol, func.name, len(from.args))
 			return
 		}
 
-		c.current = c.modules[c.dot_info.initial_module]
-		c.current.scope = c.dot_info.initial_scope
-		elem_info := c.dot_info.previous.info.(Generic_Symbol_Info)
+		restore_dot_frame_start(c)
+		elem_info := c.dot.previous.info.(Generic_Symbol_Info)
 		for arg, i in from.args {
 			expr.args[i] = build_checked_expr(c, arg) or_return
 			expect_type(c, expr.args[i], elem_info.symbol) or_return
 		}
-		c.current = c.modules[c.dot_info.current_module]
-		c.current.scope = c.dot_info.current_scope
-		c.dot_info.current = nil
+		restore_dot_frame_current(c)
+		c.dot.symbol = nil
 	} else {
-
+		assert(false)
 	}
 	return
 }
@@ -1293,571 +1318,6 @@ symbol_from_type_expr :: proc(c: ^Checker, expr: Parsed_Expression, loc := #call
 	}
 	return
 }
-
-// symbol_from_dot_expr :: proc(c: ^Checker, expr: Parsed_Expression) -> (result: ^Symbol, err: Error) {
-// 	// The goal here is to get the ending symbol of the (chained) dot expr
-// 	symbol_from_dot_operand :: proc(c: ^Checker, expr: Parsed_Expression, scope: ^Semantic_Scope) -> (
-// 		symbol: ^Symbol,
-// 		err: Error,
-// 	) {
-// 		#partial switch e in expr {
-// 		case ^Parsed_Identifier_Expression:
-// 			if scope != nil {
-// 				exist: bool
-// 				symbol = get_scoped_symbol(scope, e.name) or_return
-// 			} else {
-// 				symbol = get_symbol(c, e.name) or_return
-// 			}
-// 		case ^Parsed_Call_Expression:
-// 			identifier := e.func.(^Parsed_Identifier_Expression)
-// 			// FIXME: doesn't account for function literals
-// 			fn_symbol: ^Symbol
-// 			if scope != nil {
-// 				fn_symbol = get_scoped_symbol(scope, identifier.name) or_return
-// 			} else {
-// 				fn_symbol = get_symbol(c, identifier.name) or_return
-// 			}
-// 			symbol = fn_symbol.fn_info.return_symbol
-// 		case:
-// 			expr_token := token_from_parsed_expression(expr)
-// 			err =
-// 				format_semantic_err(
-// 					Semantic_Error{
-// 						kind = .Invalid_Dot_Operand,
-// 						token = expr_token,
-// 						details = fmt.tprintf("Invalid left dot operand: %s", expr_token.text),
-// 					},
-// 				)
-// 		}
-// 		return
-// 	}
-// 	dot_expr := expr.(^Parsed_Dot_Expression)
-// 	left_symbol := symbol_from_dot_operand(c, dot_expr.left, nil) or_return
-// 	left_scope := scope_from_dot_operand_symbol(c, left_symbol, dot_expr.token) or_return
-
-// 	chain: for {
-// 		#partial switch selector in dot_expr.selector {
-// 		case ^Parsed_Identifier_Expression:
-// 			// FIXME: only valid outcome is Var_Symbol
-// 			result = get_scoped_symbol(left_scope, selector.name) or_return
-// 			err = check_dot_expr_rules(dot_expr.token, left_symbol, result, true)
-// 			break chain
-// 		case ^Parsed_Call_Expression:
-// 			if identifier, ok := selector.func.(^Parsed_Identifier_Expression); ok {
-// 				fn_symbol := get_scoped_symbol(left_scope, identifier.name) or_return
-// 				check_dot_expr_rules(dot_expr.token, left_symbol, fn_symbol, true) or_return
-// 				result = fn_symbol.fn_info.return_symbol
-// 			} else {
-// 				err =
-// 					format_semantic_err(
-// 						Semantic_Error{
-// 							kind = .Invalid_Dot_Operand,
-// 							token = dot_expr.token,
-// 							details = "Function literal are not a valid dot operand",
-// 						},
-// 					)
-// 				return
-// 			}
-// 			break chain
-// 		case ^Parsed_Dot_Expression:
-// 			dot_expr = selector
-// 			selector_symbol := symbol_from_dot_operand(c, dot_expr.left, left_scope) or_return
-// 			check_dot_expr_rules(dot_expr.token, left_symbol, selector_symbol, false) or_return
-// 			left_symbol = selector_symbol
-// 			left_scope = scope_from_dot_operand_symbol(c, left_symbol, dot_expr.token) or_return
-// 		}
-// 	}
-// 	return
-// }
-
-// scope_from_dot_operand_symbol :: proc(c: ^Checker, symbol: ^Symbol, token: Token) -> (
-// 	result: ^Semantic_Scope,
-// 	err: Error,
-// ) {
-// 	#partial switch symbol.kind {
-// 	case .Alias_Symbol:
-// 		if symbol.alias_info.symbol.kind != .Class_Symbol {
-// 			err =
-// 				format_semantic_err(
-// 					Semantic_Error{
-// 						kind = .Invalid_Dot_Operand,
-// 						token = token,
-// 						details = fmt.tprintf(
-// 							"Invalid Dot Expression operand: Type alias %s does not refer to an addressable type",
-// 							symbol.name,
-// 						),
-// 					},
-// 				)
-// 			return
-// 		}
-// 		result = scope_from_dot_operand_symbol(c, symbol.alias_info.symbol, token) or_return
-
-// 	case .Class_Symbol:
-// 		class_module := c.modules[symbol.module_id]
-// 		if info, exist := class_module.root.class_lookup[symbol.name]; exist {
-// 			result = class_module.root.children[info.scope_index]
-// 		} else {
-// 			assert(false)
-// 		}
-
-// 	case .Module_Symbol:
-// 		result = c.modules[symbol.module_info.ref_module_id].root
-
-// 	case .Fn_Symbol:
-// 		// get the return symbol and check if ref
-// 		if !symbol.fn_info.has_return {
-// 			err =
-// 				format_semantic_err(
-// 					Semantic_Error{
-// 						kind = .Invalid_Dot_Operand,
-// 						token = token,
-// 						details = fmt.tprintf(
-// 							"Invalid Dot Expression operand: function %s does not return an addressable symbol",
-// 							symbol.name,
-// 						),
-// 					},
-// 				)
-// 			return
-// 		}
-// 		return_symbol := symbol.fn_info.return_symbol
-// 		if return_symbol.kind != .Class_Symbol {
-// 			err =
-// 				format_semantic_err(
-// 					Semantic_Error{
-// 						kind = .Invalid_Dot_Operand,
-// 						token = token,
-// 						details = fmt.tprintf(
-// 							"Invalid Dot Expression operand: function %s does not return an addressable symbol",
-// 							symbol.name,
-// 						),
-// 					},
-// 				)
-// 			return
-// 		}
-
-// 		result = scope_from_dot_operand_symbol(c, return_symbol, token) or_return
-
-// 	case .Var_Symbol:
-// 		// get the var symbol and check if ref
-// 		if !is_ref_symbol(symbol.var_info.symbol) {
-// 			err =
-// 				format_semantic_err(
-// 					Semantic_Error{
-// 						kind = .Invalid_Dot_Operand,
-// 						token = token,
-// 						details = fmt.tprintf("Invalid Dot Expression operand: %s is not addressable", symbol.name),
-// 					},
-// 				)
-// 			return
-// 		}
-// 		result = scope_from_dot_operand_symbol(c, symbol.var_info.symbol, token) or_return
-
-// 	case:
-// 		err =
-// 			format_semantic_err(
-// 				Semantic_Error{
-// 					kind = .Invalid_Dot_Operand,
-// 					token = token,
-// 					details = fmt.tprintf(
-// 						"Invalid Dot Expression operand: %s does not refer to an addressable symbol",
-// 						symbol.name,
-// 					),
-// 				},
-// 			)
-// 	}
-
-// 	return
-// }
-
-// // FIXME: Don't allocate errors if nothing is triggered
-// check_dot_expr_rules :: proc(token: Token, left, selector: ^Symbol, is_leaf: bool) -> (err: Error) {
-// 	invalid_left :=
-// 		format_semantic_err(
-// 			Semantic_Error{
-// 				kind = .Invalid_Dot_Operand,
-// 				token = token,
-// 				details = fmt.tprintf("%s is not a valid dot operand", left.name),
-// 			},
-// 		)
-// 	invalid_selector :=
-// 		format_semantic_err(
-// 			Semantic_Error{
-// 				kind = .Invalid_Dot_Operand,
-// 				token = token,
-// 				details = fmt.tprintf("%s is not a valid selector", selector.name),
-// 			},
-// 		)
-// 	if is_leaf && selector.kind == .Class_Symbol {
-// 		err =
-// 			format_semantic_err(
-// 				Semantic_Error{
-// 					kind = .Invalid_Dot_Operand,
-// 					token = token,
-// 					details = fmt.tprintf("%s is a class and not a value", selector.name),
-// 				},
-// 			)
-// 	}
-
-// 	#partial switch left.kind {
-// 	case .Alias_Symbol:
-// 		err = check_dot_expr_rules(token, left.alias_info.symbol, selector, is_leaf)
-// 	case .Class_Symbol:
-// 		#partial switch selector.kind {
-// 		case .Fn_Symbol:
-// 			if !selector.fn_info.constructor {
-// 				err =
-// 					format_semantic_err(
-// 						Semantic_Error{
-// 							kind = .Invalid_Dot_Operand,
-// 							token = token,
-// 							details = fmt.tprintf("Cannot call method %s. %s is a class", selector.name, left.name),
-// 						},
-// 					)
-// 			}
-// 		case .Var_Symbol:
-// 			err =
-// 				format_semantic_err(
-// 					Semantic_Error{
-// 						kind = .Invalid_Dot_Operand,
-// 						token = token,
-// 						details = fmt.tprintf("Cannot access fields %s. %s is a class", selector.name, left.name),
-// 					},
-// 				)
-// 		case:
-// 			err = invalid_selector
-// 		}
-// 	case .Fn_Symbol:
-// 		err = check_dot_expr_rules(token, left.fn_info.return_symbol, selector, is_leaf)
-// 	case .Module_Symbol:
-// 		if selector.kind == .Module_Symbol {
-// 			err =
-// 				format_semantic_err(
-// 					Semantic_Error{
-// 						kind = .Invalid_Dot_Operand,
-// 						token = token,
-// 						details = "Cannot access a module symbol from another module symbol",
-// 					},
-// 				)
-// 		}
-// 	case .Var_Symbol:
-// 		#partial switch selector.kind {
-// 		case .Fn_Symbol:
-// 			if selector.fn_info.constructor {
-// 				err =
-// 					format_semantic_err(
-// 						Semantic_Error{
-// 							kind = .Invalid_Dot_Operand,
-// 							token = token,
-// 							details = fmt.tprintf("Cannot call constructor %s. %s is an instance", selector.name, left.name),
-// 						},
-// 					)
-// 			}
-// 		case .Var_Symbol:
-// 		case:
-// 			err = invalid_selector
-// 		}
-
-// 	case:
-// 		err = invalid_left
-// 	}
-// 	return
-// }
-
-// build_checked_ast :: proc(c: ^Checker, module_id: int) -> (err: Error) {
-// 	c.current = c.modules[module_id]
-// 	c.current_parsed = c.parsed_results[module_id]
-
-// 	for node in c.current_parsed.types {
-// 		class_node := build_checked_node(c, node) or_return
-// 		append(&c.current.classes, class_node)
-// 	}
-
-// 	for node in c.current_parsed.functions {
-// 		fn_node := build_checked_node(c, node) or_return
-// 		append(&c.current.functions, fn_node)
-// 	}
-// 	for node in c.current_parsed.variables {
-// 		var_node := build_checked_node(c, node) or_return
-// 		append(&c.current.variables, var_node)
-// 	}
-// 	for node in c.current_parsed.nodes {
-// 		checked_node := build_checked_node(c, node) or_return
-// 		append(&c.current.nodes, checked_node)
-// 	}
-// 	return
-// }
-
-// build_checked_node :: proc(c: ^Checker, node: Parsed_Node) -> (result: Checked_Node, err: Error) {
-// 	switch n in node {
-// 	case ^Parsed_Expression_Statement:
-// 		expr_stmt := new(Checked_Expression_Statement)
-// 		expr_stmt.token = n.token
-// 		expr_stmt.expr = build_checked_expr(c, n.expr) or_return
-// 		result = expr_stmt
-
-// 	case ^Parsed_Block_Statement:
-// 		block_stmt := new_clone(Checked_Block_Statement{nodes = make([]Checked_Node, len(n.nodes))})
-// 		for inner_node, i in n.nodes {
-// 			checked_node := build_checked_node(c, inner_node) or_return
-// 			block_stmt.nodes[i] = checked_node
-// 		}
-// 		result = block_stmt
-
-// 	case ^Parsed_Assignment_Statement:
-// 		assign_stmt := new_clone(Checked_Assigment_Statement{token = n.token})
-// 		assign_stmt.left = build_checked_expr(c, n.left) or_return
-// 		assign_stmt.right = build_checked_expr(c, n.right) or_return
-// 		result = assign_stmt
-
-// 	case ^Parsed_If_Statement:
-// 		if_stmt := new_clone(Checked_If_Statement{token = n.token})
-// 		if_stmt.condition = build_checked_expr(c, n.condition) or_return
-// 		expect_type(c, if_stmt.condition, &c.builtin_symbols[BOOL_SYMBOL]) or_return
-// 		if_stmt.body = build_checked_node(c, n.body) or_return
-// 		if n.next_branch != nil {
-// 			if_stmt.next_branch = build_checked_node(c, n.next_branch) or_return
-// 		}
-// 		result = if_stmt
-
-// 	case ^Parsed_Range_Statement:
-// 		range_stmt := new_clone(Checked_Range_Statement{token = n.token})
-// 		enter_child_scope_by_name(c.current, n.token)
-// 		defer pop_scope(c.current)
-// 		range_stmt.iterator = get_scoped_symbol(c.current.scope, n.iterator_name) or_return
-// 		range_stmt.low = build_checked_expr(c, n.low) or_return
-// 		range_stmt.high = build_checked_expr(c, n.high) or_return
-// 		expect_type(c, range_stmt.low, &c.builtin_symbols[NUMBER_SYMBOL]) or_return
-// 		expect_type(c, range_stmt.high, &c.builtin_symbols[NUMBER_SYMBOL]) or_return
-// 		range_stmt.op = n.op
-// 		range_stmt.body = build_checked_node(c, n.body) or_return
-// 		result = range_stmt
-
-// 	case ^Parsed_Import_Statement:
-
-// 	case ^Parsed_Var_Declaration:
-// 		var_decl := new_clone(Checked_Var_Declaration{token = n.token})
-// 		var_decl.identifier = get_symbol(c, n.identifier) or_return
-// 		var_decl.expr = build_checked_expr(c, n.expr) or_return
-// 		expect_type(c, var_decl.expr, var_decl.identifier) or_return
-// 		result = var_decl
-
-// 	case ^Parsed_Fn_Declaration:
-// 		fn_decl :=
-// 			new_clone(
-// 				Checked_Fn_Declaration{
-// 					token = n.token,
-// 					kind = .Foreign if n.kind == .Foreign else .Intern,
-// 					params = make([]^Symbol, len(n.parameters)),
-// 				},
-// 			)
-// 		fn_decl.identifier = get_symbol(c, n.identifier) or_return
-// 		enter_child_scope_by_id(c.current, fn_decl.identifier.fn_info.scope_id) or_return
-// 		defer pop_scope(c.current)
-
-// 		for param, i in n.parameters {
-// 			fn_decl.params[i] = get_scoped_symbol(c.current.scope, param.name) or_return
-// 		}
-// 		if n.kind == .Intern {
-// 			fn_decl.body = build_checked_node(c, n.body) or_return
-// 		}
-// 		result = fn_decl
-
-
-// 	case ^Parsed_Type_Declaration:
-// 		switch n.type_kind {
-// 		case .Alias:
-// 			assert(false)
-// 		case .Class:
-// 			class_decl :=
-// 				new_clone(
-// 					Checked_Class_Declaration{
-// 						token = n.token,
-// 						is_token = n.is_token,
-// 						fields = make([]^Symbol, len(n.fields)),
-// 						constructors = make([]^Checked_Fn_Declaration, len(n.constructors)),
-// 						methods = make([]^Checked_Fn_Declaration, len(n.methods)),
-// 					},
-// 				)
-// 			class_decl.identifier = get_scoped_class_symbol(c.current.root, n.identifier) or_return
-// 			enter_class_scope(c.current, n.identifier) or_return
-// 			defer pop_scope(c.current)
-
-// 			for field, i in n.fields {
-// 				class_decl.fields[i] = get_symbol(c, field.name) or_return
-// 			}
-
-// 			for constructor, i in n.constructors {
-// 				checked_constructor := build_checked_node(c, constructor) or_return
-// 				class_decl.constructors[i] = checked_constructor.(^Checked_Fn_Declaration)
-// 			}
-
-// 			for method, i in n.methods {
-// 				checked_method := build_checked_node(c, method) or_return
-// 				class_decl.methods[i] = checked_method.(^Checked_Fn_Declaration)
-// 			}
-
-// 			result = class_decl
-// 		}
-
-// 	}
-
-// 	return
-// }
-
-// build_checked_expr :: proc(c: ^Checker, expr: Parsed_Expression) -> (
-// 	result: Checked_Expression,
-// 	err: Error,
-// ) {
-// 	switch e in expr {
-// 	case ^Parsed_Literal_Expression:
-// 		result = new_clone(Checked_Literal_Expression{token = e.token, value = e.value})
-
-// 	case ^Parsed_String_Literal_Expression:
-// 		result = new_clone(Checked_String_Literal_Expression{token = e.token, value = e.value})
-
-// 	case ^Parsed_Array_Literal_Expression:
-// 		array_lit :=
-// 			new_clone(
-// 				Checked_Array_Literal_Expression{
-// 					token = e.token,
-// 					symbol = symbol_from_type_expr(c, e) or_return,
-// 					values = make([]Checked_Expression, len(e.values)),
-// 				},
-// 			)
-// 		for value, i in e.values {
-// 			array_lit.values[i] = build_checked_expr(c, value) or_return
-// 			expect_type(c, array_lit.values[i], array_lit.symbol) or_return
-// 		}
-// 		result = array_lit
-
-// 	case ^Parsed_Unary_Expression:
-// 		// FIXME: redo type checking here
-// 		unary_expr := new_clone(Checked_Unary_Expression{token = e.token, op = e.op})
-// 		unary_expr.expr = build_checked_expr(c, e.expr) or_return
-// 		result = unary_expr
-
-// 	case ^Parsed_Binary_Expression:
-// 		// FIXME: redo type checking here
-// 		binary_expr := new_clone(Checked_Binary_Expression{token = e.token, op = e.op})
-// 		binary_expr.left = build_checked_expr(c, e.left) or_return
-// 		binary_expr.right = build_checked_expr(c, e.right) or_return
-// 		result = binary_expr
-
-// 	case ^Parsed_Identifier_Expression:
-// 		identifier_expr := new_clone(Checked_Identifier_Expression{token = e.name})
-// 		identifier_expr.symbol = get_symbol(c, e.name) or_return
-// 		result = identifier_expr
-
-// 	case ^Parsed_Index_Expression:
-// 		index_expr := new_clone(Checked_Index_Expression{token = e.token})
-// 		index_expr.left = build_checked_expr(c, e.left) or_return
-// 		index_expr.index = build_checked_expr(c, e.index) or_return
-// 		left_symbol := symbol_from_expr(c, e.left) or_return
-// 		switch left_symbol.type_id {
-// 		case ARRAY_ID:
-// 			index_expr.kind = .Array
-// 			expect_type(c, index_expr.index, &c.builtin_symbols[NUMBER_SYMBOL]) or_return
-// 		// case MAP_ID:
-// 		}
-// 		result = index_expr
-
-// 	case ^Parsed_Dot_Expression:
-// 		if c.chain_depth == 0 {
-// 			c.initial_module = c.current.id
-// 			c.initial_scope = c.current.scope
-// 		}
-// 		c.chain_depth += 1
-
-// 		dot_expr := new_clone(Checked_Dot_Expression{token = e.token})
-// 		dot_expr.left = build_checked_expr(c, e.left) or_return
-// 		left_symbol := checked_expr_symbol(dot_expr.left)
-
-// 		#partial switch left_symbol.kind {
-// 		case .Alias_Symbol:
-// 			assert(false)
-// 		case .Class_Symbol:
-// 			enter_class_scope(c.current, Token{text = left_symbol.name}) or_return
-// 		case .Fn_Symbol:
-// 			return_symbol := left_symbol.fn_info.return_symbol
-// 			c.current = c.modules[return_symbol.module_id]
-// 			enter_class_scope(c.current, Token{text = return_symbol.name}) or_return
-// 		case .Var_Symbol:
-// 			var_symbol := left_symbol.var_info.symbol
-// 			c.current = c.modules[var_symbol.module_id]
-// 			enter_class_scope(c.current, Token{text = var_symbol.name}) or_return
-
-// 		case .Module_Symbol:
-// 			c.current = c.modules[left_symbol.module_info.ref_module_id]
-
-// 		case:
-// 			assert(false)
-// 		}
-
-
-// 		#partial switch selector in e.selector {
-// 		case ^Parsed_Identifier_Expression:
-// 			dot_expr.selector = build_checked_expr(c, e.selector) or_return
-// 			c.chain_depth = 0
-// 			c.current = c.modules[c.initial_module]
-// 			c.current.scope = c.initial_scope
-
-// 		case ^Parsed_Index_Expression:
-// 			index_expr := new_clone(Checked_Index_Expression{token = selector.token})
-// 			index_expr.left = build_checked_expr(c, selector.left) or_return
-// 			left_symbol := symbol_from_expr(c, selector.left) or_return
-
-// 			c.chain_depth = 0
-// 			c.current = c.modules[c.initial_module]
-// 			c.current.scope = c.initial_scope
-// 			index_expr.index = build_checked_expr(c, selector.index) or_return
-// 			switch left_symbol.type_id {
-// 			case ARRAY_ID:
-// 				index_expr.kind = .Array
-// 				expect_type(c, index_expr.index, &c.builtin_symbols[NUMBER_SYMBOL]) or_return
-// 			// case MAP_ID:
-// 			}
-// 			dot_expr.selector = index_expr
-
-// 		case ^Parsed_Call_Expression:
-// 			call_expr :=
-// 				new_clone(
-// 					Checked_Call_Expression{
-// 						token = selector.token,
-// 						args = make([]Checked_Expression, len(selector.args)),
-// 					},
-// 				)
-// 			call_expr.func = build_checked_expr(c, selector.func) or_return
-// 			c.chain_depth = 0
-// 			c.current = c.modules[c.initial_module]
-// 			c.current.scope = c.initial_scope
-// 			for arg, i in selector.args {
-// 				call_expr.args[i] = build_checked_expr(c, arg) or_return
-// 				// expect_type(c, call_expr.args[i]) or_return
-// 			}
-// 			dot_expr.selector = call_expr
-
-
-// 		case ^Parsed_Dot_Expression:
-// 			dot_expr.selector = build_checked_expr(c, e.selector) or_return
-// 		}
-// 		result = dot_expr
-
-// 	case ^Parsed_Call_Expression:
-// 		call_expr :=
-// 			new_clone(Checked_Call_Expression{token = e.token, args = make([]Checked_Expression, len(e.args))})
-// 		call_expr.func = build_checked_expr(c, e.func) or_return
-
-// 		for arg, i in e.args {
-// 			call_expr.args[i] = build_checked_expr(c, arg) or_return
-// 		}
-// 		result = call_expr
-
-// 	case ^Parsed_Array_Type_Expression:
-// 		assert(false)
-// 	}
-// 	return
-// }
-
 
 // Dot expression Rules
 /*

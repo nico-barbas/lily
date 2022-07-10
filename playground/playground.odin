@@ -10,20 +10,20 @@ main :: proc() {
 	context.allocator = mem.tracking_allocator(&track)
 	playground()
 
-	fmt.println()
-	if len(track.allocation_map) > 0 {
-		fmt.printf("Leaks:")
-		for _, v in track.allocation_map {
-			fmt.printf("\t%v\n\n", v)
-		}
-	}
-	fmt.printf("Leak count: %d\n", len(track.allocation_map))
-	if len(track.bad_free_array) > 0 {
-		fmt.printf("Bad Frees:")
-		for v in track.bad_free_array {
-			fmt.printf("\t%v\n\n", v)
-		}
-	}
+	// fmt.println()
+	// if len(track.allocation_map) > 0 {
+	// 	fmt.printf("Leaks:")
+	// 	for _, v in track.allocation_map {
+	// 		fmt.printf("\t%v\n\n", v)
+	// 	}
+	// }
+	// fmt.printf("Leak count: %d\n", len(track.allocation_map))
+	// if len(track.bad_free_array) > 0 {
+	// 	fmt.printf("Bad Frees:")
+	// 	for v in track.bad_free_array {
+	// 		fmt.printf("\t%v\n\n", v)
+	// 	}
+	// }
 }
 
 playground :: proc() {using lily
@@ -57,10 +57,7 @@ playground :: proc() {using lily
         import std
 
 		var a = array of number[0, 4, 99]
-        a.append(87)
-		var len = a.length()
-        std.print(a)
-		std.print(len)
+		std.print(a.length())
 	`
 
 	// checker := Checker{}
