@@ -204,6 +204,34 @@ print_parsed_node :: proc(p: ^Debug_Printer, node: Parsed_Node) {
 		}
 		decrement(p)
 
+	case ^Parsed_Match_Statement:
+		write_line(p, "Match Statement: ")
+		increment(p)
+		{
+			write_line(p, "Evaluated expression: ")
+			print_parsed_expr(p, n.evaluation)
+			for c in n.cases {
+				write_line(p, "Match Branch: ")
+				increment(p)
+				{
+					write_line(p, "Condition: ")
+					print_parsed_expr(p, c.condition)
+					print_parsed_node(p, c.body)
+				}
+				decrement(p)
+			}
+		}
+		decrement(p)
+
+	case ^Parsed_Flow_Statement:
+		write_line(p, "Flow Statement: ")
+		switch n.kind {
+		case .Break:
+			write(p, "Break")
+		case .Continue:
+			write(p, "Continue")
+		}
+
 	case ^Parsed_Import_Statement:
 		write_line(p, "Import Statement: ")
 		write(p, n.identifier.text)
@@ -471,6 +499,23 @@ print_checked_node :: proc(p: ^Debug_Printer, c: ^Checker, node: Checked_Node) {
 			write_line(p, "High: ")
 			print_checked_expr(p, c, n.high)
 			print_checked_node(p, c, n.body)
+		}
+		decrement(p)
+
+	case ^Checked_Match_Statement:
+		write_line(p, "Match Statement: ")
+		increment(p)
+		{
+			write_line(p, "Evaluated Expression: ")
+			print_checked_expr(p, c, n.evaluation)
+			for ca in n.cases {
+				write_line(p, "Match Branch: ")
+				write_line(p, "Condition: ")
+				print_checked_expr(p, c, ca.condition)
+				if ca.body != nil {
+					print_checked_node(p, c, ca.body)
+				}
+			}
 		}
 		decrement(p)
 
@@ -779,7 +824,7 @@ op_code_str := map[Op_Code]string {
 	.Op_Call_Constr   = "Op_Call_Constr",
 	.Op_Return        = "Op_Return",
 	.Op_Jump          = "Op_Jump",
-	.Op_Cond_Jump     = "Op_Cond_Jump",
+	.Op_Jump_False    = "Op_Jump_False",
 	.Op_Get           = "Op_Get",
 	.Op_Get_Global    = "Op_Get_Global",
 	.Op_Get_Elem      = "Op_Get_Elem",
@@ -874,7 +919,7 @@ print_chunk :: proc(p: ^Debug_Printer, c: ^Chunk) {
 		case .Op_Return:
 			fmt.sbprintf(&p.builder, " || result stack addr: %d", debug_get_i16(c, &ip))
 
-		case .Op_Jump, .Op_Cond_Jump:
+		case .Op_Jump, .Op_Jump_False, .Op_Jump_True:
 			fmt.sbprintf(&p.builder, " || jump addr: %d", debug_get_i16(c, &ip))
 
 		case .Op_Get, .Op_Get_Global, .Op_Set, .Op_Set_Global:

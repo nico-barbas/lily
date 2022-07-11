@@ -217,6 +217,24 @@ expect_type :: proc(c: ^Checker, expr: Checked_Expression, s: ^Symbol) -> (err: 
 	return
 }
 
+expect_one_of_types :: proc(c: ^Checker, expr: Checked_Expression, l: []^Symbol) -> (err: Error) {
+	expr_symbol := checked_expr_symbol(expr)
+	for expected in l {
+		if types_equal(c, expr_symbol, expected) {
+			return
+		}
+	}
+	err =
+		format_semantic_err(
+			Semantic_Error{
+				kind = .Mismatched_Types,
+				token = checked_expr_token(expr),
+				details = fmt.tprintf("%s is not of a valid type in this context", expr_symbol.name),
+			},
+		)
+	return
+}
+
 gen_type_id :: proc(c: ^Checker) -> Type_ID {
 	c.type_id_ptr += 1
 	return c.type_id_ptr - 1
@@ -252,10 +270,15 @@ build_checked_program :: proc(c: ^Checker, module_name: string, entry_point: str
 	}
 	for module in c.parsed_results {
 		index := c.import_names_lookup[module.name]
+		add_module_inner_symbols(c, index) or_return
+	}
+	for module in c.parsed_results {
+		index := c.import_names_lookup[module.name]
 		build_checked_ast(c, index) or_return
 	}
 
 	for module in c.parsed_results {
+		// print_parsed_ast(module)
 		delete_parsed_module(module)
 	}
 	delete(c.parsed_results)
@@ -523,6 +546,7 @@ check_fn_signature_symbols :: proc(c: ^Checker, fn_decl: ^Parsed_Fn_Declaration)
 
 add_module_inner_symbols :: proc(c: ^Checker, module_id: int) -> (err: Error) {
 	c.current = c.modules[module_id]
+	c.current.scope = c.current.root
 	c.current_parsed = c.parsed_results[module_id]
 
 	for node in c.current_parsed.types {
@@ -551,12 +575,12 @@ add_inner_symbols :: proc(c: ^Checker, node: Parsed_Node) -> (err: Error) {
 	case ^Parsed_Assignment_Statement:
 
 	case ^Parsed_If_Statement:
-		enter_child_scope_by_name(c.current, n.token) or_return
+		push_scope(c.current, n.token)
 		defer pop_scope(c.current)
 		add_inner_symbols(c, n.body) or_return
 
 	case ^Parsed_Range_Statement:
-		enter_child_scope_by_name(c.current, n.token) or_return
+		push_scope(c.current, n.token)
 		defer pop_scope(c.current)
 		add_symbol_to_scope(
 			c.current.scope,
@@ -571,6 +595,17 @@ add_inner_symbols :: proc(c: ^Checker, node: Parsed_Node) -> (err: Error) {
 		) or_return
 		add_inner_symbols(c, n.body) or_return
 
+	case ^Parsed_Match_Statement:
+		push_scope(c.current, n.token)
+		defer pop_scope(c.current)
+		for ca in n.cases {
+			push_scope(c.current, ca.token)
+			defer pop_scope(c.current)
+			add_inner_symbols(c, ca.body) or_return
+		}
+
+	case ^Parsed_Flow_Statement:
+
 	case ^Parsed_Import_Statement:
 
 	case ^Parsed_Var_Declaration:
@@ -581,6 +616,7 @@ add_inner_symbols :: proc(c: ^Checker, node: Parsed_Node) -> (err: Error) {
 				kind = .Var_Symbol,
 				module_id = c.current.id,
 				scope_id = c.current.scope.id,
+				info = Var_Symbol_Info{},
 			},
 		) or_return
 
@@ -589,7 +625,9 @@ add_inner_symbols :: proc(c: ^Checker, node: Parsed_Node) -> (err: Error) {
 		fn_info := symbol.info.(Fn_Symbol_Info)
 		enter_child_scope_by_id(c.current, fn_info.sub_scope_id) or_return
 		defer pop_scope(c.current)
-		add_inner_symbols(c, n.body) or_return
+		if n.kind != .Foreign {
+			add_inner_symbols(c, n.body) or_return
+		}
 
 	case ^Parsed_Type_Declaration:
 		if n.type_kind == .Class {
@@ -710,6 +748,54 @@ build_checked_node :: proc(c: ^Checker, node: Parsed_Node) -> (result: Checked_N
 		range_stmt.body = build_checked_node(c, n.body) or_return
 		result = range_stmt
 
+	case ^Parsed_Match_Statement:
+		match_stmt :=
+			new_clone(
+				Checked_Match_Statement{
+					token = n.token,
+					evaluation = build_checked_expr(c, n.evaluation) or_return,
+					cases = make([]struct {
+							token:     Token,
+							condition: Checked_Expression,
+							body:      Checked_Node,
+						}, len(n.cases)),
+				},
+			)
+		eval_symbol := checked_expr_symbol(match_stmt.evaluation)
+		// FIXME: Allow for strings, and later on enumerations and ADTs
+		expect_one_of_types(
+			c,
+			match_stmt.evaluation,
+			{&c.builtin_symbols[NUMBER_SYMBOL], &c.builtin_symbols[BOOL_SYMBOL]},
+		) or_return
+		enter_child_scope_by_name(c.current, n.token)
+		defer pop_scope(c.current)
+
+		BOOL_CASE_COUNT :: 2
+		switch eval_symbol.type_id {
+		case BOOL_ID:
+			if len(n.cases) != BOOL_CASE_COUNT {
+				err =
+					format_semantic_err(
+						Semantic_Error{
+							kind = .Unhandled_Match_Cases,
+							token = n.token,
+							details = fmt.tprintf("Unhandled cases for match statement of type %s", eval_symbol.name),
+						},
+					)
+				return
+			}
+		}
+		for ca, i in n.cases {
+			match_stmt.cases[i].token = ca.token
+			match_stmt.cases[i].condition = build_checked_expr(c, ca.condition) or_return
+			expect_type(c, match_stmt.cases[i].condition, eval_symbol) or_return
+			match_stmt.cases[i].body = build_checked_node(c, ca.body) or_return
+		}
+		result = match_stmt
+
+	case ^Parsed_Flow_Statement:
+
 	case ^Parsed_Import_Statement:
 
 	case ^Parsed_Var_Declaration:
@@ -734,8 +820,10 @@ build_checked_node :: proc(c: ^Checker, node: Parsed_Node) -> (result: Checked_N
 		var_info := var_decl.identifier.info.(Var_Symbol_Info)
 		if type_hint.name != "untyped" {
 			var_info.symbol = type_hint
+			var_decl.identifier.type_id = type_hint.type_id
 			expect_type(c, var_decl.expr, type_hint) or_return
 		} else {
+			var_decl.identifier.type_id = expr_symbol.type_id
 			var_info.symbol = expr_symbol
 		}
 		var_decl.identifier.info = var_info

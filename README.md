@@ -65,6 +65,18 @@ for i in 0..<10:
     foobbar = foobar + 1
 end
 
+match foobar:
+    when 1:
+
+    end
+    when 2:
+    
+    end
+    when 3:
+
+    end
+end
+
 -- Functions declaration and calling:
 fn add(a: number, b: number): number
     result = a + b
@@ -73,6 +85,23 @@ var addResult = add(5, 10)
 
 -- Foreign function declaration:
 foreign fn sub(a: number, b: number): number
+
+-- Class declaration:
+type Vector is class
+    x: number
+    y: number
+
+    constructor new():
+    end
+end
+
+-- Enumeration declaration:
+type Foo is enum
+    Bar
+    Baz
+end
+
+var fooVal = Foo.Bar
 ```
 
 ## Status and Roadmap:
@@ -82,6 +111,8 @@ foreign fn sub(a: number, b: number): number
     - [x] If statement
     - [x] For statement
     - [ ] Match statement
+    - [ ] 'break' statement
+    - [ ] 'continue' statement
 - [ ] Container iterators
 - [x] Array Type
 - [x] Array builtin procedures 
@@ -114,7 +145,6 @@ foreign fn sub(a: number, b: number): number
     - [ ] VM
 
 ## Known Bugs:
-- Nested function calls are crashing the compiler
 - User defined foreign fn declaration are not supported in the standalone compiler and should be disallowed
 - Many, many compiler memory leaks (will be fixed very soon)
 

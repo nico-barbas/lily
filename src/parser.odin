@@ -191,6 +191,10 @@ parse_node :: proc(p: ^Parser) -> (result: Parsed_Node, err: Error) {
 		result, err = parse_if_stmt(p)
 	case .For:
 		result, err = parse_range_stmt(p)
+	case .Match:
+		result, err = parse_match_stmt(p)
+	case .Break, .Continue:
+		result, err = parse_flow_stmt(p)
 	case:
 		// Parsed_Expression statement most likely
 		result, err = parse_expression_stmt(p)
@@ -271,6 +275,7 @@ parse_if_stmt :: proc(p: ^Parser) -> (result: ^Parsed_If_Statement, err: Error) 
 	}
 
 	result = new(Parsed_If_Statement)
+	result.token = p.current
 	consume_token(p)
 	result.condition = parse_expr(p, .Lowest) or_return
 	match_token_kind(p, .Colon) or_return
@@ -357,6 +362,66 @@ parse_range_stmt :: proc(p: ^Parser) -> (result: ^Parsed_Range_Statement, err: E
 			details = fmt.tprintf("Expected %s, got %s", Token_Kind.Identifier, p.current.kind),
 		}
 	}
+	return
+}
+
+parse_match_stmt :: proc(p: ^Parser) -> (result: ^Parsed_Match_Statement, err: Error) {
+	result = new_clone(Parsed_Match_Statement{token = p.current})
+	consume_token(p)
+	result.evaluation = parse_expr(p, .Lowest) or_return
+	match_token_kind(p, .Colon) or_return
+	cases: for {
+		#partial switch consume_token(p).kind {
+		case .Newline:
+			continue
+		case .When:
+			current := struct {
+				token:     Token,
+				condition: Parsed_Expression,
+				body:      ^Parsed_Block_Statement,
+			}{}
+			current.token = p.current
+			consume_token(p)
+			current.condition = parse_expr(p, .Lowest) or_return
+			match_token_kind(p, .Colon) or_return
+			current.body =
+				new_clone(Parsed_Block_Statement{token = p.current, nodes = make([dynamic]Parsed_Node)})
+			body: for {
+				body_node := parse_node(p) or_return
+				if body_node != nil {
+					append(&current.body.nodes, body_node)
+				}
+				if p.current.kind == .End {
+					break body
+				}
+			}
+			append(&result.cases, current)
+
+		case .End:
+			break cases
+		case:
+			err = Parsing_Error {
+				kind    = .Invalid_Syntax,
+				token   = p.current,
+				details = fmt.tprintf(
+					"Expected either %s or %s, got %s",
+					Token_Kind.When,
+					Token_Kind.End,
+					p.current.kind,
+				),
+			}
+		}
+	}
+
+	return
+}
+
+parse_flow_stmt :: proc(p: ^Parser) -> (result: ^Parsed_Flow_Statement, err: Error) {
+	result =
+		new_clone(
+			Parsed_Flow_Statement{token = p.current, kind = .Break if p.current.kind == .Break else .Continue},
+		)
+	err = match_token_kind_next(p, .Newline)
 	return
 }
 

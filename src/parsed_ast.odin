@@ -224,6 +224,8 @@ Parsed_Node :: union {
 	^Parsed_Block_Statement,
 	^Parsed_Assignment_Statement,
 	^Parsed_If_Statement,
+	^Parsed_Match_Statement,
+	^Parsed_Flow_Statement,
 	^Parsed_Range_Statement,
 	^Parsed_Import_Statement,
 
@@ -264,6 +266,24 @@ Parsed_Range_Statement :: struct {
 	reverse:       bool,
 	op:            Range_Operator,
 	body:          ^Parsed_Block_Statement,
+}
+
+Parsed_Match_Statement :: struct {
+	token:      Token,
+	evaluation: Parsed_Expression,
+	cases:      [dynamic]struct {
+		token:     Token,
+		condition: Parsed_Expression,
+		body:      ^Parsed_Block_Statement,
+	},
+}
+
+Parsed_Flow_Statement :: struct {
+	token: Token,
+	kind:  enum {
+		Continue,
+		Break,
+	},
 }
 
 Parsed_Import_Statement :: struct {
@@ -321,14 +341,34 @@ free_parsed_node :: proc(node: Parsed_Node) {
 
 	case ^Parsed_If_Statement:
 		free_parsed_expression(n.condition)
-		free_parsed_node(n.body)
-		free_parsed_node(n.next_branch)
+		if n.body != nil {
+			free_parsed_node(n.body)
+		}
+		if n.next_branch != nil {
+			free_parsed_node(n.next_branch)
+		}
 		free(n)
 
 	case ^Parsed_Range_Statement:
 		free_parsed_expression(n.low)
 		free_parsed_expression(n.high)
-		free_parsed_node(n.body)
+		if n.body != nil {
+			free_parsed_node(n.body)
+		}
+		free(n)
+
+	case ^Parsed_Match_Statement:
+		free_parsed_expression(n.evaluation)
+		for c in n.cases {
+			free_parsed_expression(c.condition)
+			if c.body != nil {
+				free_parsed_node(c.body)
+			}
+		}
+		delete(n.cases)
+		free(n)
+
+	case ^Parsed_Flow_Statement:
 		free(n)
 
 	case ^Parsed_Import_Statement:

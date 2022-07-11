@@ -313,11 +313,11 @@ compile_node :: proc(c: ^Compiler, node: Checked_Node) {
 	case ^Checked_If_Statement:
 		push_op_code(&c.chunk, .Op_Begin)
 		compile_expr(c, n.condition)
-		jmp_start := reserve_bytes(&c.chunk, instr_length[.Op_Cond_Jump])
+		jmp_start := reserve_bytes(&c.chunk, instr_length[.Op_Jump_False])
 		compile_node(c, n.body)
 
 		jmp_addr := i16(len(c.chunk.bytecode))
-		c.chunk.bytecode[jmp_start] = byte(Op_Code.Op_Cond_Jump)
+		c.chunk.bytecode[jmp_start] = byte(Op_Code.Op_Jump_False)
 		c.chunk.bytecode[jmp_start + 1] = byte(jmp_addr)
 		c.chunk.bytecode[jmp_start + 2] = byte(jmp_addr >> 8)
 		if n.next_branch != nil {
@@ -341,7 +341,7 @@ compile_node :: proc(c: ^Compiler, node: Checked_Node) {
 		case .Inclusive:
 			push_op_code(&c.chunk, .Op_Lesser_Eq)
 		}
-		jmp_start := reserve_bytes(&c.chunk, instr_length[.Op_Cond_Jump])
+		jmp_start := reserve_bytes(&c.chunk, instr_length[.Op_Jump_False])
 
 		compile_node(c, n.body)
 
@@ -350,11 +350,34 @@ compile_node :: proc(c: ^Compiler, node: Checked_Node) {
 		push_simple_instruction(&c.chunk, .Op_Move, 0)
 		push_simple_instruction(&c.chunk, .Op_Jump, loop_addr)
 		jmp_addr := i16(len(c.chunk.bytecode))
-		c.chunk.bytecode[jmp_start] = byte(Op_Code.Op_Cond_Jump)
+		c.chunk.bytecode[jmp_start] = byte(Op_Code.Op_Jump_False)
 		c.chunk.bytecode[jmp_start + 1] = byte(jmp_addr)
 		c.chunk.bytecode[jmp_start + 2] = byte(jmp_addr >> 8)
 
 		push_op_code(&c.chunk, .Op_End)
+
+	case ^Checked_Match_Statement:
+		exit_jmps := make([]int, len(n.cases), context.temp_allocator)
+		for ca, i in n.cases {
+			compile_expr(c, n.evaluation)
+			compile_expr(c, ca.condition)
+			push_op_code(&c.chunk, .Op_Eq)
+			case_jmp := reserve_bytes(&c.chunk, instr_length[.Op_Jump_False])
+			push_op_code(&c.chunk, .Op_Begin)
+			compile_node(c, ca.body)
+			push_op_code(&c.chunk, .Op_End)
+			exit_jmps[i] = reserve_bytes(&c.chunk, instr_length[.Op_Jump])
+			jmp_addr := i16(len(c.chunk.bytecode))
+			c.chunk.bytecode[case_jmp] = byte(Op_Code.Op_Jump_False)
+			c.chunk.bytecode[case_jmp + 1] = byte(jmp_addr)
+			c.chunk.bytecode[case_jmp + 2] = byte(jmp_addr >> 8)
+		}
+		jmp_addr := i16(len(c.chunk.bytecode))
+		for addr in exit_jmps {
+			c.chunk.bytecode[addr] = byte(Op_Code.Op_Jump)
+			c.chunk.bytecode[addr + 1] = byte(jmp_addr)
+			c.chunk.bytecode[addr + 2] = byte(jmp_addr >> 8)
+		}
 
 
 	case ^Checked_Var_Declaration:

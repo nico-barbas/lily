@@ -209,7 +209,12 @@ run_program :: proc(state: ^State, entry_point: int) {
 
 		case .Op_Eq:
 			v1, v2 := pop_stack_value(&vm), pop_stack_value(&vm)
-			push_stack_value(&vm, Value{kind = .Boolean, data = v1.data.(f64) == v2.data.(f64)})
+			#partial switch v1.kind {
+			case .Number:
+				push_stack_value(&vm, Value{kind = .Boolean, data = v1.data.(f64) == v2.data.(f64)})
+			case .Boolean:
+				push_stack_value(&vm, Value{kind = .Boolean, data = v1.data.(bool) == v2.data.(bool)})
+			}
 
 		case .Op_Greater:
 			v1, v2 := pop_stack_value(&vm), pop_stack_value(&vm)
@@ -271,7 +276,14 @@ run_program :: proc(state: ^State, entry_point: int) {
 		case .Op_Jump:
 			vm.ip = int(get_i16(&vm))
 
-		case .Op_Cond_Jump:
+		case .Op_Jump_True:
+			jmp_addr := int(get_i16(&vm))
+			conditional := pop_stack_value(&vm)
+			if conditional.data.(bool) {
+				vm.ip = jmp_addr
+			}
+
+		case .Op_Jump_False:
 			jmp_addr := int(get_i16(&vm))
 			conditional := pop_stack_value(&vm)
 			if !conditional.data.(bool) {

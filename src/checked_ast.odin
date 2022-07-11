@@ -371,6 +371,7 @@ Checked_Node :: union {
 	^Checked_Assigment_Statement,
 	^Checked_If_Statement,
 	^Checked_Range_Statement,
+	^Checked_Match_Statement,
 	^Checked_Var_Declaration,
 	^Checked_Fn_Declaration,
 	^Checked_Type_Declaration,
@@ -408,6 +409,16 @@ Checked_Range_Statement :: struct {
 	reverse:  bool,
 	op:       Range_Operator,
 	body:     Checked_Node,
+}
+
+Checked_Match_Statement :: struct {
+	token:      Token,
+	evaluation: Checked_Expression,
+	cases:      []struct {
+		token:     Token,
+		condition: Checked_Expression,
+		body:      Checked_Node,
+	},
 }
 
 Checked_Var_Declaration :: struct {
@@ -457,6 +468,9 @@ checked_node_token :: proc(node: Checked_Node) -> Token {
 	case ^Checked_Range_Statement:
 		return n.token
 
+	case ^Checked_Match_Statement:
+		return n.token
+
 	case ^Checked_Var_Declaration:
 		return n.token
 
@@ -492,14 +506,29 @@ free_checked_node :: proc(node: Checked_Node) {
 
 	case ^Checked_If_Statement:
 		free_checked_expression(n.condition)
-		free_checked_node(n.body)
+		if n.body != nil {
+			free_checked_node(n.body)
+		}
 		free_checked_node(n.next_branch)
 		free(n)
 
 	case ^Checked_Range_Statement:
 		free_checked_expression(n.low)
 		free_checked_expression(n.high)
-		free_checked_node(n.body)
+		if n.body != nil {
+			free_checked_node(n.body)
+		}
+		free(n)
+
+	case ^Checked_Match_Statement:
+		free_checked_expression(n.evaluation)
+		for c in n.cases {
+			free_checked_expression(c.condition)
+			if c.body != nil {
+				free_checked_node(c.body)
+			}
+		}
+		delete(n.cases)
 		free(n)
 
 	case ^Checked_Var_Declaration:
@@ -508,7 +537,9 @@ free_checked_node :: proc(node: Checked_Node) {
 
 	case ^Checked_Fn_Declaration:
 		delete(n.params)
-		free_checked_node(n.body)
+		if n.body != nil {
+			free_checked_node(n.body)
+		}
 		free(n)
 
 	case ^Checked_Type_Declaration:

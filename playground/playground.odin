@@ -54,10 +54,20 @@ playground :: proc() {using lily
 	// 	a.add(13)
 	// `
 	input := `
-        import std
+		import std
+        
+		var a = false
+		var res = -1
+		match a:
+			when true:
+				res = 30
+			end
+			when false:
+				res = 45
+			end
+		end
 
-		var a = array of number[0, 4, 99]
-		std.print(a.length())
+		std.print(res)
 	`
 
 	// checker := Checker{}
@@ -75,8 +85,8 @@ playground :: proc() {using lily
 	assert(err == nil, fmt.tprint(err))
 
 	run_module(state, "main")
-	fmt.println("finished")
 	free_state(state)
+	fmt.println("finished")
 
 	// compiled_program := make_compiled_program(checked)
 	// for i in 0 ..< len(compiled_program) {

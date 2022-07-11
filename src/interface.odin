@@ -51,7 +51,6 @@ free_state :: proc(s: ^State) {
 compile_source :: proc(s: ^State, module_name: string, source: string) -> (err: Error) {
 	s.checked_modules = build_checked_program(&s.checker, module_name, source) or_return
 
-
 	s.import_modules_id = s.checker.import_names_lookup
 	for name, id in s.import_modules_id {
 		s.import_modules_name[id] = name

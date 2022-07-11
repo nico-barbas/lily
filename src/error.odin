@@ -26,32 +26,21 @@ Semantic_Error :: struct {
 		Mismatched_Types,
 		Invalid_Mutability,
 		Invalid_Arity,
+		Unhandled_Match_Cases,
 	},
 	compiler_loc: runtime.Source_Code_Location,
 	token:        Token,
 	details:      string,
 }
 
-rhs_assign_semantic_err :: proc(
-	s: ^Symbol,
-	t: Token,
-	loc := #caller_location,
-) -> Semantic_Error {
+rhs_assign_semantic_err :: proc(s: ^Symbol, t: Token, loc := #caller_location) -> Semantic_Error {
 	return format_semantic_err(
-		Semantic_Error{
-			kind = .Invalid_Symbol,
-			token = t,
-			details = fmt.tprintf("Cannot assign %s", s.name),
-		},
+		Semantic_Error{kind = .Invalid_Symbol, token = t, details = fmt.tprintf("Cannot assign %s", s.name)},
 		loc,
 	)
 }
 
-lhs_assign_semantic_err :: proc(
-	s: ^Symbol,
-	t: Token,
-	loc := #caller_location,
-) -> Semantic_Error {
+lhs_assign_semantic_err :: proc(s: ^Symbol, t: Token, loc := #caller_location) -> Semantic_Error {
 	return format_semantic_err(
 		Semantic_Error{
 			kind = .Invalid_Symbol,
@@ -62,11 +51,7 @@ lhs_assign_semantic_err :: proc(
 	)
 }
 
-mutable_semantic_err :: proc(
-	s: ^Symbol,
-	t: Token,
-	loc := #caller_location,
-) -> Semantic_Error {
+mutable_semantic_err :: proc(s: ^Symbol, t: Token, loc := #caller_location) -> Semantic_Error {
 	return format_semantic_err(
 		Semantic_Error{
 			kind = .Invalid_Mutability,
@@ -77,11 +62,7 @@ mutable_semantic_err :: proc(
 	)
 }
 
-index_semantic_err :: proc(
-	s: ^Symbol,
-	t: Token,
-	loc := #caller_location,
-) -> Semantic_Error {
+index_semantic_err :: proc(s: ^Symbol, t: Token, loc := #caller_location) -> Semantic_Error {
 	return format_semantic_err(
 		Semantic_Error{
 			kind = .Invalid_Symbol,
@@ -92,32 +73,19 @@ index_semantic_err :: proc(
 	)
 }
 
-arity_semantic_err :: proc(
-	s: ^Symbol,
-	t: Token,
-	count: int,
-	loc := #caller_location,
-) -> Semantic_Error {
+arity_semantic_err :: proc(s: ^Symbol, t: Token, count: int, loc := #caller_location) -> Semantic_Error {
 	fn_info := s.info.(Fn_Symbol_Info)
 	return format_semantic_err(
 		Semantic_Error{
 			kind = .Invalid_Arity,
 			token = t,
-			details = fmt.tprintf(
-				"Expected %d arguments, got %d",
-				len(fn_info.param_symbols),
-				count,
-			),
+			details = fmt.tprintf("Expected %d arguments, got %d", len(fn_info.param_symbols), count),
 		},
 		loc,
 	)
 }
 
-call_semantic_err :: proc(
-	s: ^Symbol,
-	t: Token,
-	loc := #caller_location,
-) -> Semantic_Error {
+call_semantic_err :: proc(s: ^Symbol, t: Token, loc := #caller_location) -> Semantic_Error {
 	return format_semantic_err(
 		Semantic_Error{
 			kind = .Invalid_Symbol,
@@ -128,11 +96,7 @@ call_semantic_err :: proc(
 	)
 }
 
-dot_operand_semantic_err :: proc(
-	s: ^Symbol,
-	t: Token,
-	loc := #caller_location,
-) -> Semantic_Error {
+dot_operand_semantic_err :: proc(s: ^Symbol, t: Token, loc := #caller_location) -> Semantic_Error {
 	return format_semantic_err(
 		Semantic_Error{
 			kind = .Invalid_Symbol,
@@ -143,10 +107,7 @@ dot_operand_semantic_err :: proc(
 	)
 }
 
-format_semantic_err :: proc(
-	err: Semantic_Error,
-	loc := #caller_location,
-) -> Semantic_Error {
+format_semantic_err :: proc(err: Semantic_Error, loc := #caller_location) -> Semantic_Error {
 	result := err
 	result.compiler_loc = loc
 	return result

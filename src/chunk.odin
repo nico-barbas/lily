@@ -37,7 +37,8 @@ Op_Code :: enum byte {
 	Op_Call_Constr,
 	Op_Return,
 	Op_Jump,
-	Op_Cond_Jump,
+	Op_Jump_True,
+	Op_Jump_False,
 
 	// All the access related Op_Codes
 	Op_Get,
@@ -90,7 +91,8 @@ instr_length := map[Op_Code]int {
 	.Op_Call_Constr   = 3,
 	.Op_Return        = 3,
 	.Op_Jump          = 3,
-	.Op_Cond_Jump     = 3,
+	.Op_Jump_True     = 3,
+	.Op_Jump_False    = 3,
 	.Op_Get           = 3,
 	.Op_Get_Global    = 3,
 	.Op_Get_Elem      = 1,
