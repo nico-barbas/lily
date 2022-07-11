@@ -296,6 +296,9 @@ run_program :: proc(state: ^State, entry_point: int) {
 			push_stack_value(&vm, var_val)
 
 		case .Op_Get_Global:
+			var_addr := get_i16(&vm)
+			push_stack_value(&vm, vm.current.variables[var_addr])
+
 		case .Op_Get_Elem:
 			array := cast(^Array_Object)pop_stack_value(&vm).data.(^Object)
 			index_val := pop_stack_value(&vm)
@@ -318,6 +321,9 @@ run_program :: proc(state: ^State, entry_point: int) {
 
 
 		case .Op_Set_Global:
+			var_addr := get_i16(&vm)
+			vm.current.variables[var_addr] = pop_stack_value(&vm)
+
 		case .Op_Set_Elem:
 			array := cast(^Array_Object)pop_stack_value(&vm).data.(^Object)
 			index_val := pop_stack_value(&vm)

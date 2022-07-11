@@ -95,8 +95,7 @@ Class_Vtable :: struct {
 }
 
 new_string_object :: proc(from := "") -> Value {
-	str_object :=
-		new_clone(String_Object{base = Object{kind = .String}, data = make([]rune, len(from))})
+	str_object := new_clone(String_Object{base = Object{kind = .String}, data = make([]rune, len(from))})
 	for r, i in from {
 		str_object.data[i] = r
 	}
@@ -106,9 +105,7 @@ new_string_object :: proc(from := "") -> Value {
 new_array_object :: proc() -> Value {
 	return Value{
 		kind = .Object_Ref,
-		data = cast(^Object)new_clone(
-			Array_Object{base = Object{kind = .Array}, data = make([dynamic]Value)},
-		),
+		data = cast(^Object)new_clone(Array_Object{base = Object{kind = .Array}, data = make([dynamic]Value)}),
 	}
 }
 
@@ -187,37 +184,7 @@ Range_Operator :: enum {
 	Exclusive,
 }
 
-// Iterator :: struct {
-// 	next:  proc(i: ^Iterator) -> (Value, bool),
-// 	index: int,
-// }
-
-// base_iterator_next :: proc(i: ^Iterator) {
-// 	i.index += 1
-// }
-
-// Range_Iterator :: struct {
-// 	using base: Iterator,
-// 	low:        f64,
-// 	high:       f64,
-// 	reverse:    bool,
-// }
-
-
-// RANGE_ITERATOR_IMPL :: Range_Iterator {
-// 	base = Iterator {
-// 		next = proc(i: ^Iterator) -> (value: Value, done: bool) {
-// 			r := cast(^Range_Iterator)i
-// 			value.kind = .Number
-// 			if r.reverse {
-// 				value.data = r.high - f64(r.index)
-// 				done = value.data.(f64) < r.low
-// 			} else {
-// 				value.data = r.low + f64(r.index)
-// 				done = value.data.(f64) > r.high
-// 			}
-// 			base_iterator_next(r)
-// 			return
-// 		},
-// 	},
-// }
+Control_Flow_Operator :: enum {
+	Break,
+	Continue,
+}

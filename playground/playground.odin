@@ -57,28 +57,17 @@ playground :: proc() {using lily
 		import std
         
 		var a = false
-		var res = -1
-		match a:
-			when true:
-				res = 30
-			end
-			when false:
-				res = 45
+		var res = 11
+		for i in 0..10:
+			if not a:
+				a = true
+				res = res + 1
+				break
 			end
 		end
 
 		std.print(res)
 	`
-
-	// checker := Checker{}
-	// init_checker(&checker)
-	// checked, err := build_checked_program(&checker, "main", input)
-	// assert(err == nil, fmt.tprint(err))
-
-	// for module in checked.modules {
-	// 	print_symbol_table(&checker, module)
-	// 	print_checked_ast(module, &checker)
-	// }
 
 	state := new_state(Config{})
 	err := compile_source(state, "main", input)
@@ -87,11 +76,4 @@ playground :: proc() {using lily
 	run_module(state, "main")
 	free_state(state)
 	fmt.println("finished")
-
-	// compiled_program := make_compiled_program(checked)
-	// for i in 0 ..< len(compiled_program) {
-	// 	compile_module(checked, compiled_program, i)
-	// 	print_compiled_module(compiled_program[i])
-	// }
-	// run_program(compiled_program, 0)
 }

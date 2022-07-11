@@ -5,14 +5,6 @@ import "core:fmt"
 
 Semantic_Scope :: struct {
 	id:       Scope_ID,
-	kind:     enum {
-		Root_Scope,
-		Class_Scope,
-		Fn_Scope,
-		If_Scope,
-		For_Scope,
-		Match_Scope,
-	},
 	symbols:  [dynamic]Symbol,
 	lookup:   map[string]^Symbol,
 	parent:   ^Semantic_Scope,
@@ -65,6 +57,7 @@ Class_Symbol_Info :: struct {
 Var_Symbol_Info :: struct {
 	symbol:  ^Symbol,
 	mutable: bool,
+	depth:   int,
 }
 
 Fn_Symbol_Info :: struct {

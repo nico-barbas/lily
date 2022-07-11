@@ -280,10 +280,7 @@ Parsed_Match_Statement :: struct {
 
 Parsed_Flow_Statement :: struct {
 	token: Token,
-	kind:  enum {
-		Continue,
-		Break,
-	},
+	kind:  Control_Flow_Operator,
 }
 
 Parsed_Import_Statement :: struct {

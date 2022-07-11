@@ -372,6 +372,7 @@ Checked_Node :: union {
 	^Checked_If_Statement,
 	^Checked_Range_Statement,
 	^Checked_Match_Statement,
+	^Checked_Flow_Statement,
 	^Checked_Var_Declaration,
 	^Checked_Fn_Declaration,
 	^Checked_Type_Declaration,
@@ -419,6 +420,11 @@ Checked_Match_Statement :: struct {
 		condition: Checked_Expression,
 		body:      Checked_Node,
 	},
+}
+
+Checked_Flow_Statement :: struct {
+	token: Token,
+	kind:  Control_Flow_Operator,
 }
 
 Checked_Var_Declaration :: struct {
@@ -469,6 +475,9 @@ checked_node_token :: proc(node: Checked_Node) -> Token {
 		return n.token
 
 	case ^Checked_Match_Statement:
+		return n.token
+
+	case ^Checked_Flow_Statement:
 		return n.token
 
 	case ^Checked_Var_Declaration:
@@ -529,6 +538,9 @@ free_checked_node :: proc(node: Checked_Node) {
 			}
 		}
 		delete(n.cases)
+		free(n)
+
+	case ^Checked_Flow_Statement:
 		free(n)
 
 	case ^Checked_Var_Declaration:

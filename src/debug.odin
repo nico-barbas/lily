@@ -519,6 +519,15 @@ print_checked_node :: proc(p: ^Debug_Printer, c: ^Checker, node: Checked_Node) {
 		}
 		decrement(p)
 
+	case ^Checked_Flow_Statement:
+		write_line(p, "Flow Statement: ")
+		switch n.kind {
+		case .Break:
+			write(p, "Break")
+		case .Continue:
+			write(p, "Continue")
+		}
+
 	case ^Checked_Var_Declaration:
 		write_line(p, "Var Declaration: ")
 		increment(p)
@@ -686,7 +695,7 @@ print_symbol :: proc(p: ^Debug_Printer, symbol: ^Symbol, leading_char := "-") {
 
 	case .Var_Symbol:
 		var_info := symbol.info.(Var_Symbol_Info)
-		fmt.sbprintf(&p.builder, "Info: Mutable: %t", var_info.mutable)
+		fmt.sbprintf(&p.builder, "Info: Mutable: %t, Depth: %d", var_info.mutable, var_info.depth)
 		if var_info.symbol != nil {
 			increment(p)
 			print_symbol(p, var_info.symbol, "=>")

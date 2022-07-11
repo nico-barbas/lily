@@ -16,6 +16,8 @@ Checker :: struct {
 	types:               [dynamic]Type_ID,
 	type_id_ptr:         Type_ID,
 
+	// to keep track of if "break" and "continue" are allowed in the current context
+	allow_flow_operator: bool,
 	// Temp data for checking dot expressions
 	dot_frames:          [25]Dot_Frame,
 	dot_frame_count:     int,
@@ -202,16 +204,29 @@ types_equal :: proc(c: ^Checker, s1, s2: ^Symbol) -> bool {
 	}
 }
 
-expect_type :: proc(c: ^Checker, expr: Checked_Expression, s: ^Symbol) -> (err: Error) {
+expect_type :: proc(c: ^Checker, expr: Checked_Expression, s: ^Symbol, loc := #caller_location) -> (
+	err: Error,
+) {
 	expr_symbol := checked_expr_symbol(expr)
 	if !types_equal(c, expr_symbol, s) {
+		expected := s
+		if s.kind == .Var_Symbol {
+			info := s.info.(Var_Symbol_Info)
+			expected = info.symbol
+		}
+		got := expr_symbol
+		if got.kind == .Var_Symbol {
+			info := got.info.(Var_Symbol_Info)
+			got = info.symbol
+		}
 		err =
 			format_semantic_err(
 				Semantic_Error{
 					kind = .Mismatched_Types,
 					token = checked_expr_token(expr),
-					details = fmt.tprintf("Expected type %s, got %s", s.name, expr_symbol.name),
+					details = fmt.tprintf("Expected type %s, got %s", expected.name, got.name),
 				},
+				loc,
 			)
 	}
 	return
@@ -411,7 +426,7 @@ add_module_decl_symbols :: proc(c: ^Checker, module_id: int) -> (err: Error) {
 					kind = .Var_Symbol,
 					module_id = module_id,
 					scope_id = c.current.scope.id,
-					info = Var_Symbol_Info{mutable = true},
+					info = Var_Symbol_Info{mutable = true, depth = c.current.scope_depth},
 				},
 			) or_return
 		}
@@ -471,9 +486,10 @@ check_module_signatures_symbols :: proc(c: ^Checker, module_id: int) -> (err: Er
 			type_symbol := symbol_from_type_expr(c, field.type_expr) or_return
 			field_symbol, _ := get_scoped_symbol(c.current.scope, field.name)
 			field_symbol_info := Var_Symbol_Info {
-				symbol = type_symbol,
+				symbol  = type_symbol,
+				mutable = true,
+				depth   = c.current.scope_depth,
 			}
-			field_symbol_info.mutable = true
 			field_symbol.info = field_symbol_info
 			field_symbol.type_id = type_symbol.type_id
 		}
@@ -515,7 +531,11 @@ check_fn_signature_symbols :: proc(c: ^Checker, fn_decl: ^Parsed_Fn_Declaration)
 					type_id = fn_info.return_symbol.type_id,
 					module_id = c.current.id,
 					scope_id = c.current.scope.id,
-					info = Var_Symbol_Info{symbol = fn_info.return_symbol, mutable = true},
+					info = Var_Symbol_Info{
+						symbol = fn_info.return_symbol,
+						mutable = true,
+						depth = c.current.scope_depth,
+					},
 				},
 				true,
 			) or_return
@@ -531,7 +551,11 @@ check_fn_signature_symbols :: proc(c: ^Checker, fn_decl: ^Parsed_Fn_Declaration)
 					type_id = type_symbol.type_id,
 					module_id = c.current.id,
 					scope_id = c.current.scope.id,
-					info = Var_Symbol_Info{symbol = type_symbol, mutable = false},
+					info = Var_Symbol_Info{
+						symbol = type_symbol, 
+						mutable = false,
+						depth = c.current.scope_depth,
+					},
 				}, 
 				true,
 			) or_return
@@ -587,9 +611,14 @@ add_inner_symbols :: proc(c: ^Checker, node: Parsed_Node) -> (err: Error) {
 			Symbol{
 				name = n.iterator_name.text,
 				kind = .Var_Symbol,
+				type_id = NUMBER_ID,
 				module_id = c.current.id,
 				scope_id = c.current.scope.id,
-				info = Var_Symbol_Info{symbol = &c.builtin_symbols[NUMBER_SYMBOL], mutable = false},
+				info = Var_Symbol_Info{
+					symbol = &c.builtin_symbols[NUMBER_SYMBOL],
+					mutable = false,
+					depth = c.current.scope_depth,
+				},
 			},
 			true,
 		) or_return
@@ -616,7 +645,7 @@ add_inner_symbols :: proc(c: ^Checker, node: Parsed_Node) -> (err: Error) {
 				kind = .Var_Symbol,
 				module_id = c.current.id,
 				scope_id = c.current.scope.id,
-				info = Var_Symbol_Info{},
+				info = Var_Symbol_Info{mutable = true, depth = c.current.scope_depth},
 			},
 		) or_return
 
@@ -737,6 +766,8 @@ build_checked_node :: proc(c: ^Checker, node: Parsed_Node) -> (result: Checked_N
 
 	case ^Parsed_Range_Statement:
 		range_stmt := new_clone(Checked_Range_Statement{token = n.token})
+		c.allow_flow_operator = true
+		defer c.allow_flow_operator = false
 		enter_child_scope_by_name(c.current, n.token)
 		defer pop_scope(c.current)
 		range_stmt.iterator = get_scoped_symbol(c.current.scope, n.iterator_name) or_return
@@ -795,6 +826,18 @@ build_checked_node :: proc(c: ^Checker, node: Parsed_Node) -> (result: Checked_N
 		result = match_stmt
 
 	case ^Parsed_Flow_Statement:
+		if !c.allow_flow_operator {
+			err =
+				format_semantic_err(
+					Semantic_Error{
+						kind = .Invalid_Symbol,
+						token = n.token,
+						details = fmt.tprintf("%s only allowed in loops", n.token.text),
+					},
+				)
+			return
+		}
+		result = new_clone(Checked_Flow_Statement{token = n.token, kind = n.kind})
 
 	case ^Parsed_Import_Statement:
 

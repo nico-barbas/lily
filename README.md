@@ -110,9 +110,9 @@ var fooVal = Foo.Bar
 - [x] Control flow
     - [x] If statement
     - [x] For statement
-    - [ ] Match statement
-    - [ ] 'break' statement
-    - [ ] 'continue' statement
+    - [x] Match statement
+    - [x] 'break' statement
+    - [x] 'continue' statement
 - [ ] Container iterators
 - [x] Array Type
 - [x] Array builtin procedures 
@@ -126,16 +126,10 @@ var fooVal = Foo.Bar
 - [ ] Custom Enumeration types
 - [ ] Custom ADTs
 - [x] Modules
-    - [x] Parsing
-    - [x] Checking
-    - [x] Compiling
 - [x] Dot chaining
 - [x] Immutable function parameters
 - [ ] Variadic function parameters
 - [x] Foreign functions
-    - [x] Parsing
-    - [x] Checking
-    - [x] Compiling
 - [ ] Minimal standard library
 - [ ] Full test suite
     - [x] Lexer
