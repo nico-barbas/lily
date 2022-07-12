@@ -53,6 +53,7 @@ Parsed_Expression :: union {
 	^Parsed_Literal_Expression,
 	^Parsed_String_Literal_Expression,
 	^Parsed_Array_Literal_Expression,
+	// ^Parsed_Map_Literal_Expression,
 	^Parsed_Unary_Expression,
 	^Parsed_Binary_Expression,
 	^Parsed_Identifier_Expression,
@@ -62,6 +63,7 @@ Parsed_Expression :: union {
 
 	// Type Expressions
 	^Parsed_Array_Type_Expression,
+	// ^Parsed_Map_Type_Expression,
 }
 
 Parsed_Literal_Expression :: struct {
@@ -78,10 +80,19 @@ Parsed_String_Literal_Expression :: struct {
 
 Parsed_Array_Literal_Expression :: struct {
 	token:     Token, // the "array" token
-	// This is either a Identifier (for builtin types and user defined types) 
-	// or another composite type (array or map)
+	// either a Identifier (for builtin types and user defined types), or nested types
 	type_expr: Parsed_Expression,
 	values:    [dynamic]Parsed_Expression,
+}
+
+Parsed_Map_Literal_Expression :: struct {
+	token:     Token,
+	type_expr: Parsed_Expression,
+	values:    [dynamic]struct {
+		token: Token,
+		key:   Parsed_Expression,
+		value: Parsed_Expression,
+	},
 }
 
 Parsed_Unary_Expression :: struct {
@@ -127,6 +138,13 @@ Parsed_Array_Type_Expression :: struct {
 	token:     Token, // The "array" token
 	of_token:  Token, //The "of" token
 	elem_type: Parsed_Expression, // Either Identifier or another Type Parsed_Expression. Allows for multi-arrays
+}
+
+Parsed_Map_Type_Expression :: struct {
+	token:      Token,
+	of_token:   Token,
+	key_type:   Parsed_Expression,
+	value_type: Parsed_Expression,
 }
 
 token_from_parsed_expression :: proc(expr: Parsed_Expression) -> (result: Token) {

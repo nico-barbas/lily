@@ -138,7 +138,10 @@ contain_symbol :: proc(c: ^Checker, token: Token) -> bool {
 	return false
 }
 
-get_symbol :: proc(c: ^Checker, token: Token, loc := #caller_location) -> (result: ^Symbol, err: Error) {
+get_symbol :: proc(c: ^Checker, token: Token, loc := #caller_location) -> (
+	result: ^Symbol,
+	err: Error,
+) {
 	builtins: for symbol, i in c.builtin_symbols {
 		if symbol.name == token.text {
 			result = &c.builtin_symbols[i]
@@ -158,15 +161,14 @@ get_symbol :: proc(c: ^Checker, token: Token, loc := #caller_location) -> (resul
 	}
 
 	// The symbol wasn't found
-	err =
-		format_semantic_err(
-			Semantic_Error{
-				kind = .Unknown_Symbol,
-				token = token,
-				details = fmt.tprintf("Unknown symbol: %s", token.text),
-			},
-			loc,
-		)
+	err = format_semantic_err(
+		Semantic_Error{
+			kind = .Unknown_Symbol,
+			token = token,
+			details = fmt.tprintf("Unknown symbol: %s", token.text),
+		},
+		loc,
+	)
 	return
 }
 
@@ -219,15 +221,14 @@ expect_type :: proc(c: ^Checker, expr: Checked_Expression, s: ^Symbol, loc := #c
 			info := got.info.(Var_Symbol_Info)
 			got = info.symbol
 		}
-		err =
-			format_semantic_err(
-				Semantic_Error{
-					kind = .Mismatched_Types,
-					token = checked_expr_token(expr),
-					details = fmt.tprintf("Expected type %s, got %s", expected.name, got.name),
-				},
-				loc,
-			)
+		err = format_semantic_err(
+			Semantic_Error{
+				kind = .Mismatched_Types,
+				token = checked_expr_token(expr),
+				details = fmt.tprintf("Expected type %s, got %s", expected.name, got.name),
+			},
+			loc,
+		)
 	}
 	return
 }
@@ -239,14 +240,13 @@ expect_one_of_types :: proc(c: ^Checker, expr: Checked_Expression, l: []^Symbol)
 			return
 		}
 	}
-	err =
-		format_semantic_err(
-			Semantic_Error{
-				kind = .Mismatched_Types,
-				token = checked_expr_token(expr),
-				details = fmt.tprintf("%s is not of a valid type in this context", expr_symbol.name),
-			},
-		)
+	err = format_semantic_err(
+		Semantic_Error{
+			kind = .Mismatched_Types,
+			token = checked_expr_token(expr),
+			details = fmt.tprintf("%s is not of a valid type in this context", expr_symbol.name),
+		},
+	)
 	return
 }
 
@@ -708,8 +708,9 @@ build_checked_node :: proc(c: ^Checker, node: Parsed_Node) -> (result: Checked_N
 		result = expr_stmt
 
 	case ^Parsed_Block_Statement:
-		block_stmt :=
-			new_clone(Checked_Block_Statement{token = n.token, nodes = make([]Checked_Node, len(n.nodes))})
+		block_stmt := new_clone(
+			Checked_Block_Statement{token = n.token, nodes = make([]Checked_Node, len(n.nodes))},
+		)
 		for inner_node, i in n.nodes {
 			checked_node := build_checked_node(c, inner_node) or_return
 			block_stmt.nodes[i] = checked_node
@@ -717,14 +718,13 @@ build_checked_node :: proc(c: ^Checker, node: Parsed_Node) -> (result: Checked_N
 		result = block_stmt
 
 	case ^Parsed_Assignment_Statement:
-		assign_stmt :=
-			new_clone(
-				Checked_Assigment_Statement{
-					token = n.token,
-					left = build_checked_expr(c, n.left) or_return,
-					right = build_checked_expr(c, n.right) or_return,
-				},
-			)
+		assign_stmt := new_clone(
+			Checked_Assigment_Statement{
+				token = n.token,
+				left = build_checked_expr(c, n.left) or_return,
+				right = build_checked_expr(c, n.right) or_return,
+			},
+		)
 		#partial switch right in assign_stmt.right {
 		case ^Checked_Identifier_Expression:
 			expr_symbol := checked_expr_symbol(right)
@@ -780,18 +780,17 @@ build_checked_node :: proc(c: ^Checker, node: Parsed_Node) -> (result: Checked_N
 		result = range_stmt
 
 	case ^Parsed_Match_Statement:
-		match_stmt :=
-			new_clone(
-				Checked_Match_Statement{
-					token = n.token,
-					evaluation = build_checked_expr(c, n.evaluation) or_return,
-					cases = make([]struct {
-							token:     Token,
-							condition: Checked_Expression,
-							body:      Checked_Node,
-						}, len(n.cases)),
-				},
-			)
+		match_stmt := new_clone(
+			Checked_Match_Statement{
+				token = n.token,
+				evaluation = build_checked_expr(c, n.evaluation) or_return,
+				cases = make([]struct {
+						token:     Token,
+						condition: Checked_Expression,
+						body:      Checked_Node,
+					}, len(n.cases)),
+			},
+		)
 		eval_symbol := checked_expr_symbol(match_stmt.evaluation)
 		// FIXME: Allow for strings, and later on enumerations and ADTs
 		expect_one_of_types(
@@ -806,14 +805,16 @@ build_checked_node :: proc(c: ^Checker, node: Parsed_Node) -> (result: Checked_N
 		switch eval_symbol.type_id {
 		case BOOL_ID:
 			if len(n.cases) != BOOL_CASE_COUNT {
-				err =
-					format_semantic_err(
-						Semantic_Error{
-							kind = .Unhandled_Match_Cases,
-							token = n.token,
-							details = fmt.tprintf("Unhandled cases for match statement of type %s", eval_symbol.name),
-						},
-					)
+				err = format_semantic_err(
+					Semantic_Error{
+						kind = .Unhandled_Match_Cases,
+						token = n.token,
+						details = fmt.tprintf(
+							"Unhandled cases for match statement of type %s",
+							eval_symbol.name,
+						),
+					},
+				)
 				return
 			}
 		}
@@ -827,14 +828,13 @@ build_checked_node :: proc(c: ^Checker, node: Parsed_Node) -> (result: Checked_N
 
 	case ^Parsed_Flow_Statement:
 		if !c.allow_flow_operator {
-			err =
-				format_semantic_err(
-					Semantic_Error{
-						kind = .Invalid_Symbol,
-						token = n.token,
-						details = fmt.tprintf("%s only allowed in loops", n.token.text),
-					},
-				)
+			err = format_semantic_err(
+				Semantic_Error{
+					kind = .Invalid_Symbol,
+					token = n.token,
+					details = fmt.tprintf("%s only allowed in loops", n.token.text),
+				},
+			)
 			return
 		}
 		result = new_clone(Checked_Flow_Statement{token = n.token, kind = n.kind})
@@ -842,14 +842,13 @@ build_checked_node :: proc(c: ^Checker, node: Parsed_Node) -> (result: Checked_N
 	case ^Parsed_Import_Statement:
 
 	case ^Parsed_Var_Declaration:
-		var_decl :=
-			new_clone(
-				Checked_Var_Declaration{
-					token = n.token,
-					identifier = get_scoped_symbol(c.current.scope, n.identifier) or_return,
-					expr = build_checked_expr(c, n.expr) or_return,
-				},
-			)
+		var_decl := new_clone(
+			Checked_Var_Declaration{
+				token = n.token,
+				identifier = get_scoped_symbol(c.current.scope, n.identifier) or_return,
+				expr = build_checked_expr(c, n.expr) or_return,
+			},
+		)
 		expr_symbol := checked_expr_symbol(var_decl.expr)
 		#partial switch expr in var_decl.expr {
 		case ^Checked_Identifier_Expression:
@@ -873,10 +872,13 @@ build_checked_node :: proc(c: ^Checker, node: Parsed_Node) -> (result: Checked_N
 		result = var_decl
 
 	case ^Parsed_Fn_Declaration:
-		fn_decl :=
-			new_clone(
-				Checked_Fn_Declaration{token = n.token, kind = n.kind, params = make([]^Symbol, len(n.parameters))},
-			)
+		fn_decl := new_clone(
+			Checked_Fn_Declaration{
+				token = n.token,
+				kind = n.kind,
+				params = make([]^Symbol, len(n.parameters)),
+			},
+		)
 		fn_decl.identifier = get_scoped_symbol(c.current.scope, n.identifier) or_return
 		fn_info := fn_decl.identifier.info.(Fn_Symbol_Info)
 		enter_child_scope_by_id(c.current, fn_info.sub_scope_id) or_return
@@ -896,16 +898,15 @@ build_checked_node :: proc(c: ^Checker, node: Parsed_Node) -> (result: Checked_N
 		case .Alias:
 			assert(false)
 		case .Class:
-			class_decl :=
-				new_clone(
-					Checked_Class_Declaration{
-						token = n.token,
-						is_token = n.is_token,
-						fields = make([]^Symbol, len(n.fields)),
-						constructors = make([]^Checked_Fn_Declaration, len(n.constructors)),
-						methods = make([]^Checked_Fn_Declaration, len(n.methods)),
-					},
-				)
+			class_decl := new_clone(
+				Checked_Class_Declaration{
+					token = n.token,
+					is_token = n.is_token,
+					fields = make([]^Symbol, len(n.fields)),
+					constructors = make([]^Checked_Fn_Declaration, len(n.constructors)),
+					methods = make([]^Checked_Fn_Declaration, len(n.methods)),
+				},
+			)
 			class_decl.identifier, err = get_scoped_symbol(c.current.scope, n.identifier)
 			if err != nil {
 				print_semantic_scope_standalone(c, c.current.scope)
@@ -951,24 +952,22 @@ build_checked_expr :: proc(c: ^Checker, expr: Parsed_Expression) -> (
 		result = lit
 
 	case ^Parsed_String_Literal_Expression:
-		result =
-			new_clone(
-				Checked_String_Literal_Expression{
-					token = e.token,
-					symbol = &c.builtin_symbols[STRING_SYMBOL],
-					value = e.value,
-				},
-			)
+		result = new_clone(
+			Checked_String_Literal_Expression{
+				token = e.token,
+				symbol = &c.builtin_symbols[STRING_SYMBOL],
+				value = e.value,
+			},
+		)
 
 	case ^Parsed_Array_Literal_Expression:
-		array_lit :=
-			new_clone(
-				Checked_Array_Literal_Expression{
-					token = e.token,
-					symbol = symbol_from_type_expr(c, e.type_expr) or_return,
-					values = make([]Checked_Expression, len(e.values)),
-				},
-			)
+		array_lit := new_clone(
+			Checked_Array_Literal_Expression{
+				token = e.token,
+				symbol = symbol_from_type_expr(c, e.type_expr) or_return,
+				values = make([]Checked_Expression, len(e.values)),
+			},
+		)
 		inner_info := array_lit.symbol.info.(Generic_Symbol_Info)
 		for value, i in e.values {
 			array_lit.values[i] = build_checked_expr(c, value) or_return
@@ -977,10 +976,13 @@ build_checked_expr :: proc(c: ^Checker, expr: Parsed_Expression) -> (
 		result = array_lit
 
 	case ^Parsed_Unary_Expression:
-		unary_expr :=
-			new_clone(
-				Checked_Unary_Expression{token = e.token, op = e.op, expr = build_checked_expr(c, e.expr) or_return},
-			)
+		unary_expr := new_clone(
+			Checked_Unary_Expression{
+				token = e.token,
+				op = e.op,
+				expr = build_checked_expr(c, e.expr) or_return,
+			},
+		)
 		unary_expr.symbol = checked_expr_symbol(unary_expr.expr)
 		#partial switch e.op {
 		case .Minus_Op:
@@ -991,15 +993,14 @@ build_checked_expr :: proc(c: ^Checker, expr: Parsed_Expression) -> (
 		result = unary_expr
 
 	case ^Parsed_Binary_Expression:
-		binary_expr :=
-			new_clone(
-				Checked_Binary_Expression{
-					token = e.token,
-					op = e.op,
-					left = build_checked_expr(c, e.left) or_return,
-					right = build_checked_expr(c, e.right) or_return,
-				},
-			)
+		binary_expr := new_clone(
+			Checked_Binary_Expression{
+				token = e.token,
+				op = e.op,
+				left = build_checked_expr(c, e.left) or_return,
+				right = build_checked_expr(c, e.right) or_return,
+			},
+		)
 
 		#partial switch e.op {
 		case .Minus_Op, .Plus_Op, .Mult_Op, .Div_Op, .Rem_Op:
@@ -1020,19 +1021,19 @@ build_checked_expr :: proc(c: ^Checker, expr: Parsed_Expression) -> (
 		result = binary_expr
 
 	case ^Parsed_Identifier_Expression:
-		identifier_expr :=
-			new_clone(Checked_Identifier_Expression{token = e.name, symbol = get_symbol(c, e.name) or_return})
+		identifier_expr := new_clone(
+			Checked_Identifier_Expression{token = e.name, symbol = get_symbol(c, e.name) or_return},
+		)
 		result = identifier_expr
 
 	case ^Parsed_Index_Expression:
-		index_expr :=
-			new_clone(
-				Checked_Index_Expression{
-					token = e.token,
-					left = build_checked_expr(c, e.left) or_return,
-					index = build_checked_expr(c, e.index) or_return,
-				},
-			)
+		index_expr := new_clone(
+			Checked_Index_Expression{
+				token = e.token,
+				left = build_checked_expr(c, e.left) or_return,
+				index = build_checked_expr(c, e.index) or_return,
+			},
+		)
 		left_symbol := checked_expr_symbol(index_expr.left)
 		if left_symbol.kind == .Var_Symbol {
 			left_info := left_symbol.info.(Var_Symbol_Info)
@@ -1112,10 +1113,12 @@ build_checked_expr :: proc(c: ^Checker, expr: Parsed_Expression) -> (
 			dot_expr.left = l
 
 		case ^Parsed_Index_Expression:
-			index_expr :=
-				new_clone(
-					Checked_Index_Expression{token = left.token, left = build_checked_expr(c, left.left) or_return},
-				)
+			index_expr := new_clone(
+				Checked_Index_Expression{
+					token = left.token,
+					left = build_checked_expr(c, left.left) or_return,
+				},
+			)
 			left_symbol := checked_expr_symbol(index_expr.left)
 			if left_symbol.kind == .Var_Symbol {
 				left_info := left_symbol.info.(Var_Symbol_Info)
@@ -1155,10 +1158,12 @@ build_checked_expr :: proc(c: ^Checker, expr: Parsed_Expression) -> (
 			dot_expr.left = index_expr
 
 		case ^Parsed_Call_Expression:
-			call_expr :=
-				new_clone(
-					Checked_Call_Expression{token = left.token, args = make([]Checked_Expression, len(left.args))},
-				)
+			call_expr := new_clone(
+				Checked_Call_Expression{
+					token = left.token,
+					args = make([]Checked_Expression, len(left.args)),
+				},
+			)
 			call_expr.func = build_checked_expr(c, left.func) or_return
 
 			fn_symbol := checked_expr_symbol(call_expr.func)
@@ -1217,13 +1222,12 @@ build_checked_expr :: proc(c: ^Checker, expr: Parsed_Expression) -> (
 
 
 		case ^Parsed_Index_Expression:
-			index_expr :=
-				new_clone(
-					Checked_Index_Expression{
-						token = selector.token,
-						left = build_checked_expr(c, selector.left) or_return,
-					},
-				)
+			index_expr := new_clone(
+				Checked_Index_Expression{
+					token = selector.token,
+					left = build_checked_expr(c, selector.left) or_return,
+				},
+			)
 			left_symbol := checked_expr_symbol(index_expr.left)
 			if left_symbol.kind == .Var_Symbol {
 				left_info := left_symbol.info.(Var_Symbol_Info)
@@ -1256,13 +1260,12 @@ build_checked_expr :: proc(c: ^Checker, expr: Parsed_Expression) -> (
 			pop_dot_frame(c)
 
 		case ^Parsed_Call_Expression:
-			call_expr :=
-				new_clone(
-					Checked_Call_Expression{
-						token = selector.token,
-						args = make([]Checked_Expression, len(selector.args)),
-					},
-				)
+			call_expr := new_clone(
+				Checked_Call_Expression{
+					token = selector.token,
+					args = make([]Checked_Expression, len(selector.args)),
+				},
+			)
 			if c.dot.previous.kind == .Generic_Symbol {
 				if c.dot.previous.type_id == ARRAY_ID {
 					build_array_method_call(c, selector, call_expr) or_return
@@ -1302,8 +1305,9 @@ build_checked_expr :: proc(c: ^Checker, expr: Parsed_Expression) -> (
 		result = dot_expr
 
 	case ^Parsed_Call_Expression:
-		call_expr :=
-			new_clone(Checked_Call_Expression{token = e.token, args = make([]Checked_Expression, len(e.args))})
+		call_expr := new_clone(
+			Checked_Call_Expression{token = e.token, args = make([]Checked_Expression, len(e.args))},
+		)
 		call_expr.func = build_checked_expr(c, e.func) or_return
 
 		fn_symbol := checked_expr_symbol(call_expr.func)
@@ -1386,14 +1390,13 @@ symbol_from_type_expr :: proc(c: ^Checker, expr: Parsed_Expression, loc := #call
 	case ^Parsed_Dot_Expression:
 		left_symbol := symbol_from_type_expr(c, e.left) or_return
 		if left_symbol.kind != .Module_Symbol {
-			err =
-				format_semantic_err(
-					Semantic_Error{
-						kind = .Invalid_Symbol,
-						token = e.token,
-						details = fmt.tprintf("Invalid Dot type expression: %s", left_symbol.name),
-					},
-				)
+			err = format_semantic_err(
+				Semantic_Error{
+					kind = .Invalid_Symbol,
+					token = e.token,
+					details = fmt.tprintf("Invalid Dot type expression: %s", left_symbol.name),
+				},
+			)
 			return
 		}
 		module_info := left_symbol.info.(Module_Symbol_Info)
@@ -1401,51 +1404,50 @@ symbol_from_type_expr :: proc(c: ^Checker, expr: Parsed_Expression, loc := #call
 		if selector, ok := e.selector.(^Parsed_Identifier_Expression); ok {
 			inner_symbol, inner_err := get_scoped_symbol(module_root, selector.name)
 			if inner_err != nil {
-				err =
-					format_semantic_err(
-						Semantic_Error{
-							kind = .Unknown_Symbol,
-							token = selector.name,
-							details = fmt.tprintf("Unknown selector symbol: %s", selector.name.text),
-						},
-					)
+				err = format_semantic_err(
+					Semantic_Error{
+						kind = .Unknown_Symbol,
+						token = selector.name,
+						details = fmt.tprintf("Unknown selector symbol: %s", selector.name.text),
+					},
+				)
 				return
 			}
 			if !is_type_symbol(inner_symbol) {
-				err =
-					format_semantic_err(
-						Semantic_Error{
-							kind = .Invalid_Symbol,
-							token = selector.name,
-							details = fmt.tprintf("Invalid Dot type expression: %s is not a Type", selector.name.text),
-						},
-					)
+				err = format_semantic_err(
+					Semantic_Error{
+						kind = .Invalid_Symbol,
+						token = selector.name,
+						details = fmt.tprintf(
+							"Invalid Dot type expression: %s is not a Type",
+							selector.name.text,
+						),
+					},
+				)
 			}
 			result = inner_symbol
 
 		} else {
-			err =
-				format_semantic_err(
-					Semantic_Error{
-						kind = .Invalid_Symbol,
-						token = e.token,
-						details = fmt.tprintf("Invalid Dot type expression: %s", left_symbol.name),
-					},
-				)
+			err = format_semantic_err(
+				Semantic_Error{
+					kind = .Invalid_Symbol,
+					token = e.token,
+					details = fmt.tprintf("Invalid Dot type expression: %s", left_symbol.name),
+				},
+			)
 			return
 		}
 
 	case:
 		expr_token := token_from_parsed_expression(e)
-		err =
-			format_semantic_err(
-				Semantic_Error{
-					kind = .Invalid_Symbol,
-					token = expr_token,
-					details = fmt.tprintf("%s is not a valid type expression", expr_token.text),
-				},
-				loc,
-			)
+		err = format_semantic_err(
+			Semantic_Error{
+				kind = .Invalid_Symbol,
+				token = expr_token,
+				details = fmt.tprintf("%s is not a valid type expression", expr_token.text),
+			},
+			loc,
+		)
 	}
 	return
 }

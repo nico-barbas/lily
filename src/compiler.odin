@@ -49,23 +49,22 @@ make_compiled_program :: proc(state: ^State) -> []^Compiled_Module {
 	output := make([]^Compiled_Module, len(state.checked_modules))
 	for module, i in state.checked_modules {
 		current := output[i]
-		current =
-			new_clone(
-				Compiled_Module{
-					id = i,
-					class_addr = make(map[string]i16),
-					class_consts = make([]Const_Pool, len(module.classes)),
-					class_fields = make([]map[string]i16, len(module.classes)),
-					class_constructors = make([]map[string]i16, len(module.classes)),
-					class_methods = make([]map[string]i16, len(module.classes)),
-					protypes = make([]Class_Object, len(module.classes)),
-					vtables = make([]Class_Vtable, len(module.classes)),
-					fn_addr = make(map[string]i16),
-					functions = make([]Fn_Object, len(module.functions)),
-					var_addr = make(map[string]i16),
-					variables = make([]Value, len(module.variables)),
-				},
-			)
+		current = new_clone(
+			Compiled_Module{
+				id = i,
+				class_addr = make(map[string]i16),
+				class_consts = make([]Const_Pool, len(module.classes)),
+				class_fields = make([]map[string]i16, len(module.classes)),
+				class_constructors = make([]map[string]i16, len(module.classes)),
+				class_methods = make([]map[string]i16, len(module.classes)),
+				protypes = make([]Class_Object, len(module.classes)),
+				vtables = make([]Class_Vtable, len(module.classes)),
+				fn_addr = make(map[string]i16),
+				functions = make([]Fn_Object, len(module.functions)),
+				var_addr = make(map[string]i16),
+				variables = make([]Value, len(module.variables)),
+			},
+		)
 
 		for node, j in module.classes {
 			n := node.(^Checked_Class_Declaration)
@@ -292,8 +291,11 @@ compile_module :: proc(state: ^State, index: int) {
 
 	c.chunk = make_chunk(true)
 	c.constants = &c.chunk.constants
-	module_body :=
-		make([]Checked_Node, len(c.current_read.variables) + len(c.current_read.nodes), context.temp_allocator)
+	module_body := make(
+		[]Checked_Node,
+		len(c.current_read.variables) + len(c.current_read.nodes),
+		context.temp_allocator,
+	)
 	copy(module_body[:len(c.current_read.variables)], c.current_read.variables[:])
 	copy(module_body[len(c.current_read.variables):], c.current_read.nodes[:])
 
@@ -581,13 +583,6 @@ compile_expr :: proc(c: ^Compiler, expr: Checked_Expression) {
 }
 
 compile_dot_expr :: proc(c: ^Compiler, expr: ^Checked_Dot_Expression, lhs: bool, f: Compiler_Frame) {
-	// exit_compiler_frame :: proc(c: ^Compiler, frame: Compiler_Frame) {
-	// 	if frame.current_id != c.current_write.id {
-
-	// 	}
-	// 	c.current_write = c.state.compiled_modules[frame.start_id]
-	// 	push_simple_instruction(&c.chunk, .Op_Module, i16(current_id))
-	// }
 	get_global_addr_from_frame :: proc(c: ^Compiler, frame: Compiler_Frame, s: ^Symbol) -> i16 {
 		return c.state.compiled_modules[frame.current_id].var_addr[s.name]
 	}
@@ -617,8 +612,6 @@ compile_dot_expr :: proc(c: ^Compiler, expr: ^Checked_Dot_Expression, lhs: bool,
 			frame.class = left.symbol
 
 		case .Module_Symbol:
-			// module_info := left.symbol.info.(Module_Symbol_Info)
-			// frame.current_id = module_info.ref_mod_id
 			frame.access = .Module_Access
 		}
 

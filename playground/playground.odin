@@ -56,6 +56,7 @@ playground :: proc() {using lily
 	input := `
 		import std
         
+		var b = array of number[1, 2, 3]
 		var a = false
 		var res = 11
 		for i in 0..10:
