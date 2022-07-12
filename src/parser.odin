@@ -853,6 +853,22 @@ parse_array :: proc(p: ^Parser, left: Parsed_Expression) -> (result: Parsed_Expr
 	return
 }
 
+parse_map :: proc(p: ^Parser, left: Parsed_Expression) -> (result: Parsed_Expression, err: Error) {
+    m := new_clone(Parsed_Map_Literal_Expression{
+        token = p.previous,
+        type_expr = left,
+        values = make([dynamic]struct {
+            token: Token,
+            key:   Parsed_Expression,
+            value: Parsed_Expression,
+        }),
+    })
+    map_elements: for {
+        
+    }
+    return
+}
+
 parse_array_type :: proc(p: ^Parser) -> (result: Parsed_Expression, err: Error) {
 	array_type := new(Parsed_Array_Type_Expression)
 	array_type.token = p.previous
@@ -868,8 +884,11 @@ parse_map_type :: proc(p: ^Parser) -> (result: Parsed_Expression, err: Error) {
 	map_type := new_clone(Parsed_Map_Type_Expression{token = p.previous})
 	match_token_kind(p, .Of) or_return
 	map_type.of_token = p.current
-	consume_token(p)
-	// map_type.ke
+	match_token_kind_next(p, .Open_Paren) or_return
+    map_type.key_type = parse_expr(p, .Lowest) or_return
+	match_token_kind(p, .Comma) or_return
+    map_type.value_type = parse_expr(p, .Lowest) or_return
+	match_token_kind(p, .Close_Paren) or_return
 	return
 }
 

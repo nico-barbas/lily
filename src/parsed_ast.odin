@@ -53,7 +53,7 @@ Parsed_Expression :: union {
 	^Parsed_Literal_Expression,
 	^Parsed_String_Literal_Expression,
 	^Parsed_Array_Literal_Expression,
-	// ^Parsed_Map_Literal_Expression,
+	^Parsed_Map_Literal_Expression,
 	^Parsed_Unary_Expression,
 	^Parsed_Binary_Expression,
 	^Parsed_Identifier_Expression,
@@ -63,7 +63,7 @@ Parsed_Expression :: union {
 
 	// Type Expressions
 	^Parsed_Array_Type_Expression,
-	// ^Parsed_Map_Type_Expression,
+	^Parsed_Map_Type_Expression,
 }
 
 Parsed_Literal_Expression :: struct {
