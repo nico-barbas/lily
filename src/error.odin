@@ -9,14 +9,39 @@ Error :: union {
 	Internal_Error,
 }
 
+format_error :: proc(err: Error, loc := #caller_location) -> Error {
+	return set_error_location(err, loc)
+}
+
+set_error_location :: proc(err: Error, loc := #caller_location) -> (result: Error) {
+	switch e in err {
+	case Parsing_Error:
+		r := e
+		r.compiler_loc = loc
+		result = r
+	case Semantic_Error:
+		r := e
+		r.compiler_loc = loc
+		result = r
+	case Internal_Error:
+		r := e
+		r.compiler_loc = loc
+		result = r
+	}
+	return
+}
+
 Parsing_Error :: struct {
-	kind:    enum {
+	kind:         enum {
 		Invalid_Syntax,
 		Malformed_Number,
 	},
-	token:   Token,
-	details: string,
+	compiler_loc: runtime.Source_Code_Location,
+	token:        Token,
+	details:      string,
 }
+
+// format_parsing_err :: proc(err: Parsing_Error)
 
 Semantic_Error :: struct {
 	kind:         enum {
@@ -33,15 +58,19 @@ Semantic_Error :: struct {
 	details:      string,
 }
 
-rhs_assign_semantic_err :: proc(s: ^Symbol, t: Token, loc := #caller_location) -> Semantic_Error {
-	return format_semantic_err(
-		Semantic_Error{kind = .Invalid_Symbol, token = t, details = fmt.tprintf("Cannot assign %s", s.name)},
+rhs_assign_semantic_err :: proc(s: ^Symbol, t: Token, loc := #caller_location) -> Error {
+	return format_error(
+		Semantic_Error{
+			kind = .Invalid_Symbol,
+			token = t,
+			details = fmt.tprintf("Cannot assign %s", s.name),
+		},
 		loc,
 	)
 }
 
-lhs_assign_semantic_err :: proc(s: ^Symbol, t: Token, loc := #caller_location) -> Semantic_Error {
-	return format_semantic_err(
+lhs_assign_semantic_err :: proc(s: ^Symbol, t: Token, loc := #caller_location) -> Error {
+	return format_error(
 		Semantic_Error{
 			kind = .Invalid_Symbol,
 			token = t,
@@ -51,8 +80,8 @@ lhs_assign_semantic_err :: proc(s: ^Symbol, t: Token, loc := #caller_location) -
 	)
 }
 
-mutable_semantic_err :: proc(s: ^Symbol, t: Token, loc := #caller_location) -> Semantic_Error {
-	return format_semantic_err(
+mutable_semantic_err :: proc(s: ^Symbol, t: Token, loc := #caller_location) -> Error {
+	return format_error(
 		Semantic_Error{
 			kind = .Invalid_Mutability,
 			token = t,
@@ -62,8 +91,8 @@ mutable_semantic_err :: proc(s: ^Symbol, t: Token, loc := #caller_location) -> S
 	)
 }
 
-index_semantic_err :: proc(s: ^Symbol, t: Token, loc := #caller_location) -> Semantic_Error {
-	return format_semantic_err(
+index_semantic_err :: proc(s: ^Symbol, t: Token, loc := #caller_location) -> Error {
+	return format_error(
 		Semantic_Error{
 			kind = .Invalid_Symbol,
 			token = t,
@@ -73,9 +102,9 @@ index_semantic_err :: proc(s: ^Symbol, t: Token, loc := #caller_location) -> Sem
 	)
 }
 
-arity_semantic_err :: proc(s: ^Symbol, t: Token, count: int, loc := #caller_location) -> Semantic_Error {
+arity_semantic_err :: proc(s: ^Symbol, t: Token, count: int, loc := #caller_location) -> Error {
 	fn_info := s.info.(Fn_Symbol_Info)
-	return format_semantic_err(
+	return format_error(
 		Semantic_Error{
 			kind = .Invalid_Arity,
 			token = t,
@@ -85,8 +114,8 @@ arity_semantic_err :: proc(s: ^Symbol, t: Token, count: int, loc := #caller_loca
 	)
 }
 
-call_semantic_err :: proc(s: ^Symbol, t: Token, loc := #caller_location) -> Semantic_Error {
-	return format_semantic_err(
+call_semantic_err :: proc(s: ^Symbol, t: Token, loc := #caller_location) -> Error {
+	return format_error(
 		Semantic_Error{
 			kind = .Invalid_Symbol,
 			token = t,
@@ -96,8 +125,8 @@ call_semantic_err :: proc(s: ^Symbol, t: Token, loc := #caller_location) -> Sema
 	)
 }
 
-dot_operand_semantic_err :: proc(s: ^Symbol, t: Token, loc := #caller_location) -> Semantic_Error {
-	return format_semantic_err(
+dot_operand_semantic_err :: proc(s: ^Symbol, t: Token, loc := #caller_location) -> Error {
+	return format_error(
 		Semantic_Error{
 			kind = .Invalid_Symbol,
 			token = t,
@@ -105,12 +134,6 @@ dot_operand_semantic_err :: proc(s: ^Symbol, t: Token, loc := #caller_location) 
 		},
 		loc,
 	)
-}
-
-format_semantic_err :: proc(err: Semantic_Error, loc := #caller_location) -> Semantic_Error {
-	result := err
-	result.compiler_loc = loc
-	return result
 }
 
 Internal_Error :: struct {

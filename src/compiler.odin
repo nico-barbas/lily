@@ -489,6 +489,9 @@ compile_expr :: proc(c: ^Compiler, expr: Checked_Expression) {
 			push_op_code(&c.chunk, .Op_Append_Array)
 		}
 
+	case ^Checked_Map_Literal_Expression:
+
+
 	case ^Checked_Unary_Expression:
 		compile_expr(c, e.expr)
 		#partial switch e.op {

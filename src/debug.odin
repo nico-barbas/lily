@@ -57,8 +57,9 @@ print_parsed_expr :: proc(p: ^Debug_Printer, expr: Parsed_Expression) {
 		fmt.sbprint(&p.builder, e.value)
 
 	case ^Parsed_String_Literal_Expression:
-		write(p, "String Literal Expression: ")
+		write(p, `String Literal Expression: "`)
 		fmt.sbprint(&p.builder, e.value)
+		write(p, `"`)
 
 	case ^Parsed_Array_Literal_Expression:
 		write(p, "Array Expression: ")
@@ -71,6 +72,24 @@ print_parsed_expr :: proc(p: ^Debug_Printer, expr: Parsed_Expression) {
 				print_parsed_expr(p, element)
 			}
 
+		}
+		decrement(p)
+
+	case ^Parsed_Map_Literal_Expression:
+		write(p, "Map Expression: ")
+		increment(p)
+		{
+			write_line(p, "Type: ")
+			print_parsed_expr(p, e.type_expr)
+			write_line(p, "Elements: ")
+			increment(p)
+			for element in e.elements {
+				write_line(p, "Key: ")
+				print_parsed_expr(p, element.key)
+				write_line(p, "Value: ")
+				print_parsed_expr(p, element.value)
+			}
+			decrement(p)
 		}
 		decrement(p)
 
@@ -145,8 +164,14 @@ print_parsed_expr :: proc(p: ^Debug_Printer, expr: Parsed_Expression) {
 	case ^Parsed_Array_Type_Expression:
 		write(p, "Array of ")
 		print_parsed_expr(p, e.elem_type)
-	}
 
+	case ^Parsed_Map_Type_Expression:
+		write(p, "Map of (")
+		print_parsed_expr(p, e.key_type)
+		write(p, ", ")
+		print_parsed_expr(p, e.value_type)
+		write(p, ")")
+	}
 }
 
 print_parsed_node :: proc(p: ^Debug_Printer, node: Parsed_Node) {
@@ -367,6 +392,7 @@ print_checked_expr :: proc(p: ^Debug_Printer, c: ^Checker, checked_expr: Checked
 		increment(p)
 		{
 			write_line(p, "Type: ")
+			print_symbol(p, e.symbol)
 			write_line(p, "Elements: ")
 			for element in e.values {
 				print_checked_expr(p, c, element)
@@ -375,6 +401,24 @@ print_checked_expr :: proc(p: ^Debug_Printer, c: ^Checker, checked_expr: Checked
 		}
 		decrement(p)
 
+	case ^Checked_Map_Literal_Expression:
+		write(p, "Map Expression: ")
+		increment(p)
+		{
+			write_line(p, "Type: ")
+			print_symbol(p, e.symbol)
+			write_line(p, "Elements: ")
+			increment(p)
+			for element in e.elements {
+				write_line(p, "Key: ")
+				print_checked_expr(p, c, element.key)
+				write_line(p, "Value: ")
+				print_checked_expr(p, c, element.value)
+			}
+			decrement(p)
+
+		}
+		decrement(p)
 
 	case ^Checked_Unary_Expression:
 		write(p, "Unary Expression: ")
@@ -668,7 +712,9 @@ print_symbol :: proc(p: ^Debug_Printer, symbol: ^Symbol, leading_char := "-") {
 	case .Generic_Symbol:
 		increment(p)
 		generic_info := symbol.info.(Generic_Symbol_Info)
-		print_symbol(p, generic_info.symbol, "=>")
+		for inner_symbol in generic_info.symbols {
+			print_symbol(p, inner_symbol, "=>")
+		}
 		decrement(p)
 
 	case .Class_Symbol:

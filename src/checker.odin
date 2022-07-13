@@ -11,8 +11,10 @@ Checker :: struct {
 	parsed_results:      [dynamic]^Parsed_Module,
 	current_parsed:      ^Parsed_Module,
 	// Builtin types and internal states
-	builtin_symbols:     [6]Symbol,
-	builtin_fn:          [6]^Semantic_Scope,
+	builtin_symbols:     [MAP_SYMBOL + 1]Symbol,
+	builtin_fn:          [MAP_SYMBOL + 1]^Semantic_Scope,
+	array_symbols:       [dynamic]Symbol,
+	map_symbols:         [dynamic]Symbol,
 	types:               [dynamic]Type_ID,
 	type_id_ptr:         Type_ID,
 
@@ -40,10 +42,11 @@ NUMBER_SYMBOL :: 2
 BOOL_SYMBOL :: 3
 STRING_SYMBOL :: 4
 ARRAY_SYMBOL :: 5
+MAP_SYMBOL :: 6
 
 Type_ID :: distinct int
 
-BUILT_IN_ID_COUNT :: ARRAY_ID + 1
+BUILT_IN_ID_COUNT :: MAP_ID + 1
 
 UNTYPED_ID :: 0
 ANY_ID :: 1
@@ -51,6 +54,7 @@ NUMBER_ID :: 2
 BOOL_ID :: 3
 STRING_ID :: 4
 ARRAY_ID :: 5
+MAP_ID :: 6
 
 BUILTIN_MODULE_ID :: -1
 
@@ -63,6 +67,7 @@ init_checker :: proc(c: ^Checker) {
 		Symbol{name = "bool", kind = .Name, type_id = BOOL_ID, module_id = BUILTIN_MODULE_ID},
 		Symbol{name = "string", kind = .Name, type_id = STRING_ID, module_id = BUILTIN_MODULE_ID},
 		Symbol{name = "array", kind = .Generic_Symbol, type_id = ARRAY_ID, module_id = BUILTIN_MODULE_ID},
+		Symbol{name = "map", kind = .Generic_Symbol, type_id = MAP_ID, module_id = BUILTIN_MODULE_ID},
 	}
     //odinfmt: enable
 	c.builtin_fn[ARRAY_SYMBOL] = new_scope()
@@ -161,7 +166,7 @@ get_symbol :: proc(c: ^Checker, token: Token, loc := #caller_location) -> (
 	}
 
 	// The symbol wasn't found
-	err = format_semantic_err(
+	err = format_error(
 		Semantic_Error{
 			kind = .Unknown_Symbol,
 			token = token,
@@ -221,7 +226,7 @@ expect_type :: proc(c: ^Checker, expr: Checked_Expression, s: ^Symbol, loc := #c
 			info := got.info.(Var_Symbol_Info)
 			got = info.symbol
 		}
-		err = format_semantic_err(
+		err = format_error(
 			Semantic_Error{
 				kind = .Mismatched_Types,
 				token = checked_expr_token(expr),
@@ -240,7 +245,7 @@ expect_one_of_types :: proc(c: ^Checker, expr: Checked_Expression, l: []^Symbol)
 			return
 		}
 	}
-	err = format_semantic_err(
+	err = format_error(
 		Semantic_Error{
 			kind = .Mismatched_Types,
 			token = checked_expr_token(expr),
@@ -293,7 +298,7 @@ build_checked_program :: proc(c: ^Checker, module_name: string, entry_point: str
 	}
 
 	for module in c.parsed_results {
-		// print_parsed_ast(module)
+		print_parsed_ast(module)
 		delete_parsed_module(module)
 	}
 	delete(c.parsed_results)
@@ -805,7 +810,7 @@ build_checked_node :: proc(c: ^Checker, node: Parsed_Node) -> (result: Checked_N
 		switch eval_symbol.type_id {
 		case BOOL_ID:
 			if len(n.cases) != BOOL_CASE_COUNT {
-				err = format_semantic_err(
+				err = format_error(
 					Semantic_Error{
 						kind = .Unhandled_Match_Cases,
 						token = n.token,
@@ -828,7 +833,7 @@ build_checked_node :: proc(c: ^Checker, node: Parsed_Node) -> (result: Checked_N
 
 	case ^Parsed_Flow_Statement:
 		if !c.allow_flow_operator {
-			err = format_semantic_err(
+			err = format_error(
 				Semantic_Error{
 					kind = .Invalid_Symbol,
 					token = n.token,
@@ -971,9 +976,28 @@ build_checked_expr :: proc(c: ^Checker, expr: Parsed_Expression) -> (
 		inner_info := array_lit.symbol.info.(Generic_Symbol_Info)
 		for value, i in e.values {
 			array_lit.values[i] = build_checked_expr(c, value) or_return
-			expect_type(c, array_lit.values[i], inner_info.symbol) or_return
+			expect_type(c, array_lit.values[i], inner_info.symbols[0]) or_return
 		}
 		result = array_lit
+
+	case ^Parsed_Map_Literal_Expression:
+		map_lit := new_clone(
+			Checked_Map_Literal_Expression{
+				token = e.token,
+				symbol = symbol_from_type_expr(c, e.type_expr) or_return,
+				elements = make([]Checked_Map_Element, len(e.elements)),
+			},
+		)
+		inner_info := map_lit.symbol.info.(Generic_Symbol_Info)
+		for element, i in e.elements {
+			elem := Checked_Map_Element{}
+			elem.key = build_checked_expr(c, element.key) or_return
+			expect_type(c, elem.key, inner_info.symbols[0]) or_return
+			elem.value = build_checked_expr(c, element.value) or_return
+			expect_type(c, elem.value, inner_info.symbols[1]) or_return
+			map_lit.elements[i] = elem
+		}
+		result = map_lit
 
 	case ^Parsed_Unary_Expression:
 		unary_expr := new_clone(
@@ -1035,14 +1059,14 @@ build_checked_expr :: proc(c: ^Checker, expr: Parsed_Expression) -> (
 			},
 		)
 		left_symbol := checked_expr_symbol(index_expr.left)
+		left_info: Generic_Symbol_Info
 		if left_symbol.kind == .Var_Symbol {
-			left_info := left_symbol.info.(Var_Symbol_Info)
-			if left_info.symbol.kind != .Generic_Symbol {
+			info := left_symbol.info.(Var_Symbol_Info)
+			if !is_indexable_symbol(info.symbol) {
 				err = index_semantic_err(left_symbol, e.token)
 				return
 			}
-			left_inner_info := left_info.symbol.info.(Generic_Symbol_Info)
-			index_expr.symbol = left_inner_info.symbol
+			left_info = info.symbol.info.(Generic_Symbol_Info)
 		} else {
 			err = index_semantic_err(left_symbol, e.token)
 			return
@@ -1052,7 +1076,11 @@ build_checked_expr :: proc(c: ^Checker, expr: Parsed_Expression) -> (
 		case ARRAY_ID:
 			index_expr.kind = .Array
 			expect_type(c, index_expr.index, &c.builtin_symbols[NUMBER_SYMBOL]) or_return
-		// case MAP_ID:
+			index_expr.symbol = left_info.symbols[0]
+		case MAP_ID:
+			index_expr.kind = .Map
+			expect_type(c, index_expr.index, left_info.symbols[0]) or_return
+			index_expr.symbol = left_info.symbols[1]
 		}
 		result = index_expr
 
@@ -1083,7 +1111,7 @@ build_checked_expr :: proc(c: ^Checker, expr: Parsed_Expression) -> (
 					c.current = c.modules[var_info.symbol.module_id]
 					enter_class_scope(c.current, Token{text = var_info.symbol.name}) or_return
 				case .Generic_Symbol:
-					if var_info.symbol.type_id == ARRAY_ID {
+					if var_info.symbol.type_id == ARRAY_ID || var_info.symbol.type_id == MAP_ID {
 						c.dot.symbol = var_info.symbol
 					} else {
 						err = dot_operand_semantic_err(c.dot.symbol, e.token)
@@ -1122,14 +1150,13 @@ build_checked_expr :: proc(c: ^Checker, expr: Parsed_Expression) -> (
 			left_symbol := checked_expr_symbol(index_expr.left)
 			if left_symbol.kind == .Var_Symbol {
 				left_info := left_symbol.info.(Var_Symbol_Info)
-				if left_info.symbol.kind != .Generic_Symbol {
-					err = index_semantic_err(left_symbol, left.token)
+				if !is_indexable_symbol(left_info.symbol) {
+					err = index_semantic_err(left_symbol, e.token)
 					return
 				}
-				left_inner_info := left_info.symbol.info.(Generic_Symbol_Info)
-				index_expr.symbol = left_inner_info.symbol
+				index_expr.symbol = left_info.symbol.info.(Generic_Symbol_Info).symbols[0]
 			} else {
-				err = index_semantic_err(left_symbol, left.token)
+				err = index_semantic_err(left_symbol, e.token)
 				return
 			}
 
@@ -1145,7 +1172,7 @@ build_checked_expr :: proc(c: ^Checker, expr: Parsed_Expression) -> (
 				}
 				if c.dot_frame_count == f_count do pop_dot_frame(c)
 			}
-			if !is_valis_accessor(index_expr.symbol) {
+			if !is_valid_accessor(index_expr.symbol) {
 				err = dot_operand_semantic_err(index_expr.symbol, left.token)
 				return
 			}
@@ -1186,7 +1213,7 @@ build_checked_expr :: proc(c: ^Checker, expr: Parsed_Expression) -> (
 				expect_type(c, call_expr.args[i], fn_info.param_symbols[i]) or_return
 				if c.dot_frame_count == f_count do pop_dot_frame(c)
 			}
-			if !is_valis_accessor(call_expr.symbol) {
+			if !is_valid_accessor(call_expr.symbol) {
 				err = dot_operand_semantic_err(call_expr.symbol, left.token)
 				return
 			}
@@ -1235,8 +1262,7 @@ build_checked_expr :: proc(c: ^Checker, expr: Parsed_Expression) -> (
 					err = index_semantic_err(left_symbol, selector.token)
 					return
 				}
-				left_inner_info := left_info.symbol.info.(Generic_Symbol_Info)
-				index_expr.symbol = left_inner_info.symbol
+				index_expr.symbol = left_info.symbol.info.(Generic_Symbol_Info).symbols[0]
 			} else {
 				err = index_semantic_err(left_symbol, selector.token)
 				return
@@ -1324,7 +1350,7 @@ build_checked_expr :: proc(c: ^Checker, expr: Parsed_Expression) -> (
 		}
 		result = call_expr
 
-	case ^Parsed_Array_Type_Expression:
+	case ^Parsed_Array_Type_Expression, ^Parsed_Map_Type_Expression:
 		assert(false)
 	}
 	return
@@ -1349,10 +1375,10 @@ build_array_method_call :: proc(
 		}
 
 		restore_dot_frame_start(c)
-		elem_info := c.dot.previous.info.(Generic_Symbol_Info)
+		elem_symbol := c.dot.previous.info.(Generic_Symbol_Info).symbols[0]
 		for arg, i in from.args {
 			expr.args[i] = build_checked_expr(c, arg) or_return
-			expect_type(c, expr.args[i], elem_info.symbol) or_return
+			expect_type(c, expr.args[i], elem_symbol) or_return
 		}
 		restore_dot_frame_current(c)
 		c.dot.symbol = nil
@@ -1372,25 +1398,47 @@ symbol_from_type_expr :: proc(c: ^Checker, expr: Parsed_Expression, loc := #call
 
 	case ^Parsed_Array_Type_Expression:
 		inner_symbol := symbol_from_type_expr(c, e.elem_type) or_return
-		for symbol, i in c.current.scope.symbols {
-			if symbol.name == "array" {
-				generic_info := symbol.info.(Generic_Symbol_Info)
-				if generic_info.symbol.name == inner_symbol.name {
-					result = &c.current.scope.symbols[i]
-					return
-				}
+		for symbol, i in c.array_symbols {
+			elem_symbol := symbol.info.(Generic_Symbol_Info).symbols[0]
+			if elem_symbol.name == inner_symbol.name {
+				result = &c.array_symbols[i]
+				return
 			}
 		}
 		array_symbol := c.builtin_symbols[ARRAY_SYMBOL]
-		array_symbol.info = Generic_Symbol_Info {
-			symbol = inner_symbol,
+		array_info := Generic_Symbol_Info {
+			symbols = make([]^Symbol, 1),
 		}
-		result, err = add_symbol_to_scope(c.current.scope, array_symbol)
+		array_info.symbols[0] = inner_symbol
+		array_symbol.info = array_info
+		append(&c.array_symbols, array_symbol)
+		result = &c.array_symbols[len(c.array_symbols) - 1]
+
+	case ^Parsed_Map_Type_Expression:
+		key_symbol := symbol_from_type_expr(c, e.key_type) or_return
+		value_symbol := symbol_from_type_expr(c, e.value_type) or_return
+		for symbol, i in c.map_symbols {
+			ks := symbol.info.(Generic_Symbol_Info).symbols[0]
+			vs := symbol.info.(Generic_Symbol_Info).symbols[1]
+			if key_symbol.name == ks.name && value_symbol.name == vs.name {
+				result = &c.map_symbols[i]
+				return
+			}
+		}
+		map_symbol := c.builtin_symbols[MAP_SYMBOL]
+		map_info := Generic_Symbol_Info {
+			symbols = make([]^Symbol, 2),
+		}
+		map_info.symbols[0] = key_symbol
+		map_info.symbols[1] = value_symbol
+		map_symbol.info = map_info
+		append(&c.map_symbols, map_symbol)
+		result = &c.map_symbols[len(c.map_symbols) - 1]
 
 	case ^Parsed_Dot_Expression:
 		left_symbol := symbol_from_type_expr(c, e.left) or_return
 		if left_symbol.kind != .Module_Symbol {
-			err = format_semantic_err(
+			err = format_error(
 				Semantic_Error{
 					kind = .Invalid_Symbol,
 					token = e.token,
@@ -1404,7 +1452,7 @@ symbol_from_type_expr :: proc(c: ^Checker, expr: Parsed_Expression, loc := #call
 		if selector, ok := e.selector.(^Parsed_Identifier_Expression); ok {
 			inner_symbol, inner_err := get_scoped_symbol(module_root, selector.name)
 			if inner_err != nil {
-				err = format_semantic_err(
+				err = format_error(
 					Semantic_Error{
 						kind = .Unknown_Symbol,
 						token = selector.name,
@@ -1414,7 +1462,7 @@ symbol_from_type_expr :: proc(c: ^Checker, expr: Parsed_Expression, loc := #call
 				return
 			}
 			if !is_type_symbol(inner_symbol) {
-				err = format_semantic_err(
+				err = format_error(
 					Semantic_Error{
 						kind = .Invalid_Symbol,
 						token = selector.name,
@@ -1428,7 +1476,7 @@ symbol_from_type_expr :: proc(c: ^Checker, expr: Parsed_Expression, loc := #call
 			result = inner_symbol
 
 		} else {
-			err = format_semantic_err(
+			err = format_error(
 				Semantic_Error{
 					kind = .Invalid_Symbol,
 					token = e.token,
@@ -1440,7 +1488,7 @@ symbol_from_type_expr :: proc(c: ^Checker, expr: Parsed_Expression, loc := #call
 
 	case:
 		expr_token := token_from_parsed_expression(e)
-		err = format_semantic_err(
+		err = format_error(
 			Semantic_Error{
 				kind = .Invalid_Symbol,
 				token = expr_token,

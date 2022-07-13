@@ -29,17 +29,16 @@ Checked_Module :: struct {
 }
 
 make_checked_module :: proc(name: string, id: int) -> ^Checked_Module {
-	m :=
-		new_clone(
-			Checked_Module{
-				name = name,
-				id = id,
-				nodes = make([dynamic]Checked_Node),
-				variables = make([dynamic]Checked_Node),
-				functions = make([dynamic]Checked_Node),
-				classes = make([dynamic]Checked_Node),
-			},
-		)
+	m := new_clone(
+		Checked_Module{
+			name = name,
+			id = id,
+			nodes = make([dynamic]Checked_Node),
+			variables = make([dynamic]Checked_Node),
+			functions = make([dynamic]Checked_Node),
+			classes = make([dynamic]Checked_Node),
+		},
+	)
 	m.scope = new_scope()
 	m.root = m.scope
 	m.scope_depth = 0
@@ -47,8 +46,10 @@ make_checked_module :: proc(name: string, id: int) -> ^Checked_Module {
 }
 
 format_scope_name :: proc(c: ^Checked_Module, name: Token) -> (result: string) {
-	result =
-		strings.concatenate({c.name, name.text, fmt.tprint(name.line, name.start)}, context.temp_allocator)
+	result = strings.concatenate(
+		{c.name, name.text, fmt.tprint(name.line, name.start)},
+		context.temp_allocator,
+	)
 	return
 }
 
@@ -169,6 +170,7 @@ Checked_Expression :: union {
 	^Checked_Literal_Expression,
 	^Checked_String_Literal_Expression,
 	^Checked_Array_Literal_Expression,
+	^Checked_Map_Literal_Expression,
 	^Checked_Unary_Expression,
 	^Checked_Binary_Expression,
 	^Checked_Identifier_Expression,
@@ -193,6 +195,17 @@ Checked_Array_Literal_Expression :: struct {
 	token:  Token,
 	symbol: ^Symbol,
 	values: []Checked_Expression,
+}
+
+Checked_Map_Literal_Expression :: struct {
+	token:    Token,
+	symbol:   ^Symbol,
+	elements: []Checked_Map_Element,
+}
+
+Checked_Map_Element :: struct {
+	key:   Checked_Expression,
+	value: Checked_Expression,
 }
 
 Checked_Unary_Expression :: struct {
@@ -259,6 +272,9 @@ checked_expr_symbol :: proc(expr: Checked_Expression, lhs := true) -> (symbol: ^
 	case ^Checked_Array_Literal_Expression:
 		symbol = e.symbol
 
+	case ^Checked_Map_Literal_Expression:
+		symbol = e.symbol
+
 	case ^Checked_Unary_Expression:
 		symbol = e.symbol
 
@@ -296,6 +312,9 @@ checked_expr_token :: proc(expr: Checked_Expression) -> (t: Token) {
 	case ^Checked_Array_Literal_Expression:
 		t = e.token
 
+	case ^Checked_Map_Literal_Expression:
+		t = e.token
+
 	case ^Checked_Unary_Expression:
 		t = e.token
 
@@ -331,6 +350,14 @@ free_checked_expression :: proc(expr: Checked_Expression) {
 			free_checked_expression(value)
 		}
 		delete(e.values)
+		free(e)
+
+	case ^Checked_Map_Literal_Expression:
+		for element in e.elements {
+			free_checked_expression(element.key)
+			free_checked_expression(element.value)
+		}
+		delete(e.elements)
 		free(e)
 
 	case ^Checked_Unary_Expression:

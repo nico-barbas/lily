@@ -19,6 +19,7 @@ parser_rules := map[Token_Kind]struct {
 	.Boolean =         {prec = .Lowest,  prefix_fn = parse_identifier, infix_fn = nil},
 	.String =          {prec = .Lowest,  prefix_fn = parse_identifier, infix_fn = nil},
 	.Array =           {prec = .Lowest,  prefix_fn = parse_array_type, infix_fn = nil},
+	.Map =             {prec = .Lowest,  prefix_fn = parse_map_type  , infix_fn = nil},
 	.Number_Literal =  {prec = .Lowest,  prefix_fn = parse_number    , infix_fn = nil},
     .String_Literal =  {prec = .Lowest,  prefix_fn = parse_string    , infix_fn = nil},
 	.True =            {prec = .Lowest,  prefix_fn = parse_boolean   , infix_fn = nil},
@@ -147,24 +148,30 @@ peek_next_token :: proc(p: ^Parser) -> (result: Token) {
 	return
 }
 
-match_token_kind :: proc(p: ^Parser, kind: Token_Kind) -> (err: Error) {
+match_token_kind :: proc(p: ^Parser, kind: Token_Kind, loc := #caller_location) -> (err: Error) {
 	if p.current.kind != kind {
-		err = Parsing_Error {
-			kind    = .Invalid_Syntax,
-			token   = p.current,
-			details = fmt.tprintf("Expected %s, got %s", kind, p.current.kind),
-		}
+		err = format_error(
+			Parsing_Error{
+				kind = .Invalid_Syntax,
+				token = p.current,
+				details = fmt.tprintf("Expected %s, got %s", kind, p.current.kind),
+			},
+			loc,
+		)
 	}
 	return
 }
 
-match_token_kind_next :: proc(p: ^Parser, kind: Token_Kind) -> (err: Error) {
+match_token_kind_next :: proc(p: ^Parser, kind: Token_Kind, loc := #caller_location) -> (err: Error) {
 	if consume_token(p).kind != kind {
-		err = Parsing_Error {
-			kind    = .Invalid_Syntax,
-			token   = p.current,
-			details = fmt.tprintf("Expected %s, got %s", kind, p.current.kind),
-		}
+		err = format_error(
+			Parsing_Error{
+				kind = .Invalid_Syntax,
+				token = p.current,
+				details = fmt.tprintf("Expected %s, got %s", kind, p.current.kind),
+			},
+			loc,
+		)
 	}
 	return
 }
@@ -816,6 +823,8 @@ parse_infix_open_bracket :: proc(p: ^Parser, left: Parsed_Expression) -> (
 	#partial switch l in left {
 	case ^Parsed_Array_Type_Expression:
 		result = parse_array(p, left) or_return
+	case ^Parsed_Map_Type_Expression:
+		result = parse_map(p, left) or_return
 	case ^Parsed_Identifier_Expression:
 		result = parse_index(p, left) or_return
 	}
@@ -854,19 +863,42 @@ parse_array :: proc(p: ^Parser, left: Parsed_Expression) -> (result: Parsed_Expr
 }
 
 parse_map :: proc(p: ^Parser, left: Parsed_Expression) -> (result: Parsed_Expression, err: Error) {
-    m := new_clone(Parsed_Map_Literal_Expression{
-        token = p.previous,
-        type_expr = left,
-        values = make([dynamic]struct {
-            token: Token,
-            key:   Parsed_Expression,
-            value: Parsed_Expression,
-        }),
-    })
-    map_elements: for {
-        
-    }
-    return
+	m := new_clone(
+		Parsed_Map_Literal_Expression{
+			token = p.previous,
+			type_expr = left,
+			elements = make([dynamic]Parsed_Map_Element),
+		},
+	)
+	map_elements: for {
+		element := Parsed_Map_Element{}
+		element.key = parse_expr(p, .Lowest) or_return
+		match_token_kind(p, .Assign) or_return
+		consume_token(p)
+		element.value = parse_expr(p, .Lowest) or_return
+		append(&m.elements, element)
+		consume_token(p)
+		#partial switch p.previous.kind {
+		case .Close_Bracket:
+			break map_elements
+		case .Comma:
+			continue map_elements
+		case:
+			err = Parsing_Error {
+				kind    = .Invalid_Syntax,
+				token   = p.previous,
+				details = fmt.tprintf(
+					"Expected one of: %s, %s, got %s",
+					Token_Kind.Comma,
+					Token_Kind.Close_Bracket,
+					p.previous.kind,
+				),
+			}
+			return
+		}
+	}
+	result = m
+	return
 }
 
 parse_array_type :: proc(p: ^Parser) -> (result: Parsed_Expression, err: Error) {
@@ -885,10 +917,14 @@ parse_map_type :: proc(p: ^Parser) -> (result: Parsed_Expression, err: Error) {
 	match_token_kind(p, .Of) or_return
 	map_type.of_token = p.current
 	match_token_kind_next(p, .Open_Paren) or_return
-    map_type.key_type = parse_expr(p, .Lowest) or_return
+	consume_token(p)
+	map_type.key_type = parse_expr(p, .Lowest) or_return
 	match_token_kind(p, .Comma) or_return
-    map_type.value_type = parse_expr(p, .Lowest) or_return
+	consume_token(p)
+	map_type.value_type = parse_expr(p, .Lowest) or_return
 	match_token_kind(p, .Close_Paren) or_return
+	consume_token(p)
+	result = map_type
 	return
 }
 

@@ -57,7 +57,7 @@ compile_source :: proc(s: ^State, module_name: string, source: string) -> (err: 
 	}
 	s.compiled_modules = make_compiled_program(s)
 	for i in 0 ..< len(s.compiled_modules) {
-		// print_checked_ast(s.checked_modules[i], &s.checker)
+		print_checked_ast(s.checked_modules[i], &s.checker)
 		compile_module(s, i)
 		print_compiled_module(s.compiled_modules[i])
 	}

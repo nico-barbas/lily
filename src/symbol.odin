@@ -42,7 +42,7 @@ Module_Symbol_Info :: struct {
 }
 
 Generic_Symbol_Info :: struct {
-	symbol: ^Symbol,
+	symbols: []^Symbol,
 }
 
 Alias_Symbol_Info :: struct {
@@ -72,7 +72,11 @@ is_type_symbol :: proc(s: ^Symbol) -> bool {
 	return s.kind == .Alias_Symbol || s.kind == .Name || s.kind == .Class_Symbol
 }
 
-is_valis_accessor :: proc(s: ^Symbol) -> bool {
+is_indexable_symbol :: proc(s: ^Symbol) -> bool {
+	return s.kind == .Generic_Symbol && (s.type_id == ARRAY_ID || s.type_id == MAP_ID)
+}
+
+is_valid_accessor :: proc(s: ^Symbol) -> bool {
 	#partial switch s.kind {
 	case .Class_Symbol:
 		return true
@@ -137,15 +141,14 @@ get_scoped_symbol :: proc(s: ^Semantic_Scope, name: Token, loc := #caller_locati
 	if symbol, exist := s.lookup[name.text]; exist {
 		result = symbol
 	} else {
-		err =
-			format_semantic_err(
-				Semantic_Error{
-					kind = .Unknown_Symbol,
-					token = name,
-					details = fmt.tprintf("Unknown symbol %s in scope %d", name.text, s.id),
-				},
-				loc,
-			)
+		err = format_error(
+			Semantic_Error{
+				kind = .Unknown_Symbol,
+				token = name,
+				details = fmt.tprintf("Unknown symbol %s in scope %d", name.text, s.id),
+			},
+			loc,
+		)
 	}
 	return
 }

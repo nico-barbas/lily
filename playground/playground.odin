@@ -54,27 +54,15 @@ playground :: proc() {using lily
 	// 	a.add(13)
 	// `
 	input := `
-		import std
-        
-		var b = array of number[1, 2, 3]
-		var a = false
-		var res = 11
-		for i in 0..10:
-			if not a:
-				a = true
-				res = res + 1
-				break
-			end
-		end
-
-		std.print(res)
+		var a = map of (string, number)["hello" = 1]
+		var b = a["hello"]
 	`
 
 	state := new_state(Config{})
 	err := compile_source(state, "main", input)
 	assert(err == nil, fmt.tprint(err))
 
-	run_module(state, "main")
-	free_state(state)
+	// run_module(state, "main")
+	// free_state(state)
 	fmt.println("finished")
 }

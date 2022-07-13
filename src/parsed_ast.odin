@@ -88,11 +88,12 @@ Parsed_Array_Literal_Expression :: struct {
 Parsed_Map_Literal_Expression :: struct {
 	token:     Token,
 	type_expr: Parsed_Expression,
-	values:    [dynamic]struct {
-		token: Token,
-		key:   Parsed_Expression,
-		value: Parsed_Expression,
-	},
+	elements:  [dynamic]Parsed_Map_Element,
+}
+
+Parsed_Map_Element :: struct {
+	key:   Parsed_Expression,
+	value: Parsed_Expression,
 }
 
 Parsed_Unary_Expression :: struct {
@@ -158,6 +159,9 @@ token_from_parsed_expression :: proc(expr: Parsed_Expression) -> (result: Token)
 	case ^Parsed_Array_Literal_Expression:
 		result = e.token
 
+	case ^Parsed_Map_Literal_Expression:
+		result = e.token
+
 	case ^Parsed_Unary_Expression:
 		result = e.token
 
@@ -178,6 +182,9 @@ token_from_parsed_expression :: proc(expr: Parsed_Expression) -> (result: Token)
 
 	case ^Parsed_Array_Type_Expression:
 		result = e.token
+
+	case ^Parsed_Map_Type_Expression:
+		result = e.token
 	}
 	return
 }
@@ -195,6 +202,16 @@ free_parsed_expression :: proc(expr: Parsed_Expression) {
 		for value in e.values {
 			free_parsed_expression(value)
 		}
+		delete(e.values)
+		free(e)
+
+	case ^Parsed_Map_Literal_Expression:
+		free_parsed_expression(e.type_expr)
+		for element in e.elements {
+			free_parsed_expression(element.key)
+			free_parsed_expression(element.value)
+		}
+		delete(e.elements)
 		free(e)
 
 	case ^Parsed_Unary_Expression:
@@ -231,6 +248,10 @@ free_parsed_expression :: proc(expr: Parsed_Expression) {
 		free_parsed_expression(e.elem_type)
 		free(e)
 
+	case ^Parsed_Map_Type_Expression:
+		free_parsed_expression(e.key_type)
+		free_parsed_expression(e.value_type)
+		free(e)
 	}
 }
 
