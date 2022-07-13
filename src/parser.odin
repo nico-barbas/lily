@@ -777,7 +777,8 @@ parse_binary :: proc(p: ^Parser, left: Parsed_Expression) -> (result: Parsed_Exp
 
 parse_group :: proc(p: ^Parser) -> (result: Parsed_Expression, err: Error) {
 	result = parse_expr(p, .Lowest) or_return
-	match_token_kind_next(p, .Close_Paren) or_return
+	match_token_kind(p, .Close_Paren) or_return
+	consume_token(p)
 	return
 }
 
