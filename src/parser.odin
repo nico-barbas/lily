@@ -833,30 +833,34 @@ parse_infix_open_bracket :: proc(p: ^Parser, left: Parsed_Expression) -> (
 }
 
 parse_array :: proc(p: ^Parser, left: Parsed_Expression) -> (result: Parsed_Expression, err: Error) {
-	array := new_clone(
-		Parsed_Array_Literal_Expression{type_expr = left, values = make([dynamic]Parsed_Expression)},
-	)
-	array_elements: for {
-		element := parse_expr(p, .Lowest) or_return
-		append(&array.values, element)
-		consume_token(p)
-		#partial switch p.previous.kind {
-		case .Close_Bracket:
-			break array_elements
-		case .Comma:
-			continue array_elements
-		case:
-			err = Parsing_Error {
-				kind    = .Invalid_Syntax,
-				token   = p.previous,
-				details = fmt.tprintf(
-					"Expected one of: %s, %s, got %s",
-					Token_Kind.Comma,
-					Token_Kind.Close_Bracket,
-					p.previous.kind,
-				),
+	array := new_clone(Parsed_Array_Literal_Expression{token = p.previous, type_expr = left})
+
+	if p.current.kind != .Close_Bracket {
+		array.values = make([dynamic]Parsed_Expression)
+		array_elements: for {
+			element := parse_expr(p, .Lowest) or_return
+			append(&array.values, element)
+			consume_token(p)
+			#partial switch p.previous.kind {
+			case .Close_Bracket:
+				break array_elements
+			case .Comma:
+				continue array_elements
+			case:
+				err = format_error(
+					Parsing_Error{
+						kind = .Invalid_Syntax,
+						token = p.previous,
+						details = fmt.tprintf(
+							"Expected one of: %s, %s, got %s",
+							Token_Kind.Comma,
+							Token_Kind.Close_Bracket,
+							p.previous.kind,
+						),
+					},
+				)
+				return
 			}
-			return
 		}
 	}
 	result = array

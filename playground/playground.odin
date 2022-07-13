@@ -26,16 +26,8 @@ main :: proc() {
 	// }
 }
 
-playground :: proc() {using lily
-	PRINT_AST :: true
-	PRINT_SYMBOL_TABLE :: false
-	PRINT_COMPILE :: true
-	PRINT_VM_STATE :: true
-
-	RUN_PARSER :: true
-	RUN_CHECKER :: true
-	RUN_COMPILER :: true
-	RUN_VM :: true
+playground :: proc() {
+	using lily
 
 	// input: string = `
 	// 	type Foo is class
@@ -54,8 +46,7 @@ playground :: proc() {using lily
 	// 	a.add(13)
 	// `
 	input := `
-		var a = map of (string, number)["hello" = 1]
-		var b = a["hello"]
+		array of number[]
 	`
 
 	state := new_state(Config{})
