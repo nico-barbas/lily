@@ -20,7 +20,9 @@ test_literal_expressions :: proc(t: ^testing.T) {
 	for input, i in inputs {
 		parsed_modules[i] = make_parsed_module("")
 		err := parse_module(input, parsed_modules[i])
-		testing.expect(t, err == nil, fmt.tprintf("Parsing error: %v", err))
+		if err != nil {
+			testing.fail_now(t, fmt.tprintf("%v", err))
+		}
 	}
 
 	// Unary not
@@ -155,7 +157,9 @@ test_binary_expressions :: proc(t: ^testing.T) {
 	for input, i in inputs {
 		parsed_modules[i] = make_parsed_module("")
 		err := parse_module(input, parsed_modules[i])
-		testing.expect(t, err == nil, fmt.tprintf("Parsing error: %v", err))
+		if err != nil {
+			testing.fail_now(t, fmt.tprintf("%v", err))
+		}
 	}
 
 	for i in 0 ..< len(inputs) {
@@ -289,7 +293,9 @@ test_binary_precedence :: proc(t: ^testing.T) {
 	for input, i in inputs {
 		parsed_modules[i] = make_parsed_module("")
 		err := parse_module(input, parsed_modules[i])
-		testing.expect(t, err == nil, fmt.tprintf("Parsing error: %v", err))
+		if err != nil {
+			testing.fail_now(t, fmt.tprintf("%v", err))
+		}
 	}
 
 	for i in 0 ..< len(inputs) {
@@ -312,6 +318,9 @@ test_call_and_access_expressions :: proc(t: ^testing.T) {
 	for input, i in inputs {
 		parsed_modules[i] = make_parsed_module("")
 		err := parse_module(input, parsed_modules[i])
+		if err != nil {
+			testing.fail_now(t, fmt.tprintf("%v", err))
+		}
 	}
 
 	// Call
@@ -519,7 +528,9 @@ test_array_expressions :: proc(t: ^testing.T) {
 	for input, i in inputs {
 		parsed_modules[i] = make_parsed_module("")
 		err := parse_module(input, parsed_modules[i])
-		testing.expect(t, err == nil, fmt.tprintf("Parsing error: %v", err))
+		if err != nil {
+			testing.fail_now(t, fmt.tprintf("%v", err))
+		}
 	}
 
 	for i in 0 ..< len(inputs) {
@@ -550,65 +561,108 @@ test_array_expressions :: proc(t: ^testing.T) {
 	}
 }
 
-// @(test)
-// test_multiline_array_literal :: proc(t: ^testing.T) {
-// 	using lily
+@(test)
+test_multiline_array_literal :: proc(t: ^testing.T) {
+	using lily
 
-// 	inputs := [?]string{`
-// 		array of number[
-// 			10,
-// 			20,
-// 			56,
-// 		]`}
-// 	parsed_modules := [len(inputs)]^Parsed_Module{}
+	Array_Result :: struct {
+		inner: string,
+		lit:   bool,
+		count: int,
+	}
 
-// 	track := mem.Tracking_Allocator{}
-// 	mem.tracking_allocator_init(&track, context.allocator)
-// 	context.allocator = mem.tracking_allocator(&track)
-// 	defer clean_parser_test(parsed_modules[:], &track)
+	inputs := [?]string{
+		`array of number[
+			10,
+			20,
+			56,
+		]`,
+		`array of string[
+			"hello", "world",
+		]`,
+		`array of string[
+			"hello", "world",]`,
+		`array of string["hello", "world",
+		]`,
+	}
+	expected := [?]Array_Result{
+		{"number", true, 3},
+		{"string", true, 2},
+		{"string", true, 2},
+		{"string", true, 2},
+	}
+	parsed_modules := [len(inputs)]^Parsed_Module{}
 
-// 	for input, i in inputs {
-// 		parsed_modules[i] = make_parsed_module("")
-// 		err := parse_module(input, parsed_modules[i])
-// 	}
+	track := mem.Tracking_Allocator{}
+	mem.tracking_allocator_init(&track, context.allocator)
+	context.allocator = mem.tracking_allocator(&track)
+	defer clean_parser_test(parsed_modules[:], &track)
 
-// 	// Array literal expression
-// 	{
-// 		m := parsed_modules[0]
-// 		testing.expect(t, len(m.nodes) == 1, fmt.tprint("Failed, Expected", 1, "Got", len(m.nodes)))
-// 		node := m.nodes[0].(^Parsed_Expression_Statement)
-// 		arr_expr, ok := node.expr.(^Parsed_Array_Literal_Expression)
-// 		testing.expect(
-// 			t,
-// 			ok,
-// 			fmt.tprintf("Expected Parsed_Array_Literal_Expression, got %v", node.expr),
-// 		)
-// 		if ok {
-// 			type_expr, type_ok := arr_expr.type_expr.(^Parsed_Array_Type_Expression)
-// 			testing.expect(
-// 				t,
-// 				ok,
-// 				fmt.tprintf("Expected Parsed_Array_Type_Expression, got %v", arr_expr.type_expr),
-// 			)
-// 			if type_ok {
-// 				elem, ok := type_expr.elem_type.(^Parsed_Identifier_Expression)
-// 				testing.expect(
-// 					t,
-// 					ok,
-// 					fmt.tprintf("Expected Parsed_Identifier_Expression, got %v", type_expr.elem_type),
-// 				)
-// 			}
-// 			testing.expect(
-// 				t,
-// 				len(arr_expr.values) == 1,
-// 				fmt.tprintf("Expected no arguments, got %d", len(arr_expr.values)),
-// 			)
-// 			val, val_ok := arr_expr.values[0].(^Parsed_Literal_Expression)
-// 			testing.expect(
-// 				t,
-// 				val_ok,
-// 				fmt.tprintf("Expected Parsed_Identifier_Expression, got %v", arr_expr.values[0]),
-// 			)
-// 		}
-// 	}
-// }
+	for input, i in inputs {
+		parsed_modules[i] = make_parsed_module("")
+		err := parse_module(input, parsed_modules[i])
+		if err != nil {
+			testing.fail_now(t, fmt.tprintf("%v", err))
+		}
+	}
+
+	for i in 0 ..< len(inputs) {
+		m := parsed_modules[i]
+		e := expected[i]
+		testing.expect(
+			t,
+			len(m.nodes) == 1,
+			fmt.tprintf("Failed at %d, Expected %d nodes, Got %d\n%#v\n", i, 1, len(m.nodes), m),
+		)
+		node := m.nodes[0].(^Parsed_Expression_Statement)
+		if e.lit {
+			array, ok := node.expr.(^Parsed_Array_Literal_Expression)
+			testing.expect(
+				t,
+				ok,
+				fmt.tprintf("Expected Parsed_Array_Literal_Expression, got %v", node.expr),
+			)
+			check_array_type_expression(t, array.type_expr, e.inner)
+			testing.expect(
+				t,
+				len(array.values) == e.count,
+				fmt.tprintf("Expected %d values, got %d", e.count, len(array.values)),
+			)
+		} else {
+			check_array_type_expression(t, node.expr, e.inner)
+		}
+	}
+}
+
+@(test)
+test_invalid_array_literal :: proc(t: ^testing.T) {
+	using lily
+
+	inputs := [?]string{
+		`array of number
+		[
+			10,
+			20,
+			56,
+		]`,
+		`array of string[
+			"hello",, "world",
+		]`,
+		`array of string[,"hello", "world",]`,
+	}
+	parsed_modules := [len(inputs)]^Parsed_Module{}
+
+	track := mem.Tracking_Allocator{}
+	mem.tracking_allocator_init(&track, context.allocator)
+	context.allocator = mem.tracking_allocator(&track)
+	defer clean_parser_test(parsed_modules[:], &track)
+
+	for input, i in inputs {
+		parsed_modules[i] = make_parsed_module("")
+		err := parse_module(input, parsed_modules[i])
+		if err == nil {
+			clean_parser_test(parsed_modules[:], &track)
+			testing.fail_now(t, fmt.tprintf("Unhandled invalid array literal expression: %s\n", input))
+		}
+	}
+}

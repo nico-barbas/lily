@@ -3,12 +3,12 @@ package lily
 import "core:fmt"
 
 Checker :: struct {
-	import_names_lookup: map[string]int,
+	module_names:        map[string]int,
 	modules:             []^Checked_Module,
 	current:             ^Checked_Module,
 
 	// A place to store the parsed modules and keep track of which one is currently being worked on
-	parsed_results:      [dynamic]^Parsed_Module,
+	parsed:              []^Parsed_Module,
 	current_parsed:      ^Parsed_Module,
 	// Builtin types and internal states
 	builtin_symbols:     [MAP_SYMBOL + 1]Symbol,
@@ -122,7 +122,6 @@ free_checker :: proc(c: ^Checker) {
 	}
 	delete(c.modules)
 	delete(c.types)
-	delete(c.import_names_lookup)
 }
 
 contain_symbol :: proc(c: ^Checker, token: Token) -> bool {
@@ -261,58 +260,52 @@ gen_type_id :: proc(c: ^Checker) -> Type_ID {
 }
 
 
-build_checked_program :: proc(c: ^Checker, module_name: string, entry_point: string) -> (
+build_checked_program :: proc(c: ^Checker, names: map[string]int, p: []^Parsed_Module, e: string) -> (
 	result: []^Checked_Module,
 	err: Error,
 ) {
-	c.import_names_lookup = make(map[string]int)
-	entry_module := make_parsed_module(module_name)
-	parse_module(entry_point, entry_module) or_return
-	append(&c.parsed_results, entry_module)
-	c.import_names_lookup[entry_module.name] = 0
-	c.current_parsed = entry_module
-
-	parse_dependencies(&c.parsed_results, &c.import_names_lookup, c.current_parsed) or_return
-	c.modules = make([]^Checked_Module, len(c.parsed_results))
+	fmt.println(p)
+	c.module_names = names
+	c.parsed = p
+	c.current_parsed = p[names[e]]
 
 	// Build all the symbols and then check them
-	for module, i in c.parsed_results {
-		index := c.import_names_lookup[module.name]
-		c.modules[index] = make_checked_module(module.name, i)
-		c.modules[index].source = module.source
+	for module in c.parsed {
+		index := c.module_names[module.name]
+		c.modules[index] = make_checked_module(module.name, index)
 		add_module_import_symbols(c, index) or_return
 		add_module_decl_symbols(c, index) or_return
 		add_module_type_decl(c, index) or_return
 	}
-	for module in c.parsed_results {
-		index := c.import_names_lookup[module.name]
+	for module in c.parsed {
+		index := c.module_names[module.name]
 		check_module_signatures_symbols(c, index) or_return
 	}
-	for module in c.parsed_results {
-		index := c.import_names_lookup[module.name]
+	for module in c.parsed {
+		index := c.module_names[module.name]
 		add_module_inner_symbols(c, index) or_return
 	}
-	for module in c.parsed_results {
-		index := c.import_names_lookup[module.name]
+	for module in c.parsed {
+		index := c.module_names[module.name]
 		build_checked_ast(c, index) or_return
 	}
 
-	for module in c.parsed_results {
+	for module in c.parsed {
 		print_parsed_ast(module)
 		delete_parsed_module(module)
 	}
-	delete(c.parsed_results)
+	delete(c.parsed)
 	result = c.modules
 	return
 }
 
 add_module_import_symbols :: proc(c: ^Checker, module_id: int) -> (err: Error) {
 	c.current = c.modules[module_id]
-	c.current_parsed = c.parsed_results[module_id]
+	c.current_parsed = c.parsed[module_id]
 
 	for import_node in c.current_parsed.import_nodes {
 		import_stmt := import_node.(^Parsed_Import_Statement)
-		import_index := c.import_names_lookup[import_stmt.identifier.text]
+		import_id := c.module_names[import_stmt.identifier.text]
 		add_symbol_to_scope(
 			c.current.root,
 			Symbol{
@@ -320,7 +313,7 @@ add_module_import_symbols :: proc(c: ^Checker, module_id: int) -> (err: Error) {
 				kind = .Module_Symbol,
 				module_id = module_id,
 				scope_id = c.current.root.id,
-				info = Module_Symbol_Info{ref_mod_id = import_index},
+				info = Module_Symbol_Info{ref_mod_id = import_id},
 			},
 		) or_return
 	}
@@ -329,7 +322,7 @@ add_module_import_symbols :: proc(c: ^Checker, module_id: int) -> (err: Error) {
 
 add_module_decl_symbols :: proc(c: ^Checker, module_id: int) -> (err: Error) {
 	c.current = c.modules[module_id]
-	c.current_parsed = c.parsed_results[module_id]
+	c.current_parsed = c.parsed[module_id]
 	// The type symbols need to be added first
 	for node in c.current_parsed.types {
 		if n, ok := node.(^Parsed_Type_Declaration); ok {
@@ -441,7 +434,7 @@ add_module_decl_symbols :: proc(c: ^Checker, module_id: int) -> (err: Error) {
 
 add_module_type_decl :: proc(c: ^Checker, module_id: int) -> (err: Error) {
 	c.current = c.modules[module_id]
-	c.current_parsed = c.parsed_results[module_id]
+	c.current_parsed = c.parsed[module_id]
 
 	for node in c.current_parsed.types {
 		#partial switch n in node {
@@ -474,7 +467,7 @@ add_module_class_type :: proc(c: ^Checker, decl: ^Parsed_Type_Declaration) -> (e
 check_module_signatures_symbols :: proc(c: ^Checker, module_id: int) -> (err: Error) {
 	c.current = c.modules[module_id]
 	c.current.scope = c.current.root
-	c.current_parsed = c.parsed_results[module_id]
+	c.current_parsed = c.parsed[module_id]
 
 	// Signatures to check:
 	// class constructors
@@ -576,7 +569,7 @@ check_fn_signature_symbols :: proc(c: ^Checker, fn_decl: ^Parsed_Fn_Declaration)
 add_module_inner_symbols :: proc(c: ^Checker, module_id: int) -> (err: Error) {
 	c.current = c.modules[module_id]
 	c.current.scope = c.current.root
-	c.current_parsed = c.parsed_results[module_id]
+	c.current_parsed = c.parsed[module_id]
 
 	for node in c.current_parsed.types {
 		add_inner_symbols(c, node) or_return
@@ -682,7 +675,7 @@ add_inner_symbols :: proc(c: ^Checker, node: Parsed_Node) -> (err: Error) {
 build_checked_ast :: proc(c: ^Checker, module_id: int) -> (err: Error) {
 	c.current = c.modules[module_id]
 	c.current.scope = c.current.root
-	c.current_parsed = c.parsed_results[module_id]
+	c.current_parsed = c.parsed[module_id]
 
 	for node in c.current_parsed.types {
 		class_node := build_checked_node(c, node) or_return

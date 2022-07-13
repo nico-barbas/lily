@@ -46,7 +46,11 @@ playground :: proc() {
 	// 	a.add(13)
 	// `
 	input := `
-		array of number[]
+	array of number[
+		10,
+		20,
+		56,
+	]
 	`
 
 	state := new_state(Config{})

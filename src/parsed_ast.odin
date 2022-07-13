@@ -1,7 +1,6 @@
 package lily
 
 Parsed_Module :: struct {
-	source:       string,
 	name:         string,
 	import_nodes: [dynamic]Parsed_Node,
 	types:        [dynamic]Parsed_Node,

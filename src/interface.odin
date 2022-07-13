@@ -4,6 +4,7 @@ import "core:fmt"
 import "core:strings"
 
 State :: struct {
+	source:              []string,
 	checked_modules:     []^Checked_Module,
 	import_modules_id:   map[string]int,
 	import_modules_name: map[int]string,
@@ -49,12 +50,39 @@ free_state :: proc(s: ^State) {
 }
 
 compile_source :: proc(s: ^State, module_name: string, source: string) -> (err: Error) {
-	s.checked_modules = build_checked_program(&s.checker, module_name, source) or_return
+	s.import_modules_id = make(map[string]int)
+	s.import_modules_name = make(map[int]string)
+	module := make_parsed_module(module_name)
+	parse_module(source, module) or_return
 
-	s.import_modules_id = s.checker.import_names_lookup
+	parsed_modules := make([dynamic]^Parsed_Module)
+	defer {
+		for module in parsed_modules {
+			delete_parsed_module(module)
+		}
+		delete(parsed_modules)
+	}
+	append(&parsed_modules, module)
+	fmt.println(parsed_modules)
+	s.import_modules_id[module_name] = 0
+
+	parse_dependencies(&parsed_modules, &s.import_modules_id, module) or_return
 	for name, id in s.import_modules_id {
 		s.import_modules_name[id] = name
 	}
+	s.checked_modules = make([]^Checked_Module, len(parsed_modules))
+
+	//odinfmt: disable
+	s.checker.modules = s.checked_modules
+	build_checked_program(
+		&s.checker, 
+		s.import_modules_id, 
+		parsed_modules[:],
+		module_name,
+	) or_return
+	//odinfmt: enable
+
+
 	s.compiled_modules = make_compiled_program(s)
 	for i in 0 ..< len(s.compiled_modules) {
 		print_checked_ast(s.checked_modules[i], &s.checker)

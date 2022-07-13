@@ -44,9 +44,10 @@ parser_rules := map[Token_Kind]struct {
 //odinfmt: enable
 
 Parser :: struct {
-	lexer:    Lexer,
-	current:  Token,
-	previous: Token,
+	lexer:              Lexer,
+	current:            Token,
+	previous:           Token,
+	expect_punctuation: bool,
 }
 
 Precedence :: enum {
@@ -107,14 +108,18 @@ parse_dependencies :: proc(
 	return
 }
 
-parse_module :: proc(i: string, mod: ^Parsed_Module) -> (err: Error) {
-	mod.source = strings.clone(i)
+parse_module :: proc(input: string, mod: ^Parsed_Module) -> (err: Error) {
 	parser := Parser {
 		lexer = Lexer{},
 	}
-	set_lexer_input(&parser.lexer, mod.source)
+	set_lexer_input(&parser.lexer, input)
 	ast: for {
-		node := parse_node(&parser) or_return
+		node: Parsed_Node
+		node, err = parse_node(&parser)
+		if err != nil {
+			if node != nil do free_parsed_node(node)
+			return
+		}
 		if node != nil {
 			#partial switch n in node {
 			case ^Parsed_Import_Statement:
@@ -215,7 +220,7 @@ parse_node :: proc(p: ^Parser) -> (result: Parsed_Node, err: Error) {
 parse_expression_stmt :: proc(p: ^Parser) -> (result: ^Parsed_Expression_Statement, err: Error) {
 	result = new(Parsed_Expression_Statement)
 	result.token = p.current
-	result.expr = parse_expr(p, .Lowest) or_return
+	result.expr, err = parse_expr(p, .Lowest)
 	return
 }
 
@@ -835,18 +840,25 @@ parse_infix_open_bracket :: proc(p: ^Parser, left: Parsed_Expression) -> (
 parse_array :: proc(p: ^Parser, left: Parsed_Expression) -> (result: Parsed_Expression, err: Error) {
 	array := new_clone(Parsed_Array_Literal_Expression{token = p.previous, type_expr = left})
 
-	if p.current.kind != .Close_Bracket {
-		array.values = make([dynamic]Parsed_Expression)
-		array_elements: for {
-			element := parse_expr(p, .Lowest) or_return
-			append(&array.values, element)
-			consume_token(p)
-			#partial switch p.previous.kind {
-			case .Close_Bracket:
-				break array_elements
-			case .Comma:
-				continue array_elements
-			case:
+	p.expect_punctuation = false
+	array.values = make([dynamic]Parsed_Expression)
+	array_elements: for {
+		#partial switch p.current.kind {
+		case .EOF:
+			err = format_error(
+				Parsing_Error{
+					kind = .Invalid_Syntax,
+					token = p.previous,
+					details = fmt.tprintf(
+						"Expected %s, got %s",
+						Token_Kind.Close_Bracket,
+						p.current.kind,
+					),
+				},
+			)
+			return
+		case .Newline:
+			if p.expect_punctuation {
 				err = format_error(
 					Parsing_Error{
 						kind = .Invalid_Syntax,
@@ -855,13 +867,39 @@ parse_array :: proc(p: ^Parser, left: Parsed_Expression) -> (result: Parsed_Expr
 							"Expected one of: %s, %s, got %s",
 							Token_Kind.Comma,
 							Token_Kind.Close_Bracket,
-							p.previous.kind,
+							p.current.kind,
 						),
 					},
 				)
 				return
+			} else {
+				consume_token(p)
+				continue array_elements
+			}
+
+		case .Close_Bracket:
+			break array_elements
+
+		case .Comma:
+			if !p.expect_punctuation {
+				err = format_error(
+					Parsing_Error{
+						kind = .Invalid_Syntax,
+						token = p.previous,
+						details = fmt.tprintf("Expected expression, got %s", p.current.kind),
+					},
+				)
+				return
+			} else {
+				p.expect_punctuation = false
+				consume_token(p)
+				continue array_elements
 			}
 		}
+
+		element := parse_expr(p, .Lowest) or_return
+		append(&array.values, element)
+		p.expect_punctuation = true
 	}
 	result = array
 	return
