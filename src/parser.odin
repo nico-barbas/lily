@@ -913,32 +913,89 @@ parse_map :: proc(p: ^Parser, left: Parsed_Expression) -> (result: Parsed_Expres
 			elements = make([dynamic]Parsed_Map_Element),
 		},
 	)
+
+	p.expect_punctuation = false
 	map_elements: for {
+		#partial switch p.current.kind {
+		case .EOF:
+			err = format_error(
+				Parsing_Error{
+					kind = .Invalid_Syntax,
+					token = p.previous,
+					details = fmt.tprintf(
+						"Expected %s, got %s",
+						Token_Kind.Close_Bracket,
+						p.current.kind,
+					),
+				},
+			)
+			return
+
+		case .Newline:
+			if p.expect_punctuation {
+				err = format_error(
+					Parsing_Error{
+						kind = .Invalid_Syntax,
+						token = p.previous,
+						details = fmt.tprintf(
+							"Expected one of: %s, %s, got %s",
+							Token_Kind.Comma,
+							Token_Kind.Close_Bracket,
+							p.current.kind,
+						),
+					},
+				)
+				return
+			} else {
+				consume_token(p)
+				continue map_elements
+			}
+	
+		case .Close_Bracket:
+			break map_elements
+	
+		case .Comma:
+			if !p.expect_punctuation {
+				err = format_error(
+					Parsing_Error{
+						kind = .Invalid_Syntax,
+						token = p.previous,
+						details = fmt.tprintf("Expected expression, got %s", p.current.kind),
+					},
+				)
+				return
+			} else {
+				p.expect_punctuation = false
+				consume_token(p)
+				continue map_elements
+			}
+		}
+
 		element := Parsed_Map_Element{}
 		element.key = parse_expr(p, .Lowest) or_return
 		match_token_kind(p, .Assign) or_return
 		consume_token(p)
 		element.value = parse_expr(p, .Lowest) or_return
 		append(&m.elements, element)
-		consume_token(p)
-		#partial switch p.previous.kind {
-		case .Close_Bracket:
-			break map_elements
-		case .Comma:
-			continue map_elements
-		case:
-			err = Parsing_Error {
-				kind    = .Invalid_Syntax,
-				token   = p.previous,
-				details = fmt.tprintf(
-					"Expected one of: %s, %s, got %s",
-					Token_Kind.Comma,
-					Token_Kind.Close_Bracket,
-					p.previous.kind,
-				),
-			}
-			return
-		}
+		p.expect_punctuation = true
+		// #partial switch p.previous.kind {
+		// case .Close_Bracket:
+		// 	break map_elements
+		// case .Comma:
+		// 	continue map_elements
+		// case:
+		// 	err = Parsing_Error {
+		// 		kind    = .Invalid_Syntax,
+		// 		token   = p.previous,
+		// 		details = fmt.tprintf(
+		// 			"Expected one of: %s, %s, got %s",
+		// 			Token_Kind.Comma,
+		// 			Token_Kind.Close_Bracket,
+		// 			p.previous.kind,
+		// 		),
+		// 	}
+		// 	return
+		// }
 	}
 	result = m
 	return

@@ -497,7 +497,7 @@ check_array_type_expression :: proc(t: ^testing.T, expr: lily.Parsed_Expression,
 }
 
 @(test)
-test_array_expressions :: proc(t: ^testing.T) {
+test_array_literal :: proc(t: ^testing.T) {
 	using lily
 
 	Array_Result :: struct {
@@ -663,6 +663,118 @@ test_invalid_array_literal :: proc(t: ^testing.T) {
 		if err == nil {
 			clean_parser_test(parsed_modules[:], &track)
 			testing.fail_now(t, fmt.tprintf("Unhandled invalid array literal expression: %s\n", input))
+		}
+	}
+}
+
+
+check_map_type_expression :: proc(t: ^testing.T, expr: lily.Parsed_Expression, k, v: string) {
+	using lily
+
+	type_expr, ok := expr.(^Parsed_Map_Type_Expression)
+	testing.expect(t, ok, fmt.tprintf("Expected Parsed_Map_Type_Expression, got %v", expr))
+	if ok {
+		key, k_ok := type_expr.key_type.(^Parsed_Identifier_Expression)
+		testing.expect(
+			t,
+			k_ok,
+			fmt.tprintf("Expected Parsed_Identifier_Expression, got %v", type_expr.key_type),
+		)
+		testing.expect(
+			t,
+			key.name.text == k,
+			fmt.tprintf("Expected %s as inner type, got %s", k, key.name.text),
+		)
+
+		value, v_ok := type_expr.value_type.(^Parsed_Identifier_Expression)
+		testing.expect(
+			t,
+			v_ok,
+			fmt.tprintf("Expected Parsed_Identifier_Expression, got %v", type_expr.value_type),
+		)
+		testing.expect(
+			t,
+			value.name.text == v,
+			fmt.tprintf("Expected %s as inner type, got %s", v, value.name.text),
+		)
+	}
+}
+
+@(test)
+test_map_literal :: proc(t: ^testing.T) {
+	using lily
+
+	Map_Result :: struct {
+		key:   string,
+		value: string,
+		lit:   bool,
+		count: int,
+	}
+
+	inputs := [?]string{
+		`map of (string, number)`,
+		`map of (string, number)["hello" = 1, "world" = 2]`,
+		`map of (number, bool)[1 = false, 2 = true]`,
+		`map of (number, bool)[]`,
+		`map of (number, bool)[
+			1 = false, 
+			2 = true,
+		]`,
+		`map of (number, bool)[
+			1 = false, 
+			2 = true]`,
+		`map of (number, bool)[
+			1 = false, 
+			2 = true,]`,
+	}
+	expected := [?]Map_Result{
+		{"string", "number", false, 0},
+		{"string", "number", true, 2},
+		{"number", "bool", true, 2},
+		{"number", "bool", true, 0},
+		{"number", "bool", true, 2},
+		{"number", "bool", true, 2},
+		{"number", "bool", true, 2},
+	}
+	parsed_modules := [len(inputs)]^Parsed_Module{}
+
+	track := mem.Tracking_Allocator{}
+	mem.tracking_allocator_init(&track, context.allocator)
+	context.allocator = mem.tracking_allocator(&track)
+	defer clean_parser_test(parsed_modules[:], &track)
+
+	for input, i in inputs {
+		parsed_modules[i] = make_parsed_module("")
+		err := parse_module(input, parsed_modules[i])
+		if err != nil {
+			testing.fail_now(t, fmt.tprintf("%v", err))
+		}
+	}
+
+	for i in 0 ..< len(inputs) {
+		m := parsed_modules[i]
+		e := expected[i]
+		testing.expect(
+			t,
+			len(m.nodes) == 1,
+			fmt.tprintf("Failed at %d, Expected %d nodes, Got %d\n%#v\n", i, 1, len(m.nodes), m),
+		)
+		node := m.nodes[0].(^Parsed_Expression_Statement)
+		if e.lit {
+			map_lit, ok := node.expr.(^Parsed_Map_Literal_Expression)
+			testing.expect(
+				t,
+				ok,
+				fmt.tprintf("Expected Parsed_Map_Literal_Expression, got %v", node.expr),
+			)
+			check_map_type_expression(t, map_lit.type_expr, e.key, e.value)
+			testing.expect(
+				t,
+				len(map_lit.elements) == e.count,
+				fmt.tprintf("Expected %d values, got %d", e.count, len(map_lit.elements)),
+			)
+		} else {
+			check_map_type_expression(t, node.expr, e.key, e.value)
 		}
 	}
 }

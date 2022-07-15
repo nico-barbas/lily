@@ -22,7 +22,6 @@ print_mem_leaks :: proc(track: ^mem.Tracking_Allocator) {
 
 clean_parser_test :: proc(modules: []^lily.Parsed_Module, track: ^mem.Tracking_Allocator) {
 	for module in modules {
-		delete(module.source)
 		lily.delete_parsed_module(module)
 	}
 	print_mem_leaks(track)
