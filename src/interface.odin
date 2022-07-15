@@ -50,6 +50,8 @@ free_state :: proc(s: ^State) {
 }
 
 compile_source :: proc(s: ^State, module_name: string, source: string) -> (err: Error) {
+	DEBUG_PARSER :: true
+
 	s.import_modules_id = make(map[string]int)
 	s.import_modules_name = make(map[int]string)
 	module := make_parsed_module(module_name)
@@ -69,6 +71,11 @@ compile_source :: proc(s: ^State, module_name: string, source: string) -> (err: 
 	parse_dependencies(&parsed_modules, &s.import_modules_id, module) or_return
 	for name, id in s.import_modules_id {
 		s.import_modules_name[id] = name
+	}
+	when DEBUG_PARSER {
+		for p in parsed_modules {
+			print_parsed_ast(p)
+		}
 	}
 	s.checked_modules = make([]^Checked_Module, len(parsed_modules))
 

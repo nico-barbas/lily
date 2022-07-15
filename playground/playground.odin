@@ -46,10 +46,7 @@ playground :: proc() {
 	// 	a.add(13)
 	// `
 	input := `
-	map of (number, bool)[
-		1 = false, 
-		2 = true,
-	]
+	call1(call2())
 	`
 
 	state := new_state(Config{})

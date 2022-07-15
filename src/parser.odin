@@ -65,6 +65,12 @@ Precedence :: enum {
 	Highest,
 }
 
+Expr_Loop_State :: enum {
+	Loop,
+	Expect_Next,
+	End,
+}
+
 parse_dependencies :: proc(
 	buf: ^[dynamic]^Parsed_Module,
 	lookup: ^map[string]int,
@@ -177,6 +183,80 @@ match_token_kind_next :: proc(p: ^Parser, kind: Token_Kind, loc := #caller_locat
 			},
 			loc,
 		)
+	}
+	return
+}
+
+advance_expr_loop :: proc(p: ^Parser, end_token: Token_Kind) -> (s: Expr_Loop_State, err: Error) {
+	#partial switch p.current.kind {
+	case .EOF:
+		err = format_error(
+			Parsing_Error{
+				kind = .Invalid_Syntax,
+				token = p.previous,
+				details = fmt.tprintf(
+					"Expected %s, got %s",
+					end_token,
+					p.current.kind,
+				),
+			},
+		)
+		return
+	case .Newline:
+		if p.expect_punctuation {
+			err = format_error(
+				Parsing_Error{
+					kind = .Invalid_Syntax,
+					token = p.previous,
+					details = fmt.tprintf(
+						"Expected one of: %s, %s, got %s",
+						Token_Kind.Comma,
+						end_token,
+						p.current.kind,
+					),
+				},
+			)
+			return
+		} else {
+			consume_token(p)
+			s = .Loop
+		}
+	case end_token:
+		s = .End
+		consume_token(p)
+	case .Comma:
+		if !p.expect_punctuation {
+			err = format_error(
+				Parsing_Error{
+					kind = .Invalid_Syntax,
+					token = p.previous,
+					details = fmt.tprintf("Expected expression, got %s", p.current.kind),
+				},
+			)
+			return
+		} else {
+			s = .Loop
+			p.expect_punctuation = false
+			consume_token(p)
+		}
+	case:
+		if p.expect_punctuation {
+			err = format_error(
+				Parsing_Error{
+					kind = .Invalid_Syntax,
+					token = p.previous,
+					details = fmt.tprintf(
+						"Expected one of: %s, %s, got %s",
+						Token_Kind.Comma,
+						end_token,
+						p.current.kind,
+					),
+				},
+			)
+			return
+		} else {
+			s = .Expect_Next
+		}
 	}
 	return
 }
@@ -791,33 +871,20 @@ parse_group :: proc(p: ^Parser) -> (result: Parsed_Expression, err: Error) {
 parse_call :: proc(p: ^Parser, left: Parsed_Expression) -> (result: Parsed_Expression, err: Error) {
 	call := new_clone(Parsed_Call_Expression{func = left, args = make([dynamic]Parsed_Expression)})
 
-	if p.current.kind != .Close_Paren {
-		args: for {
+	p.expect_punctuation = false
+	args: for {
+		state := advance_expr_loop(p, .Close_Paren) or_return
+		switch state {
+		case .Loop:
+			continue args
+		case .Expect_Next:
 			arg := parse_expr(p, .Lowest) or_return
 			append(&call.args, arg)
-			consume_token(p)
-			#partial switch p.previous.kind {
-			case .Close_Paren:
-				break args
-			case .Comma:
-				continue args
-			case:
-				err = Parsing_Error {
-					kind    = .Invalid_Syntax,
-					token   = p.current,
-					details = fmt.tprintf(
-						"Expected one of: %s, %s, got %s",
-						Token_Kind.Comma,
-						Token_Kind.Close_Paren,
-						p.previous.kind,
-					),
-				}
-				return
-			}
-
+			p.expect_punctuation = true
+		case .End:
+			break args
 		}
 	}
-
 	result = call
 	return
 }
@@ -843,63 +910,17 @@ parse_array :: proc(p: ^Parser, left: Parsed_Expression) -> (result: Parsed_Expr
 	p.expect_punctuation = false
 	array.values = make([dynamic]Parsed_Expression)
 	array_elements: for {
-		#partial switch p.current.kind {
-		case .EOF:
-			err = format_error(
-				Parsing_Error{
-					kind = .Invalid_Syntax,
-					token = p.previous,
-					details = fmt.tprintf(
-						"Expected %s, got %s",
-						Token_Kind.Close_Bracket,
-						p.current.kind,
-					),
-				},
-			)
-			return
-		case .Newline:
-			if p.expect_punctuation {
-				err = format_error(
-					Parsing_Error{
-						kind = .Invalid_Syntax,
-						token = p.previous,
-						details = fmt.tprintf(
-							"Expected one of: %s, %s, got %s",
-							Token_Kind.Comma,
-							Token_Kind.Close_Bracket,
-							p.current.kind,
-						),
-					},
-				)
-				return
-			} else {
-				consume_token(p)
-				continue array_elements
-			}
-
-		case .Close_Bracket:
+		state := advance_expr_loop(p, .Close_Bracket) or_return
+		switch state {
+		case .Loop:
+			continue array_elements
+		case .Expect_Next:
+			element := parse_expr(p, .Lowest) or_return
+			append(&array.values, element)
+			p.expect_punctuation = true
+		case .End:
 			break array_elements
-
-		case .Comma:
-			if !p.expect_punctuation {
-				err = format_error(
-					Parsing_Error{
-						kind = .Invalid_Syntax,
-						token = p.previous,
-						details = fmt.tprintf("Expected expression, got %s", p.current.kind),
-					},
-				)
-				return
-			} else {
-				p.expect_punctuation = false
-				consume_token(p)
-				continue array_elements
-			}
 		}
-
-		element := parse_expr(p, .Lowest) or_return
-		append(&array.values, element)
-		p.expect_punctuation = true
 	}
 	result = array
 	return
@@ -916,86 +937,21 @@ parse_map :: proc(p: ^Parser, left: Parsed_Expression) -> (result: Parsed_Expres
 
 	p.expect_punctuation = false
 	map_elements: for {
-		#partial switch p.current.kind {
-		case .EOF:
-			err = format_error(
-				Parsing_Error{
-					kind = .Invalid_Syntax,
-					token = p.previous,
-					details = fmt.tprintf(
-						"Expected %s, got %s",
-						Token_Kind.Close_Bracket,
-						p.current.kind,
-					),
-				},
-			)
-			return
-
-		case .Newline:
-			if p.expect_punctuation {
-				err = format_error(
-					Parsing_Error{
-						kind = .Invalid_Syntax,
-						token = p.previous,
-						details = fmt.tprintf(
-							"Expected one of: %s, %s, got %s",
-							Token_Kind.Comma,
-							Token_Kind.Close_Bracket,
-							p.current.kind,
-						),
-					},
-				)
-				return
-			} else {
-				consume_token(p)
-				continue map_elements
-			}
-	
-		case .Close_Bracket:
+		state := advance_expr_loop(p, .Close_Bracket) or_return
+		switch state {
+		case .Loop:
+			continue map_elements
+		case .Expect_Next:
+			element := Parsed_Map_Element{}
+			element.key = parse_expr(p, .Lowest) or_return
+			match_token_kind(p, .Assign) or_return
+			consume_token(p)
+			element.value = parse_expr(p, .Lowest) or_return
+			append(&m.elements, element)
+			p.expect_punctuation = true
+		case .End:
 			break map_elements
-	
-		case .Comma:
-			if !p.expect_punctuation {
-				err = format_error(
-					Parsing_Error{
-						kind = .Invalid_Syntax,
-						token = p.previous,
-						details = fmt.tprintf("Expected expression, got %s", p.current.kind),
-					},
-				)
-				return
-			} else {
-				p.expect_punctuation = false
-				consume_token(p)
-				continue map_elements
-			}
 		}
-
-		element := Parsed_Map_Element{}
-		element.key = parse_expr(p, .Lowest) or_return
-		match_token_kind(p, .Assign) or_return
-		consume_token(p)
-		element.value = parse_expr(p, .Lowest) or_return
-		append(&m.elements, element)
-		p.expect_punctuation = true
-		// #partial switch p.previous.kind {
-		// case .Close_Bracket:
-		// 	break map_elements
-		// case .Comma:
-		// 	continue map_elements
-		// case:
-		// 	err = Parsing_Error {
-		// 		kind    = .Invalid_Syntax,
-		// 		token   = p.previous,
-		// 		details = fmt.tprintf(
-		// 			"Expected one of: %s, %s, got %s",
-		// 			Token_Kind.Comma,
-		// 			Token_Kind.Close_Bracket,
-		// 			p.previous.kind,
-		// 		),
-		// 	}
-		// 	return
-		// }
 	}
 	result = m
 	return
