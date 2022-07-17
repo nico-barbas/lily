@@ -46,16 +46,14 @@ playground :: proc() {
 	// 	a.add(13)
 	// `
 	input := `
-	fn add(): number
-		result = 2
-	end
+	var b = map of (string, number)["hello" = 1]
 	`
 
 	state := new_state(Config{})
 	err := compile_source(state, "main", input)
 	assert(err == nil, fmt.tprint(err))
 
-	// run_module(state, "main")
-	// free_state(state)
+	run_module(state, "main")
+	free_state(state)
 	fmt.println("finished")
 }

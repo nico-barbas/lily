@@ -355,6 +355,22 @@ run_vm :: proc(vm: ^Vm) {
 			append(&array.data, pop_stack_value(vm))
 			push_stack_value(vm, array_val)
 
+		case .Op_Make_Map:
+			init_elem_count := get_i16(vm)
+			data := make(map[Value]Value)
+			for i in 0 ..< init_elem_count {
+				k := pop_stack_value(vm)
+				v := pop_stack_value(vm)
+				data[v] = k
+			}
+			push_stack_value(
+				vm,
+				Value{
+					kind = .Object_Ref,
+					data = cast(^Object)new_clone(Map_Object{base = Object{kind = .Map}, data = data}),
+				},
+			)
+
 		case .Op_Length:
 			array := cast(^Array_Object)pop_stack_value(vm).data.(^Object)
 			push_stack_value(vm, Value{kind = .Number, data = f64(len(array.data))})

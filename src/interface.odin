@@ -31,7 +31,7 @@ new_state :: proc(c: Config) -> ^State {
 	//odinfmt: disable
 	s := new_clone(State{
 		checker = Checker{},
-		std_builder = strings.make_builder(0, 200),
+		std_builder = strings.builder_make(0, 200),
 		get_value = proc(state: ^State, at: int) -> Value {
 			return state.value_buf[at]
 		},
@@ -43,17 +43,16 @@ new_state :: proc(c: Config) -> ^State {
 }
 
 free_state :: proc(s: ^State) {
-	strings.destroy_builder(&s.std_builder)
+	strings.builder_destroy(&s.std_builder)
 	free_checker(&s.checker)
 	delete(s.import_modules_name)
 	free(s)
 }
 
 compile_source :: proc(s: ^State, module_name: string, source: string) -> (err: Error) {
-	DEBUG_PARSER :: true
+	DEBUG_PARSER :: false
 	DEBUG_CHECKER :: true
 	DEBUG_COMPILER :: true
-	DEBUG_VM :: true
 
 	s.import_modules_id = make(map[string]int)
 	s.import_modules_name = make(map[int]string)
@@ -94,10 +93,10 @@ compile_source :: proc(s: ^State, module_name: string, source: string) -> (err: 
 
 	s.compiled_modules = make_compiled_program(s)
 	for i in 0 ..< len(s.compiled_modules) {
+		compile_module(s, i)
 		when DEBUG_CHECKER {
 			print_checked_ast(s.checked_modules[i], &s.checker)
 		}
-		compile_module(s, i)
 		when DEBUG_COMPILER {
 			print_compiled_module(s.compiled_modules[i])
 		}
@@ -106,13 +105,15 @@ compile_source :: proc(s: ^State, module_name: string, source: string) -> (err: 
 }
 
 run_module :: proc(s: ^State, module_name: string) {
+	DEBUG_VM :: true
 	entry_point := s.import_modules_id[module_name]
 	vm := Vm {
-		modules      = s.compiled_modules,
-		current      = s.compiled_modules[entry_point],
-		chunk        = &s.compiled_modules[entry_point].main,
-		state        = s,
-		call_foreign = call_foreign_fn,
+		modules               = s.compiled_modules,
+		current               = s.compiled_modules[entry_point],
+		chunk                 = &s.compiled_modules[entry_point].main,
+		state                 = s,
+		call_foreign          = call_foreign_fn,
+		show_debug_stack_info = DEBUG_VM,
 	}
 	run_vm(&vm)
 }
@@ -160,7 +161,7 @@ foreign fn print(s: any):
 
 std_print :: proc(state: ^State) {
 	value := state->get_value(0)
-	strings.reset_builder(&state.std_builder)
+	strings.builder_reset(&state.std_builder)
 	switch value.kind {
 	case .Nil:
 		fmt.println("nil")
@@ -172,19 +173,19 @@ std_print :: proc(state: ^State) {
 		case .String:
 			str_object := cast(^String_Object)obj
 			for r in str_object.data {
-				strings.write_rune_builder(&state.std_builder, r)
+				strings.write_rune(&state.std_builder, r)
 			}
 			fmt.println(strings.to_string(state.std_builder))
 		case .Array:
 			array := cast(^Array_Object)obj
-			strings.write_rune_builder(&state.std_builder, '[')
+			strings.write_rune(&state.std_builder, '[')
 			for elem, i in array.data {
 				fmt.sbprint(&state.std_builder, elem.data)
 				if i < len(array.data) - 1 {
 					fmt.sbprint(&state.std_builder, ", ")
 				}
 			}
-			strings.write_rune_builder(&state.std_builder, ']')
+			strings.write_rune(&state.std_builder, ']')
 			fmt.println(strings.to_string(state.std_builder))
 
 		case .Class:

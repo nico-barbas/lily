@@ -45,7 +45,7 @@ value_equal :: proc(v1, v2: Value) -> bool {
 Object_Kind :: enum {
 	String,
 	Array,
-	// Map,
+	Map,
 	Fn,
 	Class,
 }
@@ -95,7 +95,9 @@ Class_Vtable :: struct {
 }
 
 new_string_object :: proc(from := "") -> Value {
-	str_object := new_clone(String_Object{base = Object{kind = .String}, data = make([]rune, len(from))})
+	str_object := new_clone(
+	String_Object{base = Object{kind = .String}, data = make([]rune, len(from))},
+	)
 	for r, i in from {
 		str_object.data[i] = r
 	}
@@ -105,7 +107,18 @@ new_string_object :: proc(from := "") -> Value {
 new_array_object :: proc() -> Value {
 	return Value{
 		kind = .Object_Ref,
-		data = cast(^Object)new_clone(Array_Object{base = Object{kind = .Array}, data = make([dynamic]Value)}),
+		data = cast(^Object)new_clone(
+		Array_Object{base = Object{kind = .Array}, data = make([dynamic]Value)},
+		),
+	}
+}
+
+new_map_object :: proc() -> Value {
+	return Value{
+		kind = .Object_Ref,
+		data = cast(^Object)new_clone(
+		Map_Object{base = Object{kind = .Map}, data = make(map[Value]Value)},
+		),
 	}
 }
 
@@ -113,6 +126,7 @@ free_object :: proc(object: ^Object) {
 	switch object.kind {
 	case .String:
 	case .Array:
+	case .Map:
 	case .Fn:
 		fn_object := cast(^Fn_Object)object
 	// delete_chunk(&fn_object.chunk)

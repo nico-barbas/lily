@@ -52,9 +52,10 @@ Op_Code :: enum byte {
 	Op_Set_Field,
 
 	// Allocation related Op_Codes
-	Op_Make_Array,
 	Op_Make_Instance,
+	Op_Make_Array,
 	Op_Append_Array,
+	Op_Make_Map,
 	Op_Length,
 }
 
@@ -105,6 +106,8 @@ instr_length := map[Op_Code]int {
 	.Op_Make_Instance = 1,
 	.Op_Make_Array    = 1,
 	.Op_Append_Array  = 1,
+	.Op_Make_Map      = 3,
+	.Op_Length        = 1,
 }
 
 Const_Pool :: distinct [dynamic]Value

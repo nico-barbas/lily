@@ -50,20 +50,20 @@ make_compiled_program :: proc(state: ^State) -> []^Compiled_Module {
 	for module, i in state.checked_modules {
 		current := output[i]
 		current = new_clone(
-			Compiled_Module{
-				id = i,
-				class_addr = make(map[string]i16),
-				class_consts = make([]Const_Pool, len(module.classes)),
-				class_fields = make([]map[string]i16, len(module.classes)),
-				class_constructors = make([]map[string]i16, len(module.classes)),
-				class_methods = make([]map[string]i16, len(module.classes)),
-				protypes = make([]Class_Object, len(module.classes)),
-				vtables = make([]Class_Vtable, len(module.classes)),
-				fn_addr = make(map[string]i16),
-				functions = make([]Fn_Object, len(module.functions)),
-				var_addr = make(map[string]i16),
-				variables = make([]Value, len(module.variables)),
-			},
+		Compiled_Module{
+			id = i,
+			class_addr = make(map[string]i16),
+			class_consts = make([]Const_Pool, len(module.classes)),
+			class_fields = make([]map[string]i16, len(module.classes)),
+			class_constructors = make([]map[string]i16, len(module.classes)),
+			class_methods = make([]map[string]i16, len(module.classes)),
+			protypes = make([]Class_Object, len(module.classes)),
+			vtables = make([]Class_Vtable, len(module.classes)),
+			fn_addr = make(map[string]i16),
+			functions = make([]Fn_Object, len(module.functions)),
+			var_addr = make(map[string]i16),
+			variables = make([]Value, len(module.variables)),
+		},
 		)
 
 		for node, j in module.classes {
@@ -490,6 +490,11 @@ compile_expr :: proc(c: ^Compiler, expr: Checked_Expression) {
 		}
 
 	case ^Checked_Map_Literal_Expression:
+		for elem in e.elements {
+			compile_expr(c, elem.key)
+			compile_expr(c, elem.value)
+		}
+		push_simple_instruction(&c.chunk, .Op_Make_Map, i16(len(e.elements)))
 
 
 	case ^Checked_Unary_Expression:

@@ -16,10 +16,10 @@ Debug_Printer :: struct {
 
 print_parsed_ast :: proc(program: ^Parsed_Module) {
 	printer := Debug_Printer {
-		builder      = strings.make_builder(),
+		builder      = strings.builder_make(),
 		indent_width = 2,
 	}
-	defer strings.destroy_builder(&printer.builder)
+	defer strings.builder_destroy(&printer.builder)
 
 	write_line(&printer, "================ \n")
 	write(&printer, "== PARSED AST == \n")
@@ -339,10 +339,10 @@ print_parsed_node :: proc(p: ^Debug_Printer, node: Parsed_Node) {
 
 print_checked_ast :: proc(module: ^Checked_Module, checker: ^Checker) {
 	printer := Debug_Printer {
-		builder      = strings.make_builder(),
+		builder      = strings.builder_make(),
 		indent_width = 2,
 	}
-	defer strings.destroy_builder(&printer.builder)
+	defer strings.builder_destroy(&printer.builder)
 
 	write_line(&printer, "================= \n")
 	write(&printer, "== CHECKED AST ==")
@@ -641,10 +641,10 @@ print_checked_node :: proc(p: ^Debug_Printer, c: ^Checker, node: Checked_Node) {
 
 print_symbol_table :: proc(c: ^Checker, m: ^Checked_Module) {
 	printer := Debug_Printer {
-		builder      = strings.make_builder(),
+		builder      = strings.builder_make(),
 		indent_width = 2,
 	}
-	defer strings.destroy_builder(&printer.builder)
+	defer strings.builder_destroy(&printer.builder)
 	scope := m.scope
 	for scope.parent != nil {
 		scope = scope.parent
@@ -658,10 +658,10 @@ print_symbol_table :: proc(c: ^Checker, m: ^Checked_Module) {
 
 print_semantic_scope_standalone :: proc(c: ^Checker, s: ^Semantic_Scope) {
 	printer := Debug_Printer {
-		builder      = strings.make_builder(),
+		builder      = strings.builder_make(),
 		indent_width = 2,
 	}
-	defer strings.destroy_builder(&printer.builder)
+	defer strings.builder_destroy(&printer.builder)
 	print_semantic_scope(&printer, c, s)
 	fmt.println(strings.to_string(printer.builder))
 }
@@ -753,19 +753,19 @@ print_symbol :: proc(p: ^Debug_Printer, symbol: ^Symbol, leading_char := "-") {
 // Utility procedures
 
 write :: proc(p: ^Debug_Printer, s: string = "") {
-	strings.write_string_builder(&p.builder, s)
+	strings.write_string(&p.builder, s)
 }
 
 write_line :: proc(p: ^Debug_Printer, s: string = "") {
 	strings.write_byte(&p.builder, '\n')
 	indent(p)
-	strings.write_string_builder(&p.builder, s)
+	strings.write_string(&p.builder, s)
 }
 
 indent :: proc(p: ^Debug_Printer) {
 	whitespace := p.indent_level * p.indent_width
 	for _ in 0 ..< whitespace {
-		strings.write_rune_builder(&p.builder, ' ')
+		strings.write_rune(&p.builder, ' ')
 	}
 }
 
@@ -783,10 +783,10 @@ decrement :: proc(p: ^Debug_Printer) {
 
 print_compiled_module :: proc(m: ^Compiled_Module) {
 	printer := Debug_Printer {
-		builder      = strings.make_builder(),
+		builder      = strings.builder_make(),
 		indent_width = 2,
 	}
-	defer strings.destroy_builder(&printer.builder)
+	defer strings.builder_destroy(&printer.builder)
 
 	write_line(&printer, "================= \n")
 	write(&printer, "== CLASSES  ==")
@@ -892,6 +892,7 @@ op_code_str := map[Op_Code]string {
 	.Op_Make_Instance = "Op_Make_Instance",
 	.Op_Make_Array    = "Op_Make_Array",
 	.Op_Append_Array  = "Op_Append_Array",
+	.Op_Make_Map      = "Op_Make_Map",
 	.Op_Length        = "Op_Length",
 }
 
@@ -996,6 +997,9 @@ print_chunk :: proc(p: ^Debug_Printer, c: ^Chunk) {
 
 		case .Op_Make_Instance, .Op_Make_Array, .Op_Append_Array, .Op_Length:
 			fmt.sbprintf(&p.builder, " ||")
+
+		case .Op_Make_Map:
+			fmt.sbprintf(&p.builder, " || init element count: %d", debug_get_i16(c, &ip))
 		}
 		if ip >= len(c.bytecode) {
 			break
@@ -1008,10 +1012,10 @@ print_chunk :: proc(p: ^Debug_Printer, c: ^Chunk) {
 
 print_stack :: proc(vm: ^Vm, op := Op_Code.Op_None) {
 	printer := Debug_Printer {
-		builder      = strings.make_builder(),
+		builder      = strings.builder_make(),
 		indent_width = 2,
 	}
-	defer strings.destroy_builder(&printer.builder)
+	defer strings.builder_destroy(&printer.builder)
 
 	write_line(&printer, "========================= \n")
 	write(&printer, "== VM STACK DEBUG VIEW == \n")
@@ -1043,7 +1047,7 @@ print_value :: proc(p: ^Debug_Printer, value: Value) {
 			str_object := cast(^String_Object)data
 			write(p, `"`)
 			for r in str_object.data {
-				strings.write_rune_builder(&p.builder, r)
+				strings.write_rune(&p.builder, r)
 			}
 			write(p, `"`)
 		case .Array:
@@ -1054,6 +1058,18 @@ print_value :: proc(p: ^Debug_Printer, value: Value) {
 				write(p, `,`)
 			}
 			write(p, `]`)
+
+		case .Map:
+			map_object := cast(^Map_Object)data
+			write(p, `[`)
+			for key, value in map_object.data {
+				print_value(p, key)
+				write(p, ` = `)
+				print_value(p, value)
+				write(p, `,`)
+			}
+			write(p, `]`)
+
 		case .Fn:
 		case .Class:
 			class_object := cast(^Class_Object)data
