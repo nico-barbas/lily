@@ -6,7 +6,7 @@ import "core:testing"
 import lily "../src"
 
 @(private)
-check_expr_type :: proc(t: ^testing.T, expr: lily.Parsed_Expression, kind: string) {
+check_expr_kind :: proc(t: ^testing.T, expr: lily.Parsed_Expression, kind: string) {
 	using lily
 
 	switch kind {
@@ -50,6 +50,10 @@ check_expr_type :: proc(t: ^testing.T, expr: lily.Parsed_Expression, kind: strin
 		e, ok := expr.(^Parsed_Call_Expression)
 		testing.expect(t, ok, fmt.tprintf("Expected Parsed_Call_Expression, got %v", expr))
 	}
+}
+
+check_node_kind :: proc(t: ^testing.T, node: lily.Parsed_Node, k: string) {
+
 }
 
 print_mem_leaks :: proc(track: ^mem.Tracking_Allocator) {

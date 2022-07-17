@@ -42,8 +42,8 @@ test_assign_statement :: proc(t: ^testing.T) {
 		node, ok := m.nodes[0].(^Parsed_Assignment_Statement)
 		testing.expect(t, ok, fmt.tprintf("Expected Parsed_Assignment_Statement, got %v", node))
 
-		check_expr_type(t, node.left, e.left)
-		check_expr_type(t, node.right, e.right)
+		check_expr_kind(t, node.left, e.left)
+		check_expr_kind(t, node.right, e.right)
 	}
 }
 
@@ -125,7 +125,7 @@ test_if_statement :: proc(t: ^testing.T) {
 
 		branch = node
 		for j in 0 ..< e.branches {
-			check_expr_type(t, branch.condition, e.kind)
+			check_expr_kind(t, branch.condition, e.kind)
 			testing.expect(
 				t,
 				e.node_counts[j] == len(branch.body.nodes),
@@ -238,8 +238,8 @@ test_range_statement :: proc(t: ^testing.T) {
 		node, ok := m.nodes[0].(^Parsed_Range_Statement)
 		testing.expect(t, ok, fmt.tprintf("Expected Parsed_Range_Statement, got %v", node))
 
-		check_expr_type(t, node.low, e.low)
-		check_expr_type(t, node.high, e.high)
+		check_expr_kind(t, node.low, e.low)
+		check_expr_kind(t, node.high, e.high)
 		testing.expect(
 			t,
 			e.node_count == len(node.body.nodes),
@@ -259,6 +259,134 @@ test_range_statement :: proc(t: ^testing.T) {
 				has_flow_stmt(node.body, .Break),
 				fmt.tprintf("Expected Break Statement node in body %d", i),
 			)
+		}
+	}
+}
+
+@(test)
+test_match_statement :: proc(t: ^testing.T) {
+	using lily
+
+	Match_Result :: struct {
+		eval:               string,
+		case_counts:        int,
+		cases:              []string,
+		case_innner_counts: []int,
+	}
+
+	inputs := [?]string{
+		`
+        match foobar:
+            when 1:
+                if a:
+                    var b = 2
+                end
+            end
+            when 2:
+                var c = true
+            end
+            when 3:
+                var d = "world"
+            end
+        end
+        `,
+		`
+        match foobar:
+            when 1:
+                if a:
+                    var b = 2
+                end
+            end
+        end
+        `,
+	}
+    //odinfmt: disable
+	expected := [?]Match_Result{
+        {"ident", 3, {"lit", "lit", "lit"}, {1, 1, 1}},
+        {"ident", 1, {"lit"}, {1}},
+    }
+    //odinfmt: enable
+	parsed_modules := [len(inputs)]^Parsed_Module{}
+
+	track := mem.Tracking_Allocator{}
+	mem.tracking_allocator_init(&track, context.allocator)
+	context.allocator = mem.tracking_allocator(&track)
+	defer clean_parser_test(parsed_modules[:], &track)
+
+	for input, i in inputs {
+		parsed_modules[i] = make_parsed_module("")
+		err := parse_module(input, parsed_modules[i])
+		if err != nil {
+			testing.fail_now(t, fmt.tprintf("%v", err))
+		}
+	}
+
+	for i in 0 ..< len(inputs) {
+		m := parsed_modules[i]
+		e := expected[i]
+		testing.expect(
+			t,
+			len(m.nodes) == 1,
+			fmt.tprintf("Failed at %d, Expected %d nodes, Got %d\n%s\n", i, len(m.nodes), i, inputs[i]),
+		)
+		node, ok := m.nodes[0].(^Parsed_Match_Statement)
+		testing.expect(t, ok, fmt.tprintf("Expected Parsed_Match_Statement, got %v", node))
+
+		check_expr_kind(t, node.evaluation, e.eval)
+		testing.expect(
+			t,
+			e.case_counts == len(node.cases),
+			fmt.tprintf("Expected %d cases, Got %d\n", e.case_counts, len(node.cases)),
+		)
+
+		for c, j in node.cases {
+			check_expr_kind(t, c.condition, e.cases[j])
+			testing.expect(
+				t,
+				e.case_innner_counts[j] == len(c.body.nodes),
+				fmt.tprintf(
+					"Expected %d nodes in case %d, Got %d\n",
+					e.case_innner_counts[j],
+					j,
+					len(c.body.nodes),
+				),
+			)
+		}
+	}
+}
+
+@(test)
+test_nested_control_flow :: proc(t: ^testing.T) {
+	using lily
+
+	inputs := [?]string{
+		`
+        if true:
+            for i in 0..100:
+                match i:
+                    when 10:
+                        std.print(i)
+                    end
+                    when 20:
+                        std.print(i)
+                    end
+                end
+            end
+        end
+        `,
+	}
+	parsed_modules := [len(inputs)]^Parsed_Module{}
+
+	track := mem.Tracking_Allocator{}
+	mem.tracking_allocator_init(&track, context.allocator)
+	context.allocator = mem.tracking_allocator(&track)
+	defer clean_parser_test(parsed_modules[:], &track)
+
+	for input, i in inputs {
+		parsed_modules[i] = make_parsed_module("")
+		err := parse_module(input, parsed_modules[i])
+		if err != nil {
+			testing.fail_now(t, fmt.tprintf("%v", err))
 		}
 	}
 }

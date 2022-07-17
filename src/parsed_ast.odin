@@ -11,13 +11,13 @@ Parsed_Module :: struct {
 
 make_parsed_module :: proc(name: string) -> ^Parsed_Module {
 	return new_clone(
-		Parsed_Module{
-			name = name,
-			import_nodes = make([dynamic]Parsed_Node),
-			types = make([dynamic]Parsed_Node),
-			functions = make([dynamic]Parsed_Node),
-			nodes = make([dynamic]Parsed_Node),
-		},
+	Parsed_Module{
+		name = name,
+		import_nodes = make([dynamic]Parsed_Node),
+		types = make([dynamic]Parsed_Node),
+		functions = make([dynamic]Parsed_Node),
+		nodes = make([dynamic]Parsed_Node),
+	},
 	)
 }
 
@@ -223,6 +223,9 @@ free_parsed_expression :: proc(expr: Parsed_Expression) {
 		free(e)
 
 	case ^Parsed_Identifier_Expression:
+		if e.name.text == "untyped" {
+			return
+		}
 		free(e)
 
 	case ^Parsed_Index_Expression:

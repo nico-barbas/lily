@@ -46,12 +46,17 @@ playground :: proc() {
 	// 	a.add(13)
 	// `
 	input := `
-	for i in 0..a:
-        if i % 2 == 0:
-            continue
+	match foobar:
+        when 1:
+            if a:
+                var b = 2
+            end
         end
-        if i == 10:
-            break
+        when 2:
+            var c = true
+        end
+        when 3:
+            var d = "world"
         end
     end
 	`

@@ -498,6 +498,7 @@ parse_match_stmt :: proc(p: ^Parser) -> (result: ^Parsed_Match_Statement, err: E
 					append(&current.body.nodes, body_node)
 				}
 				if p.current.kind == .End {
+					consume_token(p)
 					break body
 				}
 			}
