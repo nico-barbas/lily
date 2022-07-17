@@ -264,7 +264,6 @@ build_checked_program :: proc(c: ^Checker, names: map[string]int, p: []^Parsed_M
 	result: []^Checked_Module,
 	err: Error,
 ) {
-	fmt.println(p)
 	c.module_names = names
 	c.parsed = p
 	c.current_parsed = p[names[e]]

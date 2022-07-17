@@ -627,12 +627,22 @@ parse_fn_decl :: proc(p: ^Parser) -> (result: ^Parsed_Fn_Declaration, err: Error
 		}
 	}
 	match_token_kind_next(p, .Open_Paren) or_return
+	consume_token(p)
 
-	// We check if the function has parameters or not 
-	#partial switch peek_next_token(p).kind {
-	// If it has, we loop and gather all their relevant data (name and type expression) 
-	case .Identifier:
-		params: for {
+	p.expect_punctuation = false
+	params: for {
+		// param: Typed_Identifier
+		// match_token_kind_next(p, .Identifier) or_return
+		// param.name = p.current
+		// match_token_kind_next(p, .Colon) or_return
+		// consume_token(p)
+		// param.type_expr = parse_expr(p, .Lowest) or_return
+		// append(&result.parameters, param)
+		state := advance_expr_loop(p, .Close_Paren) or_return
+		switch state {
+		case .Loop:
+			continue params
+		case .Expect_Next:
 			param: Typed_Identifier
 			match_token_kind_next(p, .Identifier) or_return
 			param.name = p.current
@@ -640,47 +650,14 @@ parse_fn_decl :: proc(p: ^Parser) -> (result: ^Parsed_Fn_Declaration, err: Error
 			consume_token(p)
 			param.type_expr = parse_expr(p, .Lowest) or_return
 			append(&result.parameters, param)
-
-			#partial switch p.current.kind {
-			case .Comma:
-				continue params
-			case .Close_Paren:
-				break params
-			case:
-				err = Parsing_Error {
-					kind    = .Invalid_Syntax,
-					token   = p.current,
-					details = fmt.tprintf(
-						"Expected one of: %s, %s, got %s",
-						Token_Kind.Comma,
-						Token_Kind.Close_Paren,
-						p.current.kind,
-					),
-				}
-				return
-			}
-		}
-
-	// Otherwise, we just move on
-	case .Close_Paren:
-		consume_token(p)
-
-	// Any other token kind is an error
-	case:
-		err = Parsing_Error {
-			kind    = .Invalid_Syntax,
-			token   = p.current,
-			details = fmt.tprintf(
-				"Expected one of: %s, %s, got %s",
-				Token_Kind.Identifier,
-				Token_Kind.Close_Paren,
-				p.current.kind,
-			),
+			p.expect_punctuation = true
+		case .End:
+			break params
 		}
 	}
 
 	// The after ':' after the parameters parenthesis
-	match_token_kind_next(p, .Colon) or_return
+	match_token_kind(p, .Colon) or_return
 
 	// We check if the function has a return value or if it is void
 	// A newline is the delimiter for the function declaration signature 

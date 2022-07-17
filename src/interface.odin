@@ -65,7 +65,6 @@ compile_source :: proc(s: ^State, module_name: string, source: string) -> (err: 
 		delete(parsed_modules)
 	}
 	append(&parsed_modules, module)
-	fmt.println(parsed_modules)
 	s.import_modules_id[module_name] = 0
 
 	parse_dependencies(&parsed_modules, &s.import_modules_id, module) or_return

@@ -46,7 +46,9 @@ playground :: proc() {
 	// 	a.add(13)
 	// `
 	input := `
-	call1(call2())
+	fn add(): number
+		result = 2
+	end
 	`
 
 	state := new_state(Config{})
