@@ -51,6 +51,9 @@ free_state :: proc(s: ^State) {
 
 compile_source :: proc(s: ^State, module_name: string, source: string) -> (err: Error) {
 	DEBUG_PARSER :: true
+	DEBUG_CHECKER :: true
+	DEBUG_COMPILER :: true
+	DEBUG_VM :: true
 
 	s.import_modules_id = make(map[string]int)
 	s.import_modules_name = make(map[int]string)
@@ -91,15 +94,27 @@ compile_source :: proc(s: ^State, module_name: string, source: string) -> (err: 
 
 	s.compiled_modules = make_compiled_program(s)
 	for i in 0 ..< len(s.compiled_modules) {
-		print_checked_ast(s.checked_modules[i], &s.checker)
+		when DEBUG_CHECKER {
+			print_checked_ast(s.checked_modules[i], &s.checker)
+		}
 		compile_module(s, i)
-		print_compiled_module(s.compiled_modules[i])
+		when DEBUG_COMPILER {
+			print_compiled_module(s.compiled_modules[i])
+		}
 	}
 	return
 }
 
 run_module :: proc(s: ^State, module_name: string) {
-	run_program(s, s.import_modules_id[module_name])
+	entry_point := s.import_modules_id[module_name]
+	vm := Vm {
+		modules      = s.compiled_modules,
+		current      = s.compiled_modules[entry_point],
+		chunk        = &s.compiled_modules[entry_point].main,
+		state        = s,
+		call_foreign = call_foreign_fn,
+	}
+	run_vm(&vm)
 }
 
 Foreign_Decl_Info :: struct {

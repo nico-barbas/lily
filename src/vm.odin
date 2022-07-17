@@ -3,21 +3,28 @@ package lily
 import "core:fmt"
 
 Vm :: struct {
-	ip:          int,
-	modules:     []^Compiled_Module,
-	current:     ^Compiled_Module,
-	chunk:       ^Chunk,
+	ip:                    int,
+	modules:               []^Compiled_Module,
+	current:               ^Compiled_Module,
+	chunk:                 ^Chunk,
+
+	// Callbacks
+	state:                 ^State,
+	call_foreign:          proc(s: ^State, fn: Foreign_Procedure, stack_slice: []Value),
 
 	// Stack states
-	call_stack:  [255]struct {
+	call_stack:            [255]struct {
 		chunk: ^Chunk,
 		ip:    int,
 	},
-	call_count:  int,
-	stack:       [255]Value,
-	header_addr: int,
-	stack_ptr:   int,
-	stack_depth: int,
+	call_count:            int,
+	stack:                 [255]Value,
+	header_addr:           int,
+	stack_ptr:             int,
+	stack_depth:           int,
+
+	// vm flags
+	show_debug_stack_info: bool,
 }
 
 get_byte :: proc(vm: ^Vm) -> byte {
@@ -111,257 +118,252 @@ get_var_stack_addr :: proc(vm: ^Vm, var_addr: i16) -> int {
 	return vm.chunk.variables[var_addr].stack_addr
 }
 
-run_program :: proc(state: ^State, entry_point: int) {
-	vm := Vm {
-		modules = state.compiled_modules,
-		current = state.compiled_modules[entry_point],
-		chunk   = &state.compiled_modules[entry_point].main,
-	}
-
+run_vm :: proc(vm: ^Vm) {
 	run: for {
-		op := get_op_code(&vm)
+		op := get_op_code(vm)
 		switch op {
 		case .Op_None:
 			assert(false, "Invalid Op Code")
 
 		case .Op_Push:
-			push_stack_value(&vm, {})
+			push_stack_value(vm, {})
 
 		case .Op_Pop:
-			pop_stack_value(&vm)
+			pop_stack_value(vm)
 
 		case .Op_Push_Back:
-			moved := pop_stack_value(&vm)
-			pop_stack_value(&vm)
-			push_stack_value(&vm, moved)
+			moved := pop_stack_value(vm)
+			pop_stack_value(vm)
+			push_stack_value(vm, moved)
 
 		case .Op_Move:
-			move_addr := int(get_i16(&vm)) + get_scope_start_addr(&vm)
-			set_stack_value(&vm, move_addr, pop_stack_value(&vm))
+			move_addr := int(get_i16(vm)) + get_scope_start_addr(vm)
+			set_stack_value(vm, move_addr, pop_stack_value(vm))
 
 		case .Op_Copy:
-			src_addr := int(get_i16(&vm)) + get_scope_start_addr(&vm)
-			push_stack_value(&vm, get_stack_value(&vm, src_addr))
+			src_addr := int(get_i16(vm)) + get_scope_start_addr(vm)
+			push_stack_value(vm, get_stack_value(vm, src_addr))
 
 		case .Op_Const:
-			const_addr := get_i16(&vm)
+			const_addr := get_i16(vm)
 			if int(const_addr) >= len(vm.chunk.constants) {
 				fmt.println(op_code_str[Op_Code(vm.chunk.bytecode[0])])
 			}
-			push_stack_value(&vm, vm.chunk.constants[const_addr])
+			push_stack_value(vm, vm.chunk.constants[const_addr])
 
 		case .Op_Module:
-			module_addr := get_i16(&vm)
+			module_addr := get_i16(vm)
 			vm.current = vm.modules[module_addr]
 
 		case .Op_Prototype:
-			class_addr := get_i16(&vm)
+			class_addr := get_i16(vm)
 			prototype := Value {
 				kind = .Object_Ref,
 				data = cast(^Object)&vm.current.protypes[class_addr],
 			}
-			push_stack_value(&vm, prototype)
+			push_stack_value(vm, prototype)
 
 		case .Op_Inc:
-			val := pop_stack_value(&vm)
+			val := pop_stack_value(vm)
 			val.data = val.data.(f64) + 1
-			push_stack_value(&vm, val)
+			push_stack_value(vm, val)
 
 		case .Op_Dec:
-			val := pop_stack_value(&vm)
+			val := pop_stack_value(vm)
 			val.data = val.data.(f64) - 1
-			push_stack_value(&vm, val)
+			push_stack_value(vm, val)
 
 		case .Op_Neg:
-			val := pop_stack_value(&vm)
+			val := pop_stack_value(vm)
 			val.data = val.data.(f64) * -1
-			push_stack_value(&vm, val)
+			push_stack_value(vm, val)
 
 		case .Op_Not:
-			val := pop_stack_value(&vm)
+			val := pop_stack_value(vm)
 			val.data = !val.data.(bool)
-			push_stack_value(&vm, val)
+			push_stack_value(vm, val)
 
 		case .Op_Add:
-			v1, v2 := pop_stack_value(&vm), pop_stack_value(&vm)
-			push_stack_value(&vm, Value{kind = .Number, data = v1.data.(f64) + v2.data.(f64)})
+			v1, v2 := pop_stack_value(vm), pop_stack_value(vm)
+			push_stack_value(vm, Value{kind = .Number, data = v1.data.(f64) + v2.data.(f64)})
 
 		case .Op_Mul:
-			v1, v2 := pop_stack_value(&vm), pop_stack_value(&vm)
-			push_stack_value(&vm, Value{kind = .Number, data = v1.data.(f64) * v2.data.(f64)})
+			v1, v2 := pop_stack_value(vm), pop_stack_value(vm)
+			push_stack_value(vm, Value{kind = .Number, data = v1.data.(f64) * v2.data.(f64)})
 
 		case .Op_Div:
-			v1, v2 := pop_stack_value(&vm), pop_stack_value(&vm)
-			push_stack_value(&vm, Value{kind = .Number, data = v1.data.(f64) / v2.data.(f64)})
+			v1, v2 := pop_stack_value(vm), pop_stack_value(vm)
+			push_stack_value(vm, Value{kind = .Number, data = v1.data.(f64) / v2.data.(f64)})
 
 		case .Op_Rem:
-			v1, v2 := pop_stack_value(&vm), pop_stack_value(&vm)
+			v1, v2 := pop_stack_value(vm), pop_stack_value(vm)
 			result := int(v1.data.(f64)) % int(v2.data.(f64))
-			push_stack_value(&vm, Value{kind = .Number, data = f64(result)})
+			push_stack_value(vm, Value{kind = .Number, data = f64(result)})
 
 		case .Op_And:
-			v1, v2 := pop_stack_value(&vm), pop_stack_value(&vm)
-			push_stack_value(&vm, Value{kind = .Boolean, data = v1.data.(bool) && v2.data.(bool)})
+			v1, v2 := pop_stack_value(vm), pop_stack_value(vm)
+			push_stack_value(vm, Value{kind = .Boolean, data = v1.data.(bool) && v2.data.(bool)})
 
 		case .Op_Or:
-			v1, v2 := pop_stack_value(&vm), pop_stack_value(&vm)
-			push_stack_value(&vm, Value{kind = .Boolean, data = v1.data.(bool) || v2.data.(bool)})
+			v1, v2 := pop_stack_value(vm), pop_stack_value(vm)
+			push_stack_value(vm, Value{kind = .Boolean, data = v1.data.(bool) || v2.data.(bool)})
 
 		case .Op_Eq:
-			v1, v2 := pop_stack_value(&vm), pop_stack_value(&vm)
+			v1, v2 := pop_stack_value(vm), pop_stack_value(vm)
 			#partial switch v1.kind {
 			case .Number:
-				push_stack_value(&vm, Value{kind = .Boolean, data = v1.data.(f64) == v2.data.(f64)})
+				push_stack_value(vm, Value{kind = .Boolean, data = v1.data.(f64) == v2.data.(f64)})
 			case .Boolean:
-				push_stack_value(&vm, Value{kind = .Boolean, data = v1.data.(bool) == v2.data.(bool)})
+				push_stack_value(vm, Value{kind = .Boolean, data = v1.data.(bool) == v2.data.(bool)})
 			}
 
 		case .Op_Greater:
-			v1, v2 := pop_stack_value(&vm), pop_stack_value(&vm)
-			push_stack_value(&vm, Value{kind = .Boolean, data = v1.data.(f64) > v2.data.(f64)})
+			v1, v2 := pop_stack_value(vm), pop_stack_value(vm)
+			push_stack_value(vm, Value{kind = .Boolean, data = v1.data.(f64) > v2.data.(f64)})
 
 		case .Op_Greater_Eq:
-			v1, v2 := pop_stack_value(&vm), pop_stack_value(&vm)
-			push_stack_value(&vm, Value{kind = .Boolean, data = v1.data.(f64) >= v2.data.(f64)})
+			v1, v2 := pop_stack_value(vm), pop_stack_value(vm)
+			push_stack_value(vm, Value{kind = .Boolean, data = v1.data.(f64) >= v2.data.(f64)})
 
 		case .Op_Lesser:
-			v1, v2 := pop_stack_value(&vm), pop_stack_value(&vm)
-			push_stack_value(&vm, Value{kind = .Boolean, data = v1.data.(f64) > v2.data.(f64)})
+			v1, v2 := pop_stack_value(vm), pop_stack_value(vm)
+			push_stack_value(vm, Value{kind = .Boolean, data = v1.data.(f64) > v2.data.(f64)})
 
 		case .Op_Lesser_Eq:
-			v1, v2 := pop_stack_value(&vm), pop_stack_value(&vm)
-			push_stack_value(&vm, Value{kind = .Boolean, data = v1.data.(f64) >= v2.data.(f64)})
+			v1, v2 := pop_stack_value(vm), pop_stack_value(vm)
+			push_stack_value(vm, Value{kind = .Boolean, data = v1.data.(f64) >= v2.data.(f64)})
 
 		case .Op_Begin:
-			push_stack_scope(&vm)
+			push_stack_scope(vm)
 
 		case .Op_End:
-			pop_stack_scope(&vm)
+			pop_stack_scope(vm)
 
 		case .Op_Call:
-			fn_addr := get_i16(&vm)
-			push_call_frame(&vm, &vm.current.functions[fn_addr].chunk)
+			fn_addr := get_i16(vm)
+			push_call_frame(vm, &vm.current.functions[fn_addr].chunk)
 
 		case .Op_Call_Foreign:
-			fn_addr := get_i16(&vm)
-			fn_values := vm.stack[get_scope_start_addr(&vm):vm.stack_ptr]
-			call_foreign_fn(state, vm.current.functions[fn_addr].foreign_fn, fn_values)
+			fn_addr := get_i16(vm)
+			fn_values := vm.stack[get_scope_start_addr(vm):vm.stack_ptr]
+			vm.call_foreign(vm.state, vm.current.functions[fn_addr].foreign_fn, fn_values)
 
 		case .Op_Call_Method:
-			method_addr := get_i16(&vm)
-			instance_val := previous_scope_last_value(&vm)
-			set_stack_value(&vm, get_scope_start_addr(&vm), instance_val)
+			method_addr := get_i16(vm)
+			instance_val := previous_scope_last_value(vm)
+			set_stack_value(vm, get_scope_start_addr(vm), instance_val)
 			instance := cast(^Class_Object)instance_val.data.(^Object)
-			push_call_frame(&vm, &instance.vtable.methods[method_addr].chunk)
+			push_call_frame(vm, &instance.vtable.methods[method_addr].chunk)
 
 		case .Op_Call_Constr:
-			method_addr := get_i16(&vm)
-			proto_val := previous_scope_last_value(&vm)
-			push_stack_value(&vm, proto_val)
+			method_addr := get_i16(vm)
+			proto_val := previous_scope_last_value(vm)
+			push_stack_value(vm, proto_val)
 			prototype := cast(^Class_Object)proto_val.data.(^Object)
-			push_call_frame(&vm, &prototype.vtable.constructors[method_addr].chunk)
+			push_call_frame(vm, &prototype.vtable.constructors[method_addr].chunk)
 
 		case .Op_Return:
-			result_addr := get_i16(&vm)
+			result_addr := get_i16(vm)
 			result_val: Value
 			if result_addr >= 0 {
-				result_val = get_stack_value(&vm, get_var_stack_addr(&vm, result_addr))
+				result_val = get_stack_value(vm, get_var_stack_addr(vm, result_addr))
 			}
-			pop_stack_scope(&vm)
-			pop_call_frame(&vm)
+			pop_stack_scope(vm)
+			pop_call_frame(vm)
 			if result_addr >= 0 {
-				push_stack_value(&vm, result_val)
+				push_stack_value(vm, result_val)
 			}
 
 		case .Op_Jump:
-			vm.ip = int(get_i16(&vm))
+			vm.ip = int(get_i16(vm))
 
 		case .Op_Jump_True:
-			jmp_addr := int(get_i16(&vm))
-			conditional := pop_stack_value(&vm)
+			jmp_addr := int(get_i16(vm))
+			conditional := pop_stack_value(vm)
 			if conditional.data.(bool) {
 				vm.ip = jmp_addr
 			}
 
 		case .Op_Jump_False:
-			jmp_addr := int(get_i16(&vm))
-			conditional := pop_stack_value(&vm)
+			jmp_addr := int(get_i16(vm))
+			conditional := pop_stack_value(vm)
 			if !conditional.data.(bool) {
 				vm.ip = jmp_addr
 			}
 
 		case .Op_Get:
-			var_addr := get_i16(&vm)
-			var_val := get_stack_value(&vm, get_var_stack_addr(&vm, var_addr))
-			push_stack_value(&vm, var_val)
+			var_addr := get_i16(vm)
+			var_val := get_stack_value(vm, get_var_stack_addr(vm, var_addr))
+			push_stack_value(vm, var_val)
 
 		case .Op_Get_Global:
-			var_addr := get_i16(&vm)
-			push_stack_value(&vm, vm.current.variables[var_addr])
+			var_addr := get_i16(vm)
+			push_stack_value(vm, vm.current.variables[var_addr])
 
 		case .Op_Get_Elem:
-			array := cast(^Array_Object)pop_stack_value(&vm).data.(^Object)
-			index_val := pop_stack_value(&vm)
-			push_stack_value(&vm, array.data[int(index_val.data.(f64))])
+			array := cast(^Array_Object)pop_stack_value(vm).data.(^Object)
+			index_val := pop_stack_value(vm)
+			push_stack_value(vm, array.data[int(index_val.data.(f64))])
 
 		case .Op_Get_Field:
-			field_addr := get_i16(&vm)
-			instance := cast(^Class_Object)pop_stack_value(&vm).data.(^Object)
-			push_stack_value(&vm, instance.fields[field_addr])
+			field_addr := get_i16(vm)
+			instance := cast(^Class_Object)pop_stack_value(vm).data.(^Object)
+			push_stack_value(vm, instance.fields[field_addr])
 
 		case .Op_Bind:
-			var_addr := get_i16(&vm)
-			addr := int(get_i16(&vm)) + get_scope_start_addr(&vm)
-			set_var_stack_addr(&vm, var_addr, addr)
+			var_addr := get_i16(vm)
+			addr := int(get_i16(vm)) + get_scope_start_addr(vm)
+			set_var_stack_addr(vm, var_addr, addr)
 
 		case .Op_Set:
-			var_addr := get_i16(&vm)
-			addr := stack_addr(&vm)
-			set_var_stack_addr(&vm, var_addr, addr)
+			var_addr := get_i16(vm)
+			addr := stack_addr(vm)
+			set_var_stack_addr(vm, var_addr, addr)
 
 
 		case .Op_Set_Global:
-			var_addr := get_i16(&vm)
-			vm.current.variables[var_addr] = pop_stack_value(&vm)
+			var_addr := get_i16(vm)
+			vm.current.variables[var_addr] = pop_stack_value(vm)
 
 		case .Op_Set_Elem:
-			array := cast(^Array_Object)pop_stack_value(&vm).data.(^Object)
-			index_val := pop_stack_value(&vm)
-			array.data[int(index_val.data.(f64))] = pop_stack_value(&vm)
+			array := cast(^Array_Object)pop_stack_value(vm).data.(^Object)
+			index_val := pop_stack_value(vm)
+			array.data[int(index_val.data.(f64))] = pop_stack_value(vm)
 
 		case .Op_Set_Field:
-			field_addr := get_i16(&vm)
-			instance := cast(^Class_Object)pop_stack_value(&vm).data.(^Object)
-			instance.fields[field_addr] = pop_stack_value(&vm)
+			field_addr := get_i16(vm)
+			instance := cast(^Class_Object)pop_stack_value(vm).data.(^Object)
+			instance.fields[field_addr] = pop_stack_value(vm)
 
 		case .Op_Make_Instance:
-			prototype := cast(^Class_Object)pop_stack_value(&vm).data.(^Object)
-			instance :=
-				new_clone(
-					Class_Object{
-						base = Object{kind = .Class},
-						fields = make([]Value, len(prototype.fields)),
-						vtable = prototype.vtable,
-					},
-				)
-			push_stack_value(&vm, Value{kind = .Object_Ref, data = cast(^Object)instance})
+			prototype := cast(^Class_Object)pop_stack_value(vm).data.(^Object)
+			instance := new_clone(
+			Class_Object{
+				base = Object{kind = .Class},
+				fields = make([]Value, len(prototype.fields)),
+				vtable = prototype.vtable,
+			},
+			)
+			push_stack_value(vm, Value{kind = .Object_Ref, data = cast(^Object)instance})
 
 		case .Op_Make_Array:
-			push_stack_value(&vm, new_array_object())
+			push_stack_value(vm, new_array_object())
 
 		case .Op_Append_Array:
-			array_val := pop_stack_value(&vm)
+			array_val := pop_stack_value(vm)
 			array := cast(^Array_Object)array_val.data.(^Object)
-			append(&array.data, pop_stack_value(&vm))
-			push_stack_value(&vm, array_val)
+			append(&array.data, pop_stack_value(vm))
+			push_stack_value(vm, array_val)
 
 		case .Op_Length:
-			array := cast(^Array_Object)pop_stack_value(&vm).data.(^Object)
-			push_stack_value(&vm, Value{kind = .Number, data = f64(len(array.data))})
+			array := cast(^Array_Object)pop_stack_value(vm).data.(^Object)
+			push_stack_value(vm, Value{kind = .Number, data = f64(len(array.data))})
 		}
 
 
-		// print_stack(&vm, op)
+		if vm.show_debug_stack_info {
+			print_stack(vm, op)
+		}
 		if vm.ip >= len(vm.chunk.bytecode) {
 			break run
 		}
