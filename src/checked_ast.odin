@@ -29,14 +29,14 @@ Checked_Module :: struct {
 
 make_checked_module :: proc(name: string, id: int) -> ^Checked_Module {
 	m := new_clone(
-		Checked_Module{
-			name = name,
-			id = id,
-			nodes = make([dynamic]Checked_Node),
-			variables = make([dynamic]Checked_Node),
-			functions = make([dynamic]Checked_Node),
-			classes = make([dynamic]Checked_Node),
-		},
+	Checked_Module{
+		name = name,
+		id = id,
+		nodes = make([dynamic]Checked_Node),
+		variables = make([dynamic]Checked_Node),
+		functions = make([dynamic]Checked_Node),
+		classes = make([dynamic]Checked_Node),
+	},
 	)
 	m.scope = new_scope()
 	m.root = m.scope

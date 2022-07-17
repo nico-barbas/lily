@@ -47,6 +47,8 @@ playground :: proc() {
 	// `
 	input := `
 	var b = map of (string, number)["hello" = 1]
+	b["world"] = 5
+	var foo = b["world"]
 	`
 
 	state := new_state(Config{})

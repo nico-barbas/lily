@@ -301,9 +301,17 @@ run_vm :: proc(vm: ^Vm) {
 			push_stack_value(vm, vm.current.variables[var_addr])
 
 		case .Op_Get_Elem:
-			array := cast(^Array_Object)pop_stack_value(vm).data.(^Object)
-			index_val := pop_stack_value(vm)
-			push_stack_value(vm, array.data[int(index_val.data.(f64))])
+			obj := pop_stack_value(vm).data.(^Object)
+			#partial switch obj.kind {
+			case .Array:
+				array := cast(^Array_Object)obj
+				index_val := pop_stack_value(vm)
+				push_stack_value(vm, array.data[int(index_val.data.(f64))])
+			case .Map:
+				_map := cast(^Map_Object)obj
+				index_val := pop_stack_value(vm)
+				push_stack_value(vm, _map.data[index_val])
+			}
 
 		case .Op_Get_Field:
 			field_addr := get_i16(vm)
@@ -326,9 +334,17 @@ run_vm :: proc(vm: ^Vm) {
 			vm.current.variables[var_addr] = pop_stack_value(vm)
 
 		case .Op_Set_Elem:
-			array := cast(^Array_Object)pop_stack_value(vm).data.(^Object)
-			index_val := pop_stack_value(vm)
-			array.data[int(index_val.data.(f64))] = pop_stack_value(vm)
+			obj := pop_stack_value(vm).data.(^Object)
+			#partial switch obj.kind {
+			case .Array:
+				array := cast(^Array_Object)obj
+				index_val := pop_stack_value(vm)
+				array.data[int(index_val.data.(f64))] = pop_stack_value(vm)
+			case .Map:
+				_map := cast(^Map_Object)obj
+				index_val := pop_stack_value(vm)
+				_map.data[index_val] = pop_stack_value(vm)
+			}
 
 		case .Op_Set_Field:
 			field_addr := get_i16(vm)

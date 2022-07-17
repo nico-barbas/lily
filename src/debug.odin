@@ -1010,6 +1010,23 @@ print_chunk :: proc(p: ^Debug_Printer, c: ^Chunk) {
 
 }
 
+print_module_variables :: proc(m: ^Compiled_Module, name: string) {
+	p := Debug_Printer {
+		builder      = strings.builder_make(),
+		indent_width = 2,
+	}
+	defer strings.builder_destroy(&p.builder)
+	write_line(&p, name)
+	write(&p, " Module Variables:")
+	increment(&p)
+	for global in m.variables {
+		write_line(&p)
+		print_value(&p, global)
+	}
+	decrement(&p)
+	fmt.println(strings.to_string(p.builder))
+}
+
 print_stack :: proc(vm: ^Vm, op := Op_Code.Op_None) {
 	printer := Debug_Printer {
 		builder      = strings.builder_make(),

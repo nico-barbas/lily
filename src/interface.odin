@@ -50,7 +50,7 @@ free_state :: proc(s: ^State) {
 }
 
 compile_source :: proc(s: ^State, module_name: string, source: string) -> (err: Error) {
-	DEBUG_PARSER :: false
+	DEBUG_PARSER :: true
 	DEBUG_CHECKER :: true
 	DEBUG_COMPILER :: true
 
@@ -95,6 +95,7 @@ compile_source :: proc(s: ^State, module_name: string, source: string) -> (err: 
 	for i in 0 ..< len(s.compiled_modules) {
 		compile_module(s, i)
 		when DEBUG_CHECKER {
+			print_symbol_table(&s.checker, s.checked_modules[i])
 			print_checked_ast(s.checked_modules[i], &s.checker)
 		}
 		when DEBUG_COMPILER {
@@ -116,6 +117,12 @@ run_module :: proc(s: ^State, module_name: string) {
 		show_debug_stack_info = DEBUG_VM,
 	}
 	run_vm(&vm)
+
+	when DEBUG_VM {
+		for module in s.compiled_modules {
+			print_module_variables(module, s.import_modules_name[module.id])
+		}
+	}
 }
 
 Foreign_Decl_Info :: struct {

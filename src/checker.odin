@@ -726,20 +726,30 @@ build_checked_node :: proc(c: ^Checker, node: Parsed_Node) -> (result: Checked_N
 				return
 			}
 		}
-		left_symbol := checked_expr_symbol(assign_stmt.left, false)
-		if left, ok := assign_stmt.left.(^Checked_Identifier_Expression); ok {
-			#partial switch left_symbol.kind {
-			case .Class_Symbol, .Module_Symbol, .Fn_Symbol, .Name:
-				err = lhs_assign_semantic_err(left_symbol, n.token)
-				return
-			}
+
+		identifier_symbol: ^Symbol
+		left_type_symbol: ^Symbol
+		#partial switch left in assign_stmt.left {
+		case ^Checked_Identifier_Expression:
+			identifier_symbol = checked_expr_symbol(left, false)
+			left_type_symbol = identifier_symbol
+
+		case ^Checked_Index_Expression:
+			identifier_symbol = checked_expr_symbol(left.left, false)
+			left_type_symbol = checked_expr_symbol(left, false)
 		}
-		left_info := left_symbol.info.(Var_Symbol_Info)
-		if !left_info.mutable {
-			err = mutable_semantic_err(left_symbol, n.token)
+
+		#partial switch identifier_symbol.kind {
+		case .Class_Symbol, .Module_Symbol, .Fn_Symbol, .Name:
+			err = lhs_assign_semantic_err(left_type_symbol, n.token)
 			return
 		}
-		expect_type(c, assign_stmt.right, left_symbol) or_return
+		identifier_info := identifier_symbol.info.(Var_Symbol_Info)
+		if !identifier_info.mutable {
+			err = mutable_semantic_err(identifier_symbol, n.token)
+			return
+		}
+		expect_type(c, assign_stmt.right, left_type_symbol) or_return
 		result = assign_stmt
 
 	case ^Parsed_If_Statement:
