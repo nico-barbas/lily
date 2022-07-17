@@ -58,8 +58,8 @@ print_mem_leaks :: proc(track: ^mem.Tracking_Allocator) {
 		for _, v in track.allocation_map {
 			fmt.printf("\t%v\n\n", v)
 		}
+		fmt.printf("Leak count: %d\n", len(track.allocation_map))
 	}
-	fmt.printf("Leak count: %d\n", len(track.allocation_map))
 	if len(track.bad_free_array) > 0 {
 		fmt.printf("Bad Frees:")
 		for v in track.bad_free_array {

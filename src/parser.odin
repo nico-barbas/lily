@@ -330,6 +330,7 @@ parse_if_stmt :: proc(p: ^Parser) -> (result: ^Parsed_If_Statement, err: Error) 
 					append(&result.body.nodes, body_node)
 				}
 				if p.current.kind == .End {
+					consume_token(p)
 					break else_body
 				}
 			}
@@ -346,6 +347,7 @@ parse_if_stmt :: proc(p: ^Parser) -> (result: ^Parsed_If_Statement, err: Error) 
 				}
 				#partial switch p.current.kind {
 				case .End:
+					consume_token(p)
 					break else_if_body
 				case .Else:
 					#partial switch consume_token(p).kind {
@@ -389,6 +391,7 @@ parse_if_stmt :: proc(p: ^Parser) -> (result: ^Parsed_If_Statement, err: Error) 
 		}
 		#partial switch p.current.kind {
 		case .End:
+			consume_token(p)
 			break body
 		case .Else:
 			#partial switch consume_token(p).kind {
@@ -452,6 +455,7 @@ parse_range_stmt :: proc(p: ^Parser) -> (result: ^Parsed_Range_Statement, err: E
 				append(&result.body.nodes, body_node)
 			}
 			if p.current.kind == .End {
+				consume_token(p)
 				break body
 			}
 		}
