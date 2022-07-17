@@ -46,9 +46,13 @@ playground :: proc() {
 	// 	a.add(13)
 	// `
 	input := `
-	var b = map of (string, number)["hello" = 1]
-	b["world"] = 5
-	var foo = b["world"]
+	if i == 1:
+        i = 55
+    else if i == 2:
+        i = 33
+    else:
+        i = -1
+    end
 	`
 
 	state := new_state(Config{})

@@ -116,7 +116,7 @@ var fooVal = Foo.Bar
 - [ ] Container iterators
 - [x] Array Type
 - [x] Array builtin procedures 
-- [ ] Map Type
+- [x] Map Type
 - [ ] Map builtin procedures 
 - [x] Custom functions
 - [ ] Custom Type Alias

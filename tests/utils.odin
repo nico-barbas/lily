@@ -2,7 +2,55 @@ package tests
 
 import "core:fmt"
 import "core:mem"
+import "core:testing"
 import lily "../src"
+
+@(private)
+check_expr_type :: proc(t: ^testing.T, expr: lily.Parsed_Expression, kind: string) {
+	using lily
+
+	switch kind {
+	case "lit":
+		e, ok := expr.(^Parsed_Literal_Expression)
+		testing.expect(t, ok, fmt.tprintf("Expected Parsed_Literal_Expression, got %v", expr))
+
+	case "str":
+		e, ok := expr.(^Parsed_String_Literal_Expression)
+		testing.expect(t, ok, fmt.tprintf("Expected Parsed_String_Literal_Expression, got %v", expr))
+
+	case "arr":
+		e, ok := expr.(^Parsed_Array_Literal_Expression)
+		testing.expect(t, ok, fmt.tprintf("Expected Parsed_Array_Literal_Expression, got %v", expr))
+
+	case "map":
+		e, ok := expr.(^Parsed_Map_Literal_Expression)
+		testing.expect(t, ok, fmt.tprintf("Expected Parsed_Map_Literal_Expression, got %v", expr))
+
+	case "unary":
+		e, ok := expr.(^Parsed_Unary_Expression)
+		testing.expect(t, ok, fmt.tprintf("Expected Parsed_Unary_Expression, got %v", expr))
+
+	case "binary":
+		e, ok := expr.(^Parsed_Binary_Expression)
+		testing.expect(t, ok, fmt.tprintf("Expected Parsed_Binary_Expression, got %v", expr))
+
+	case "ident":
+		e, ok := expr.(^Parsed_Identifier_Expression)
+		testing.expect(t, ok, fmt.tprintf("Expected Parsed_Identifier_Expression, got %v", expr))
+
+	case "index":
+		e, ok := expr.(^Parsed_Index_Expression)
+		testing.expect(t, ok, fmt.tprintf("Expected Parsed_Index_Expression, got %v", expr))
+
+	case "dot":
+		e, ok := expr.(^Parsed_Dot_Expression)
+		testing.expect(t, ok, fmt.tprintf("Expected Parsed_Dot_Expression, got %v", expr))
+
+	case "call":
+		e, ok := expr.(^Parsed_Call_Expression)
+		testing.expect(t, ok, fmt.tprintf("Expected Parsed_Call_Expression, got %v", expr))
+	}
+}
 
 print_mem_leaks :: proc(track: ^mem.Tracking_Allocator) {
 	if len(track.allocation_map) > 0 {
