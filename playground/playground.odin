@@ -46,19 +46,9 @@ playground :: proc() {
 	// 	a.add(13)
 	// `
 	input := `
-	match foobar:
-        when 1:
-            if a:
-                var b = 2
-            end
-        end
-        when 2:
-            var c = true
-        end
-        when 3:
-            var d = "world"
-        end
-    end
+	import test
+	
+	var a = test.b * 2
 	`
 
 	state := new_state(Config{})

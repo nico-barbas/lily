@@ -362,6 +362,16 @@ test_nested_control_flow :: proc(t: ^testing.T) {
 	inputs := [?]string{
 		`
         if true:
+            10
+            20
+            30
+            40
+            50
+            60
+        end
+        `,
+		`
+        if true:
             for i in 0..100:
                 match i:
                     when 10:
@@ -374,6 +384,10 @@ test_nested_control_flow :: proc(t: ^testing.T) {
             end
         end
         `,
+	}
+	expected := [?][]string{
+		{"if", "expr", "expr", "expr", "expr", "expr", "expr"},
+		{"if", "for", "match", "expr", "expr"},
 	}
 	parsed_modules := [len(inputs)]^Parsed_Module{}
 
@@ -388,5 +402,22 @@ test_nested_control_flow :: proc(t: ^testing.T) {
 		if err != nil {
 			testing.fail_now(t, fmt.tprintf("%v", err))
 		}
+	}
+
+	for i in 0 ..< len(inputs) {
+		m := parsed_modules[i]
+		e := expected[i]
+		testing.expect(
+			t,
+			len(m.nodes) == 1,
+			fmt.tprintf("Failed at %d, Expected %d nodes, Got %d\n%s\n", i, len(m.nodes), i, inputs[i]),
+		)
+
+		r := check_node_kind(t, m.nodes[0], e)
+		testing.expect(
+			t,
+			len(e) == r,
+			fmt.tprintf("Failed at %d, Expected %d node checked, Got %d\n", i, len(e), r),
+		)
 	}
 }

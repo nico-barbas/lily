@@ -245,11 +245,11 @@ expect_one_of_types :: proc(c: ^Checker, expr: Checked_Expression, l: []^Symbol)
 		}
 	}
 	err = format_error(
-	Semantic_Error{
-		kind = .Mismatched_Types,
-		token = checked_expr_token(expr),
-		details = fmt.tprintf("%s is not of a valid type in this context", expr_symbol.name),
-	},
+		Semantic_Error{
+			kind = .Mismatched_Types,
+			token = checked_expr_token(expr),
+			details = fmt.tprintf("%s is not of a valid type in this context", expr_symbol.name),
+		},
 	)
 	return
 }
@@ -260,33 +260,28 @@ gen_type_id :: proc(c: ^Checker) -> Type_ID {
 }
 
 
-build_checked_program :: proc(c: ^Checker, names: map[string]int, p: []^Parsed_Module, e: string) -> (
+build_checked_program :: proc(c: ^Checker, n: map[string]int, p: []^Parsed_Module, order: []int) -> (
 	result: []^Checked_Module,
 	err: Error,
 ) {
-	c.module_names = names
+	c.module_names = n
 	c.parsed = p
-	c.current_parsed = p[names[e]]
 
 	// Build all the symbols and then check them
-	for module in c.parsed {
-		index := c.module_names[module.name]
-		c.modules[index] = make_checked_module(module.name, index)
-		add_module_import_symbols(c, index) or_return
-		add_module_decl_symbols(c, index) or_return
-		add_module_type_decl(c, index) or_return
+	for id in order {
+		c.modules[id] = make_checked_module(p[id].name, id)
+		add_module_import_symbols(c, id) or_return
+		add_module_decl_symbols(c, id) or_return
+		add_module_type_decl(c, id) or_return
 	}
-	for module in c.parsed {
-		index := c.module_names[module.name]
-		check_module_signatures_symbols(c, index) or_return
+	for id in order {
+		check_module_signatures_symbols(c, id) or_return
 	}
-	for module in c.parsed {
-		index := c.module_names[module.name]
-		add_module_inner_symbols(c, index) or_return
+	for id in order {
+		add_module_inner_symbols(c, id) or_return
 	}
-	for module in c.parsed {
-		index := c.module_names[module.name]
-		build_checked_ast(c, index) or_return
+	for id in order {
+		build_checked_ast(c, id) or_return
 	}
 
 	result = c.modules
@@ -701,7 +696,7 @@ build_checked_node :: proc(c: ^Checker, node: Parsed_Node) -> (result: Checked_N
 
 	case ^Parsed_Block_Statement:
 		block_stmt := new_clone(
-		Checked_Block_Statement{token = n.token, nodes = make([]Checked_Node, len(n.nodes))},
+			Checked_Block_Statement{token = n.token, nodes = make([]Checked_Node, len(n.nodes))},
 		)
 		for inner_node, i in n.nodes {
 			checked_node := build_checked_node(c, inner_node) or_return
@@ -711,11 +706,11 @@ build_checked_node :: proc(c: ^Checker, node: Parsed_Node) -> (result: Checked_N
 
 	case ^Parsed_Assignment_Statement:
 		assign_stmt := new_clone(
-		Checked_Assigment_Statement{
-			token = n.token,
-			left = build_checked_expr(c, n.left) or_return,
-			right = build_checked_expr(c, n.right) or_return,
-		},
+			Checked_Assigment_Statement{
+				token = n.token,
+				left = build_checked_expr(c, n.left) or_return,
+				right = build_checked_expr(c, n.right) or_return,
+			},
 		)
 		#partial switch right in assign_stmt.right {
 		case ^Checked_Identifier_Expression:
@@ -783,15 +778,15 @@ build_checked_node :: proc(c: ^Checker, node: Parsed_Node) -> (result: Checked_N
 
 	case ^Parsed_Match_Statement:
 		match_stmt := new_clone(
-		Checked_Match_Statement{
-			token = n.token,
-			evaluation = build_checked_expr(c, n.evaluation) or_return,
-			cases = make([]struct {
-					token:     Token,
-					condition: Checked_Expression,
-					body:      Checked_Node,
-				}, len(n.cases)),
-		},
+			Checked_Match_Statement{
+				token = n.token,
+				evaluation = build_checked_expr(c, n.evaluation) or_return,
+				cases = make([]struct {
+						token:     Token,
+						condition: Checked_Expression,
+						body:      Checked_Node,
+					}, len(n.cases)),
+			},
 		)
 		eval_symbol := checked_expr_symbol(match_stmt.evaluation)
 		// FIXME: Allow for strings, and later on enumerations and ADTs
@@ -808,14 +803,14 @@ build_checked_node :: proc(c: ^Checker, node: Parsed_Node) -> (result: Checked_N
 		case BOOL_ID:
 			if len(n.cases) != BOOL_CASE_COUNT {
 				err = format_error(
-				Semantic_Error{
-					kind = .Unhandled_Match_Cases,
-					token = n.token,
-					details = fmt.tprintf(
-						"Unhandled cases for match statement of type %s",
-						eval_symbol.name,
-					),
-				},
+					Semantic_Error{
+						kind = .Unhandled_Match_Cases,
+						token = n.token,
+						details = fmt.tprintf(
+							"Unhandled cases for match statement of type %s",
+							eval_symbol.name,
+						),
+					},
 				)
 				return
 			}
@@ -831,11 +826,11 @@ build_checked_node :: proc(c: ^Checker, node: Parsed_Node) -> (result: Checked_N
 	case ^Parsed_Flow_Statement:
 		if !c.allow_flow_operator {
 			err = format_error(
-			Semantic_Error{
-				kind = .Invalid_Symbol,
-				token = n.token,
-				details = fmt.tprintf("%s only allowed in loops", n.token.text),
-			},
+				Semantic_Error{
+					kind = .Invalid_Symbol,
+					token = n.token,
+					details = fmt.tprintf("%s only allowed in loops", n.token.text),
+				},
 			)
 			return
 		}
@@ -845,11 +840,11 @@ build_checked_node :: proc(c: ^Checker, node: Parsed_Node) -> (result: Checked_N
 
 	case ^Parsed_Var_Declaration:
 		var_decl := new_clone(
-		Checked_Var_Declaration{
-			token = n.token,
-			identifier = get_scoped_symbol(c.current.scope, n.identifier) or_return,
-			expr = build_checked_expr(c, n.expr) or_return,
-		},
+			Checked_Var_Declaration{
+				token = n.token,
+				identifier = get_scoped_symbol(c.current.scope, n.identifier) or_return,
+				expr = build_checked_expr(c, n.expr) or_return,
+			},
 		)
 		expr_symbol := checked_expr_symbol(var_decl.expr)
 		#partial switch expr in var_decl.expr {
@@ -875,11 +870,11 @@ build_checked_node :: proc(c: ^Checker, node: Parsed_Node) -> (result: Checked_N
 
 	case ^Parsed_Fn_Declaration:
 		fn_decl := new_clone(
-		Checked_Fn_Declaration{
-			token = n.token,
-			kind = n.kind,
-			params = make([]^Symbol, len(n.parameters)),
-		},
+			Checked_Fn_Declaration{
+				token = n.token,
+				kind = n.kind,
+				params = make([]^Symbol, len(n.parameters)),
+			},
 		)
 		fn_decl.identifier = get_scoped_symbol(c.current.scope, n.identifier) or_return
 		fn_info := fn_decl.identifier.info.(Fn_Symbol_Info)
@@ -901,13 +896,13 @@ build_checked_node :: proc(c: ^Checker, node: Parsed_Node) -> (result: Checked_N
 			assert(false)
 		case .Class:
 			class_decl := new_clone(
-			Checked_Class_Declaration{
-				token = n.token,
-				is_token = n.is_token,
-				fields = make([]^Symbol, len(n.fields)),
-				constructors = make([]^Checked_Fn_Declaration, len(n.constructors)),
-				methods = make([]^Checked_Fn_Declaration, len(n.methods)),
-			},
+				Checked_Class_Declaration{
+					token = n.token,
+					is_token = n.is_token,
+					fields = make([]^Symbol, len(n.fields)),
+					constructors = make([]^Checked_Fn_Declaration, len(n.constructors)),
+					methods = make([]^Checked_Fn_Declaration, len(n.methods)),
+				},
 			)
 			class_decl.identifier, err = get_scoped_symbol(c.current.scope, n.identifier)
 			if err != nil {
@@ -955,20 +950,20 @@ build_checked_expr :: proc(c: ^Checker, expr: Parsed_Expression) -> (
 
 	case ^Parsed_String_Literal_Expression:
 		result = new_clone(
-		Checked_String_Literal_Expression{
-			token = e.token,
-			symbol = &c.builtin_symbols[STRING_SYMBOL],
-			value = e.value,
-		},
+			Checked_String_Literal_Expression{
+				token = e.token,
+				symbol = &c.builtin_symbols[STRING_SYMBOL],
+				value = e.value,
+			},
 		)
 
 	case ^Parsed_Array_Literal_Expression:
 		array_lit := new_clone(
-		Checked_Array_Literal_Expression{
-			token = e.token,
-			symbol = symbol_from_type_expr(c, e.type_expr) or_return,
-			values = make([]Checked_Expression, len(e.values)),
-		},
+			Checked_Array_Literal_Expression{
+				token = e.token,
+				symbol = symbol_from_type_expr(c, e.type_expr) or_return,
+				values = make([]Checked_Expression, len(e.values)),
+			},
 		)
 		inner_info := array_lit.symbol.info.(Generic_Symbol_Info)
 		for value, i in e.values {
@@ -980,11 +975,11 @@ build_checked_expr :: proc(c: ^Checker, expr: Parsed_Expression) -> (
 	case ^Parsed_Map_Literal_Expression:
 		// FIXME: check for duplicate keys in the literal
 		map_lit := new_clone(
-		Checked_Map_Literal_Expression{
-			token = e.token,
-			symbol = symbol_from_type_expr(c, e.type_expr) or_return,
-			elements = make([]Checked_Map_Element, len(e.elements)),
-		},
+			Checked_Map_Literal_Expression{
+				token = e.token,
+				symbol = symbol_from_type_expr(c, e.type_expr) or_return,
+				elements = make([]Checked_Map_Element, len(e.elements)),
+			},
 		)
 		inner_info := map_lit.symbol.info.(Generic_Symbol_Info)
 		for element, i in e.elements {
@@ -999,11 +994,11 @@ build_checked_expr :: proc(c: ^Checker, expr: Parsed_Expression) -> (
 
 	case ^Parsed_Unary_Expression:
 		unary_expr := new_clone(
-		Checked_Unary_Expression{
-			token = e.token,
-			op = e.op,
-			expr = build_checked_expr(c, e.expr) or_return,
-		},
+			Checked_Unary_Expression{
+				token = e.token,
+				op = e.op,
+				expr = build_checked_expr(c, e.expr) or_return,
+			},
 		)
 		unary_expr.symbol = checked_expr_symbol(unary_expr.expr)
 		#partial switch e.op {
@@ -1016,12 +1011,12 @@ build_checked_expr :: proc(c: ^Checker, expr: Parsed_Expression) -> (
 
 	case ^Parsed_Binary_Expression:
 		binary_expr := new_clone(
-		Checked_Binary_Expression{
-			token = e.token,
-			op = e.op,
-			left = build_checked_expr(c, e.left) or_return,
-			right = build_checked_expr(c, e.right) or_return,
-		},
+			Checked_Binary_Expression{
+				token = e.token,
+				op = e.op,
+				left = build_checked_expr(c, e.left) or_return,
+				right = build_checked_expr(c, e.right) or_return,
+			},
 		)
 
 		#partial switch e.op {
@@ -1044,17 +1039,17 @@ build_checked_expr :: proc(c: ^Checker, expr: Parsed_Expression) -> (
 
 	case ^Parsed_Identifier_Expression:
 		identifier_expr := new_clone(
-		Checked_Identifier_Expression{token = e.name, symbol = get_symbol(c, e.name) or_return},
+			Checked_Identifier_Expression{token = e.name, symbol = get_symbol(c, e.name) or_return},
 		)
 		result = identifier_expr
 
 	case ^Parsed_Index_Expression:
 		index_expr := new_clone(
-		Checked_Index_Expression{
-			token = e.token,
-			left = build_checked_expr(c, e.left) or_return,
-			index = build_checked_expr(c, e.index) or_return,
-		},
+			Checked_Index_Expression{
+				token = e.token,
+				left = build_checked_expr(c, e.left) or_return,
+				index = build_checked_expr(c, e.index) or_return,
+			},
 		)
 		left_symbol := checked_expr_symbol(index_expr.left)
 		left_info: Generic_Symbol_Info
@@ -1140,10 +1135,10 @@ build_checked_expr :: proc(c: ^Checker, expr: Parsed_Expression) -> (
 
 		case ^Parsed_Index_Expression:
 			index_expr := new_clone(
-			Checked_Index_Expression{
-				token = left.token,
-				left = build_checked_expr(c, left.left) or_return,
-			},
+				Checked_Index_Expression{
+					token = left.token,
+					left = build_checked_expr(c, left.left) or_return,
+				},
 			)
 			left_symbol := checked_expr_symbol(index_expr.left)
 			if left_symbol.kind == .Var_Symbol {
@@ -1184,10 +1179,10 @@ build_checked_expr :: proc(c: ^Checker, expr: Parsed_Expression) -> (
 
 		case ^Parsed_Call_Expression:
 			call_expr := new_clone(
-			Checked_Call_Expression{
-				token = left.token,
-				args = make([]Checked_Expression, len(left.args)),
-			},
+				Checked_Call_Expression{
+					token = left.token,
+					args = make([]Checked_Expression, len(left.args)),
+				},
 			)
 			call_expr.func = build_checked_expr(c, left.func) or_return
 
@@ -1248,10 +1243,10 @@ build_checked_expr :: proc(c: ^Checker, expr: Parsed_Expression) -> (
 
 		case ^Parsed_Index_Expression:
 			index_expr := new_clone(
-			Checked_Index_Expression{
-				token = selector.token,
-				left = build_checked_expr(c, selector.left) or_return,
-			},
+				Checked_Index_Expression{
+					token = selector.token,
+					left = build_checked_expr(c, selector.left) or_return,
+				},
 			)
 			left_symbol := checked_expr_symbol(index_expr.left)
 			if left_symbol.kind == .Var_Symbol {
@@ -1285,10 +1280,10 @@ build_checked_expr :: proc(c: ^Checker, expr: Parsed_Expression) -> (
 
 		case ^Parsed_Call_Expression:
 			call_expr := new_clone(
-			Checked_Call_Expression{
-				token = selector.token,
-				args = make([]Checked_Expression, len(selector.args)),
-			},
+				Checked_Call_Expression{
+					token = selector.token,
+					args = make([]Checked_Expression, len(selector.args)),
+				},
 			)
 			if c.dot.previous.kind == .Generic_Symbol {
 				if c.dot.previous.type_id == ARRAY_ID {
@@ -1330,7 +1325,7 @@ build_checked_expr :: proc(c: ^Checker, expr: Parsed_Expression) -> (
 
 	case ^Parsed_Call_Expression:
 		call_expr := new_clone(
-		Checked_Call_Expression{token = e.token, args = make([]Checked_Expression, len(e.args))},
+			Checked_Call_Expression{token = e.token, args = make([]Checked_Expression, len(e.args))},
 		)
 		call_expr.func = build_checked_expr(c, e.func) or_return
 
@@ -1437,11 +1432,11 @@ symbol_from_type_expr :: proc(c: ^Checker, expr: Parsed_Expression, loc := #call
 		left_symbol := symbol_from_type_expr(c, e.left) or_return
 		if left_symbol.kind != .Module_Symbol {
 			err = format_error(
-			Semantic_Error{
-				kind = .Invalid_Symbol,
-				token = e.token,
-				details = fmt.tprintf("Invalid Dot type expression: %s", left_symbol.name),
-			},
+				Semantic_Error{
+					kind = .Invalid_Symbol,
+					token = e.token,
+					details = fmt.tprintf("Invalid Dot type expression: %s", left_symbol.name),
+				},
 			)
 			return
 		}
@@ -1451,35 +1446,35 @@ symbol_from_type_expr :: proc(c: ^Checker, expr: Parsed_Expression, loc := #call
 			inner_symbol, inner_err := get_scoped_symbol(module_root, selector.name)
 			if inner_err != nil {
 				err = format_error(
-				Semantic_Error{
-					kind = .Unknown_Symbol,
-					token = selector.name,
-					details = fmt.tprintf("Unknown selector symbol: %s", selector.name.text),
-				},
+					Semantic_Error{
+						kind = .Unknown_Symbol,
+						token = selector.name,
+						details = fmt.tprintf("Unknown selector symbol: %s", selector.name.text),
+					},
 				)
 				return
 			}
 			if !is_type_symbol(inner_symbol) {
 				err = format_error(
-				Semantic_Error{
-					kind = .Invalid_Symbol,
-					token = selector.name,
-					details = fmt.tprintf(
-						"Invalid Dot type expression: %s is not a Type",
-						selector.name.text,
-					),
-				},
+					Semantic_Error{
+						kind = .Invalid_Symbol,
+						token = selector.name,
+						details = fmt.tprintf(
+							"Invalid Dot type expression: %s is not a Type",
+							selector.name.text,
+						),
+					},
 				)
 			}
 			result = inner_symbol
 
 		} else {
 			err = format_error(
-			Semantic_Error{
-				kind = .Invalid_Symbol,
-				token = e.token,
-				details = fmt.tprintf("Invalid Dot type expression: %s", left_symbol.name),
-			},
+				Semantic_Error{
+					kind = .Invalid_Symbol,
+					token = e.token,
+					details = fmt.tprintf("Invalid Dot type expression: %s", left_symbol.name),
+				},
 			)
 			return
 		}
@@ -1495,6 +1490,83 @@ symbol_from_type_expr :: proc(c: ^Checker, expr: Parsed_Expression, loc := #call
 			loc,
 		)
 	}
+	return
+}
+
+check_dependency_graph :: proc(modules: []^Parsed_Module, lookup: map[string]int, e: string) -> (
+	out: []int,
+	err: Error,
+) {
+
+	Graph_Data :: struct {
+		modules:   []^Parsed_Module,
+		lookup:    map[string]int,
+		white_set: map[string]int,
+		gray_set:  map[string]int,
+		output:    []int,
+		count:     int,
+		current:   ^Parsed_Module,
+	}
+
+	check_import_cycle :: proc(data: ^Graph_Data) -> (err: Error) {
+		for node in data.current.import_nodes {
+			import_node := node.(^Parsed_Import_Statement)
+			import_name := import_node.identifier.text
+			if id, is_white := data.white_set[import_name]; is_white {
+				delete_key(&data.white_set, import_name)
+				data.gray_set[import_name] = id
+				// append(&data.edges, Graph_Edge{start = data.lookup[data.current.name], end = id})
+				previous := data.current
+				data.current = data.modules[id]
+				check_import_cycle(data) or_return
+				data.current = previous
+
+			} else if _, is_gray := data.gray_set[import_name]; is_gray {
+				err = format_error(
+					Semantic_Error{
+						kind = .Dependency_Cycle,
+						token = import_node.token,
+						details = fmt.tprintf(
+							"Cycle detected: %s is a dependency of %s, but %s is also a dependency of %s",
+							data.current.name,
+							import_name,
+							import_name,
+							data.current.name,
+						),
+					},
+				)
+				return
+			}
+		}
+		delete_key(&data.gray_set, data.current.name)
+		data.output[data.count] = data.lookup[data.current.name]
+		data.count += 1
+		return
+	}
+
+	out = make([]int, len(modules))
+	data := Graph_Data {
+		modules   = modules,
+		lookup    = lookup,
+		white_set = make(map[string]int, len(modules), context.temp_allocator),
+		gray_set  = make(map[string]int, len(modules), context.temp_allocator),
+		output    = out,
+		current   = modules[lookup[e]],
+	}
+
+	for name, id in lookup {
+		if name == e {
+			data.gray_set[name] = id
+		} else {
+			data.white_set[name] = id
+		}
+	}
+
+	for {
+		if len(data.white_set) == 0 do break
+		check_import_cycle(&data) or_return
+	}
+
 	return
 }
 

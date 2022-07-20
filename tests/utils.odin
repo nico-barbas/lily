@@ -52,8 +52,73 @@ check_expr_kind :: proc(t: ^testing.T, expr: lily.Parsed_Expression, kind: strin
 	}
 }
 
-check_node_kind :: proc(t: ^testing.T, node: lily.Parsed_Node, k: string) {
+check_node_kind :: proc(t: ^testing.T, node: lily.Parsed_Node, l: []string) -> int {
+	using lily
 
+	k := l[0]
+	read_count := 1
+	switch k {
+	case "expr":
+		_, ok := node.(^Parsed_Expression_Statement)
+		testing.expect(t, ok, fmt.tprintf("Expected Parsed_Expression_Statement, got %v", node))
+
+	case "ass":
+		_, ok := node.(^Parsed_Assignment_Statement)
+		testing.expect(t, ok, fmt.tprintf("Expected Parsed_Assignment_Statement, got %v", node))
+
+	case "if":
+		n, ok := node.(^Parsed_If_Statement)
+		testing.expect(t, ok, fmt.tprintf("Expected Parsed_If_Statement, got %v", node))
+		remain := l[1:]
+		for inner, i in n.body.nodes {
+			read := check_node_kind(t, inner, remain)
+			remain = remain[read:]
+			read_count += read
+		}
+
+	case "match":
+		n, ok := node.(^Parsed_Match_Statement)
+		testing.expect(t, ok, fmt.tprintf("Expected Parsed_Match_Statement, got %v", node))
+		remain := l[1:]
+		for c in n.cases {
+			for inner in c.body.nodes {
+				read := check_node_kind(t, inner, remain)
+				remain = remain[read:]
+				read_count += read
+			}
+		}
+
+	case "flow":
+		_, ok := node.(^Parsed_Flow_Statement)
+		testing.expect(t, ok, fmt.tprintf("Expected Parsed_Flow_Statement, got %v", node))
+
+	case "for":
+		n, ok := node.(^Parsed_Range_Statement)
+		testing.expect(t, ok, fmt.tprintf("Expected Parsed_Range_Statement, got %v", node))
+		remain := l[1:]
+		for inner, i in n.body.nodes {
+			read := check_node_kind(t, inner, remain)
+			remain = remain[read:]
+			read_count += read
+		}
+
+	case "imp":
+		_, ok := node.(^Parsed_Import_Statement)
+		testing.expect(t, ok, fmt.tprintf("Expected Parsed_Import_Statement, got %v", node))
+
+	case "var":
+		_, ok := node.(^Parsed_Var_Declaration)
+		testing.expect(t, ok, fmt.tprintf("Expected Parsed_Var_Declaration, got %v", node))
+
+	case "fn":
+		_, ok := node.(^Parsed_Fn_Declaration)
+		testing.expect(t, ok, fmt.tprintf("Expected Parsed_Fn_Declaration, got %v", node))
+
+	case "type":
+		_, ok := node.(^Parsed_Type_Declaration)
+		testing.expect(t, ok, fmt.tprintf("Expected Parsed_Type_Declaration, got %v", node))
+	}
+	return read_count
 }
 
 print_mem_leaks :: proc(track: ^mem.Tracking_Allocator) {

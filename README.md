@@ -133,7 +133,7 @@ var fooVal = Foo.Bar
 - [ ] Minimal standard library
 - [ ] Full test suite
     - [x] Lexer
-    - [ ] Parser :: 50%
+    - [ ] Parser :: 80%
     - [ ] Checker
     - [ ] Compiler
     - [ ] VM

@@ -119,6 +119,8 @@ get_var_stack_addr :: proc(vm: ^Vm, var_addr: i16) -> int {
 }
 
 run_vm :: proc(vm: ^Vm) {
+	vm.stack_ptr = 0
+	vm.ip = 0
 	run: for {
 		op := get_op_code(vm)
 		switch op {
@@ -354,11 +356,11 @@ run_vm :: proc(vm: ^Vm) {
 		case .Op_Make_Instance:
 			prototype := cast(^Class_Object)pop_stack_value(vm).data.(^Object)
 			instance := new_clone(
-			Class_Object{
-				base = Object{kind = .Class},
-				fields = make([]Value, len(prototype.fields)),
-				vtable = prototype.vtable,
-			},
+				Class_Object{
+					base = Object{kind = .Class},
+					fields = make([]Value, len(prototype.fields)),
+					vtable = prototype.vtable,
+				},
 			)
 			push_stack_value(vm, Value{kind = .Object_Ref, data = cast(^Object)instance})
 

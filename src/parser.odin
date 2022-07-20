@@ -72,6 +72,7 @@ Expr_Loop_State :: enum {
 }
 
 parse_dependencies :: proc(
+	sources: ^[dynamic]string,
 	buf: ^[dynamic]^Parsed_Module,
 	lookup: ^map[string]int,
 	entry_point: ^Parsed_Module,
@@ -81,6 +82,7 @@ parse_dependencies :: proc(
 	if len(entry_point.import_nodes) == 0 {
 		return
 	}
+
 
 	start := len(buf) - 1
 	for import_node in entry_point.import_nodes {
@@ -101,15 +103,19 @@ parse_dependencies :: proc(
 			imported_module := make_parsed_module(import_stmt.identifier.text)
 			// FIXME: check for read errros
 			imported_source, _ := os.read_entire_file(module_path)
-			defer delete(imported_source)
 			parse_module(string(imported_source), imported_module) or_return
+			append(sources, string(imported_source))
 			append(buf, imported_module)
 			lookup[imported_module.name] = len(buf) - 1
 		}
 	}
+
+	if start == len(buf) - 1 {
+		return
+	}
 	imported_modules := buf[start:len(buf)]
 	for module in imported_modules {
-		parse_dependencies(buf, lookup, module) or_return
+		parse_dependencies(sources, buf, lookup, module) or_return
 	}
 	return
 }
@@ -191,26 +197,26 @@ advance_expr_loop :: proc(p: ^Parser, end_token: Token_Kind) -> (s: Expr_Loop_St
 	#partial switch p.current.kind {
 	case .EOF:
 		err = format_error(
-		Parsing_Error{
-			kind = .Invalid_Syntax,
-			token = p.previous,
-			details = fmt.tprintf("Expected %s, got %s", end_token, p.current.kind),
-		},
+			Parsing_Error{
+				kind = .Invalid_Syntax,
+				token = p.previous,
+				details = fmt.tprintf("Expected %s, got %s", end_token, p.current.kind),
+			},
 		)
 		return
 	case .Newline:
 		if p.expect_punctuation {
 			err = format_error(
-			Parsing_Error{
-				kind = .Invalid_Syntax,
-				token = p.previous,
-				details = fmt.tprintf(
-					"Expected one of: %s, %s, got %s",
-					Token_Kind.Comma,
-					end_token,
-					p.current.kind,
-				),
-			},
+				Parsing_Error{
+					kind = .Invalid_Syntax,
+					token = p.previous,
+					details = fmt.tprintf(
+						"Expected one of: %s, %s, got %s",
+						Token_Kind.Comma,
+						end_token,
+						p.current.kind,
+					),
+				},
 			)
 			return
 		} else {
@@ -223,11 +229,11 @@ advance_expr_loop :: proc(p: ^Parser, end_token: Token_Kind) -> (s: Expr_Loop_St
 	case .Comma:
 		if !p.expect_punctuation {
 			err = format_error(
-			Parsing_Error{
-				kind = .Invalid_Syntax,
-				token = p.previous,
-				details = fmt.tprintf("Expected expression, got %s", p.current.kind),
-			},
+				Parsing_Error{
+					kind = .Invalid_Syntax,
+					token = p.previous,
+					details = fmt.tprintf("Expected expression, got %s", p.current.kind),
+				},
 			)
 			return
 		} else {
@@ -238,16 +244,16 @@ advance_expr_loop :: proc(p: ^Parser, end_token: Token_Kind) -> (s: Expr_Loop_St
 	case:
 		if p.expect_punctuation {
 			err = format_error(
-			Parsing_Error{
-				kind = .Invalid_Syntax,
-				token = p.previous,
-				details = fmt.tprintf(
-					"Expected one of: %s, %s, got %s",
-					Token_Kind.Comma,
-					end_token,
-					p.current.kind,
-				),
-			},
+				Parsing_Error{
+					kind = .Invalid_Syntax,
+					token = p.previous,
+					details = fmt.tprintf(
+						"Expected one of: %s, %s, got %s",
+						Token_Kind.Comma,
+						end_token,
+						p.current.kind,
+					),
+				},
 			)
 			return
 		} else {
@@ -321,7 +327,7 @@ parse_if_stmt :: proc(p: ^Parser) -> (result: ^Parsed_If_Statement, err: Error) 
 		switch is_end_branch {
 		case true:
 			result.condition = new_clone(
-			Parsed_Literal_Expression{value = Value{kind = .Boolean, data = true}},
+				Parsed_Literal_Expression{value = Value{kind = .Boolean, data = true}},
 			)
 			result.body = new_clone(Parsed_Block_Statement{nodes = make([dynamic]Parsed_Node)})
 			else_body: for {
@@ -490,7 +496,7 @@ parse_match_stmt :: proc(p: ^Parser) -> (result: ^Parsed_Match_Statement, err: E
 			current.condition = parse_expr(p, .Lowest) or_return
 			match_token_kind(p, .Colon) or_return
 			current.body = new_clone(
-			Parsed_Block_Statement{token = p.current, nodes = make([dynamic]Parsed_Node)},
+				Parsed_Block_Statement{token = p.current, nodes = make([dynamic]Parsed_Node)},
 			)
 			body: for {
 				body_node := parse_node(p) or_return
@@ -525,7 +531,10 @@ parse_match_stmt :: proc(p: ^Parser) -> (result: ^Parsed_Match_Statement, err: E
 
 parse_flow_stmt :: proc(p: ^Parser) -> (result: ^Parsed_Flow_Statement, err: Error) {
 	result = new_clone(
-	Parsed_Flow_Statement{token = p.current, kind = .Break if p.current.kind == .Break else .Continue},
+		Parsed_Flow_Statement{
+			token = p.current,
+			kind = .Break if p.current.kind == .Break else .Continue,
+		},
 	)
 	err = match_token_kind_next(p, .Newline)
 	return
@@ -536,7 +545,22 @@ parse_import_stmt :: proc(p: ^Parser) -> (result: ^Parsed_Import_Statement, err:
 	result = new_clone(Parsed_Import_Statement{token = p.current})
 	match_token_kind_next(p, .Identifier) or_return
 	result.identifier = p.current
-	match_token_kind_next(p, .Newline) or_return
+	#partial switch consume_token(p).kind {
+	case .Newline, .EOF:
+	case:
+		err = format_error(
+			Parsing_Error{
+				kind = .Invalid_Syntax,
+				token = p.current,
+				details = fmt.tprintf(
+					"Expected either %s or %s, got %s",
+					Token_Kind.Newline,
+					Token_Kind.EOF,
+					p.current.kind,
+				),
+			},
+		)
+	}
 	return
 }
 
@@ -731,7 +755,7 @@ parse_type_decl :: proc(p: ^Parser) -> (result: ^Parsed_Type_Declaration, err: E
 				case .Constructor:
 					constructor := parse_fn_decl(p) or_return
 					constructor.return_type_expr = new_clone(
-					Parsed_Identifier_Expression{name = name_token},
+						Parsed_Identifier_Expression{name = name_token},
 					)
 					append(&result.constructors, constructor)
 
@@ -792,7 +816,7 @@ parse_number :: proc(p: ^Parser) -> (result: Parsed_Expression, err: Error) {
 	num, ok := strconv.parse_f64(p.previous.text)
 	if ok {
 		result = new_clone(
-		Parsed_Literal_Expression{token = p.previous, value = Value{kind = .Number, data = num}},
+			Parsed_Literal_Expression{token = p.previous, value = Value{kind = .Number, data = num}},
 		)
 	} else {
 		err = Parsing_Error {
@@ -811,10 +835,10 @@ parse_boolean :: proc(p: ^Parser) -> (result: Parsed_Expression, err: Error) {
 
 parse_string :: proc(p: ^Parser) -> (result: Parsed_Expression, err: Error) {
 	result = new_clone(
-	Parsed_String_Literal_Expression{
-		token = p.previous,
-		value = p.previous.text[1:len(p.previous.text) - 1],
-	},
+		Parsed_String_Literal_Expression{
+			token = p.previous,
+			value = p.previous.text[1:len(p.previous.text) - 1],
+		},
 	)
 	return
 }
@@ -901,11 +925,11 @@ parse_array :: proc(p: ^Parser, left: Parsed_Expression) -> (result: Parsed_Expr
 
 parse_map :: proc(p: ^Parser, left: Parsed_Expression) -> (result: Parsed_Expression, err: Error) {
 	m := new_clone(
-	Parsed_Map_Literal_Expression{
-		token = p.previous,
-		type_expr = left,
-		elements = make([dynamic]Parsed_Map_Element),
-	},
+		Parsed_Map_Literal_Expression{
+			token = p.previous,
+			type_expr = left,
+			elements = make([dynamic]Parsed_Map_Element),
+		},
 	)
 
 	p.expect_punctuation = false

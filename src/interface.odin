@@ -4,13 +4,15 @@ import "core:fmt"
 import "core:strings"
 
 State :: struct {
-	source:              []string,
+	sources:             [dynamic]string,
 	checked_modules:     []^Checked_Module,
 	import_modules_id:   map[string]int,
 	import_modules_name: map[int]string,
 	compiled_modules:    []^Compiled_Module,
 	checker:             Checker,
 	vm:                  Vm,
+	init_order:          []int,
+	need_init:           bool,
 	std_builder:         strings.Builder,
 
 	// Vm stack manipulation proc
@@ -58,21 +60,23 @@ compile_source :: proc(s: ^State, module_name: string, source: string) -> (err: 
 	s.import_modules_name = make(map[int]string)
 	module := make_parsed_module(module_name)
 	parse_module(source, module) or_return
+	append(&s.sources, source)
 
 	parsed_modules := make([dynamic]^Parsed_Module)
-	defer {
-		for module in parsed_modules {
-			delete_parsed_module(module)
-		}
-		delete(parsed_modules)
-	}
+	// defer {
+	// 	for module in parsed_modules {
+	// 		delete_parsed_module(module)
+	// 	}
+	// 	delete(parsed_modules)
+	// }
 	append(&parsed_modules, module)
 	s.import_modules_id[module_name] = 0
 
-	parse_dependencies(&parsed_modules, &s.import_modules_id, module) or_return
+	parse_dependencies(&s.sources, &parsed_modules, &s.import_modules_id, module) or_return
 	for name, id in s.import_modules_id {
 		s.import_modules_name[id] = name
 	}
+	s.init_order = check_dependency_graph(parsed_modules[:], s.import_modules_id, module_name) or_return
 	when DEBUG_PARSER {
 		for p in parsed_modules {
 			print_parsed_ast(p)
@@ -86,7 +90,7 @@ compile_source :: proc(s: ^State, module_name: string, source: string) -> (err: 
 		&s.checker, 
 		s.import_modules_id, 
 		parsed_modules[:],
-		module_name,
+		s.init_order,
 	) or_return
 	//odinfmt: enable
 
@@ -102,21 +106,39 @@ compile_source :: proc(s: ^State, module_name: string, source: string) -> (err: 
 			print_compiled_module(s.compiled_modules[i])
 		}
 	}
+	s.need_init = true
 	return
 }
 
 run_module :: proc(s: ^State, module_name: string) {
 	DEBUG_VM :: true
+
 	entry_point := s.import_modules_id[module_name]
+	should_run := true
 	vm := Vm {
 		modules               = s.compiled_modules,
-		current               = s.compiled_modules[entry_point],
-		chunk                 = &s.compiled_modules[entry_point].main,
 		state                 = s,
 		call_foreign          = call_foreign_fn,
 		show_debug_stack_info = DEBUG_VM,
 	}
-	run_vm(&vm)
+	if s.need_init {
+		for id in s.init_order {
+			if id == entry_point {
+				should_run = false
+			}
+			vm.current = s.compiled_modules[id]
+			vm.chunk = &s.compiled_modules[id].main
+			run_vm(&vm)
+		}
+		delete(s.init_order)
+		s.need_init = false
+	}
+
+	if should_run {
+		vm.current = s.compiled_modules[entry_point]
+		vm.chunk = &s.compiled_modules[entry_point].main
+		run_vm(&vm)
+	}
 
 	when DEBUG_VM {
 		for module in s.compiled_modules {
