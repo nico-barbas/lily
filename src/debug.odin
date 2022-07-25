@@ -291,7 +291,9 @@ print_parsed_node :: proc(p: ^Debug_Printer, node: Parsed_Node) {
 			write_line(p, "Return type: ")
 			print_parsed_expr(p, n.return_type_expr)
 
-			print_parsed_node(p, n.body)
+			if n.kind != .Foreign {
+				print_parsed_node(p, n.body)
+			}
 		}
 		decrement(p)
 
@@ -969,8 +971,16 @@ print_chunk :: proc(p: ^Debug_Printer, c: ^Chunk) {
 		case .Op_Begin, .Op_End:
 			fmt.sbprintf(&p.builder, " ||")
 
-		case .Op_Call, .Op_Call_Foreign, .Op_Call_Method, .Op_Call_Constr:
+		case .Op_Call, .Op_Call_Method, .Op_Call_Constr:
 			fmt.sbprintf(&p.builder, " || fn addr: %d", debug_get_i16(c, &ip))
+
+		case .Op_Call_Foreign:
+			fmt.sbprintf(
+				&p.builder,
+				" || fn addr: %d, has return: %d",
+				debug_get_i16(c, &ip),
+				debug_get_i16(c, &ip),
+			)
 
 		case .Op_Return:
 			fmt.sbprintf(&p.builder, " || result stack addr: %d", debug_get_i16(c, &ip))

@@ -46,16 +46,31 @@ playground :: proc() {
 	// 	a.add(13)
 	// `
 	input := `
-	import test
-	
-	var a = test.b * 2
+	import std
+
+	type Game is class
+		msg: string
+
+		constructor new():
+			self.msg = "Hello world!"
+		end
+	end
+
+	var game = Game.new()
+
+	fn load():
+		std.print(game.msg)
+	end
 	`
 
 	state := new_state(Config{})
 	err := compile_source(state, "main", input)
 	assert(err == nil, fmt.tprint(err))
 
-	run_module(state, "main")
+	// run_module(state, "main")
+	// update_handle, handle_err := make_fn_handle(state, "main", "update")
+	// assert(handle_err == nil)
+	// call(state, update_handle)
 	free_state(state)
 	fmt.println("finished")
 }

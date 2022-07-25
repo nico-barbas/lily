@@ -29,14 +29,14 @@ Checked_Module :: struct {
 
 make_checked_module :: proc(name: string, id: int) -> ^Checked_Module {
 	m := new_clone(
-	Checked_Module{
-		name = name,
-		id = id,
-		nodes = make([dynamic]Checked_Node),
-		variables = make([dynamic]Checked_Node),
-		functions = make([dynamic]Checked_Node),
-		classes = make([dynamic]Checked_Node),
-	},
+		Checked_Module{
+			name = name,
+			id = id,
+			nodes = make([dynamic]Checked_Node),
+			variables = make([dynamic]Checked_Node),
+			functions = make([dynamic]Checked_Node),
+			classes = make([dynamic]Checked_Node),
+		},
 	)
 	m.scope = new_scope()
 	m.root = m.scope
@@ -100,7 +100,7 @@ push_class_scope :: proc(c: ^Checked_Module, name: Token) -> (err: Error) {
 			kind = .Var_Symbol,
 			module_id = c.id,
 			scope_id = class_scope.id,
-			info = Var_Symbol_Info{symbol = class_symbol, mutable = false},
+			info = Var_Symbol_Info{symbol = class_symbol, mutable = false, depth = 1},
 		},
 	) or_return
 	c.scope.children[class_scope.id] = class_scope
@@ -121,7 +121,11 @@ enter_class_scope :: proc(c: ^Checked_Module, name: Token) -> (err: Error) {
 	return
 }
 
-enter_child_scope_by_id :: proc(c: ^Checked_Module, scope_id: Scope_ID, loc := #caller_location) -> (
+enter_child_scope_by_id :: proc(
+	c: ^Checked_Module,
+	scope_id: Scope_ID,
+	loc := #caller_location,
+) -> (
 	err: Error,
 ) {
 	if child, exist := c.scope.children[scope_id]; exist {
@@ -287,7 +291,7 @@ checked_expr_symbol :: proc(expr: Checked_Expression, lhs := true) -> (symbol: ^
 		symbol = e.symbol
 
 	case ^Checked_Dot_Expression:
-		if lhs {
+		if !lhs {
 			symbol = e.symbol
 		} else {
 			symbol = e.leaf_symbol

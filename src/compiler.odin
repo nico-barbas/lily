@@ -50,20 +50,20 @@ make_compiled_program :: proc(state: ^State) -> []^Compiled_Module {
 	for module, i in state.checked_modules {
 		current := output[i]
 		current = new_clone(
-		Compiled_Module{
-			id = i,
-			class_addr = make(map[string]i16),
-			class_consts = make([]Const_Pool, len(module.classes)),
-			class_fields = make([]map[string]i16, len(module.classes)),
-			class_constructors = make([]map[string]i16, len(module.classes)),
-			class_methods = make([]map[string]i16, len(module.classes)),
-			protypes = make([]Class_Object, len(module.classes)),
-			vtables = make([]Class_Vtable, len(module.classes)),
-			fn_addr = make(map[string]i16),
-			functions = make([]Fn_Object, len(module.functions)),
-			var_addr = make(map[string]i16),
-			variables = make([]Value, len(module.variables)),
-		},
+			Compiled_Module{
+				id = i,
+				class_addr = make(map[string]i16),
+				class_consts = make([]Const_Pool, len(module.classes)),
+				class_fields = make([]map[string]i16, len(module.classes)),
+				class_constructors = make([]map[string]i16, len(module.classes)),
+				class_methods = make([]map[string]i16, len(module.classes)),
+				protypes = make([]Class_Object, len(module.classes)),
+				vtables = make([]Class_Vtable, len(module.classes)),
+				fn_addr = make(map[string]i16),
+				functions = make([]Fn_Object, len(module.functions)),
+				var_addr = make(map[string]i16),
+				variables = make([]Value, len(module.variables)),
+			},
 		)
 
 		for node, j in module.classes {
@@ -583,7 +583,7 @@ compile_expr :: proc(c: ^Compiler, expr: Checked_Expression) {
 		fn_addr := get_fn_addr(c.current_write, symbol.name)
 		#partial switch fn_info.kind {
 		case .Foreign:
-			push_simple_instruction(&c.chunk, .Op_Call_Foreign, fn_addr)
+			push_double_instruction(&c.chunk, .Op_Call_Foreign, fn_addr, 1 if fn_info.has_return else -1)
 		case .Function:
 			push_simple_instruction(&c.chunk, .Op_Call, fn_addr)
 		}
@@ -742,7 +742,7 @@ compile_dot_call_expr :: proc(c: ^Compiler, expr: ^Checked_Call_Expression, f: C
 		push_simple_instruction(&c.chunk, .Op_Module, i16(symbol.module_id))
 		#partial switch fn_info.kind {
 		case .Foreign:
-			push_simple_instruction(&c.chunk, .Op_Call_Foreign, fn_addr)
+			push_double_instruction(&c.chunk, .Op_Call_Foreign, fn_addr, 1 if fn_info.has_return else -1)
 		case .Function:
 			push_simple_instruction(&c.chunk, .Op_Call, fn_addr)
 		}
@@ -750,7 +750,7 @@ compile_dot_call_expr :: proc(c: ^Compiler, expr: ^Checked_Call_Expression, f: C
 	} else {
 		#partial switch fn_info.kind {
 		case .Foreign:
-			push_simple_instruction(&c.chunk, .Op_Call_Foreign, fn_addr)
+			push_double_instruction(&c.chunk, .Op_Call_Foreign, fn_addr, 1 if fn_info.has_return else -1)
 		case .Function:
 			push_simple_instruction(&c.chunk, .Op_Call, fn_addr)
 		}
@@ -796,10 +796,10 @@ compile_constructor_call_expr :: proc(c: ^Compiler, expr: ^Checked_Call_Expressi
 	constructor_addr := get_constructor_addr(class_module, f.class.name, symbol.name)
 	if f.current_id != f.class.module_id {
 		push_simple_instruction(&c.chunk, .Op_Module, i16(f.class.module_id))
-		push_simple_instruction(&c.chunk, .Op_Call_Method, constructor_addr)
+		push_simple_instruction(&c.chunk, .Op_Call_Constr, constructor_addr)
 		push_simple_instruction(&c.chunk, .Op_Module, i16(f.current_id))
 	} else {
-		push_simple_instruction(&c.chunk, .Op_Call_Method, constructor_addr)
+		push_simple_instruction(&c.chunk, .Op_Call_Constr, constructor_addr)
 	}
 	push_op_code(&c.chunk, .Op_Push_Back)
 }

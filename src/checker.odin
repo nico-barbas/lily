@@ -142,10 +142,7 @@ contain_symbol :: proc(c: ^Checker, token: Token) -> bool {
 	return false
 }
 
-get_symbol :: proc(c: ^Checker, token: Token, loc := #caller_location) -> (
-	result: ^Symbol,
-	err: Error,
-) {
+get_symbol :: proc(c: ^Checker, token: Token, loc := #caller_location) -> (result: ^Symbol, err: Error) {
 	builtins: for symbol, i in c.builtin_symbols {
 		if symbol.name == token.text {
 			result = &c.builtin_symbols[i]
@@ -210,7 +207,12 @@ types_equal :: proc(c: ^Checker, s1, s2: ^Symbol) -> bool {
 	}
 }
 
-expect_type :: proc(c: ^Checker, expr: Checked_Expression, s: ^Symbol, loc := #caller_location) -> (
+expect_type :: proc(
+	c: ^Checker,
+	expr: Checked_Expression,
+	s: ^Symbol,
+	loc := #caller_location,
+) -> (
 	err: Error,
 ) {
 	expr_symbol := checked_expr_symbol(expr)
@@ -260,7 +262,12 @@ gen_type_id :: proc(c: ^Checker) -> Type_ID {
 }
 
 
-build_checked_program :: proc(c: ^Checker, n: map[string]int, p: []^Parsed_Module, order: []int) -> (
+build_checked_program :: proc(
+	c: ^Checker,
+	n: map[string]int,
+	p: []^Parsed_Module,
+	order: []int,
+) -> (
 	result: []^Checked_Module,
 	err: Error,
 ) {
@@ -567,7 +574,6 @@ add_module_inner_symbols :: proc(c: ^Checker, module_id: int) -> (err: Error) {
 	for node in c.current_parsed.functions {
 		add_inner_symbols(c, node) or_return
 	}
-
 	for node in c.current_parsed.nodes {
 		add_inner_symbols(c, node) or_return
 	}
@@ -666,19 +672,19 @@ build_checked_ast :: proc(c: ^Checker, module_id: int) -> (err: Error) {
 	c.current.scope = c.current.root
 	c.current_parsed = c.parsed[module_id]
 
-	for node in c.current_parsed.types {
-		class_node := build_checked_node(c, node) or_return
-		append(&c.current.classes, class_node)
-	}
-
-	for node in c.current_parsed.functions {
-		fn_node := build_checked_node(c, node) or_return
-		append(&c.current.functions, fn_node)
-	}
 	for node in c.current_parsed.variables {
 		var_node := build_checked_node(c, node) or_return
 		append(&c.current.variables, var_node)
 	}
+	for node in c.current_parsed.types {
+		class_node := build_checked_node(c, node) or_return
+		append(&c.current.classes, class_node)
+	}
+	for node in c.current_parsed.functions {
+		fn_node := build_checked_node(c, node) or_return
+		append(&c.current.functions, fn_node)
+	}
+
 	for node in c.current_parsed.nodes {
 		checked_node := build_checked_node(c, node) or_return
 		append(&c.current.nodes, checked_node)
@@ -726,11 +732,10 @@ build_checked_node :: proc(c: ^Checker, node: Parsed_Node) -> (result: Checked_N
 		left_type_symbol: ^Symbol
 		#partial switch left in assign_stmt.left {
 		case ^Checked_Identifier_Expression:
-			identifier_symbol = checked_expr_symbol(left, false)
+			identifier_symbol = checked_expr_symbol(left)
 			left_type_symbol = identifier_symbol
-
-		case ^Checked_Index_Expression:
-			identifier_symbol = checked_expr_symbol(left.left, false)
+		case ^Checked_Index_Expression, ^Checked_Dot_Expression:
+			identifier_symbol = checked_expr_symbol(left)
 			left_type_symbol = checked_expr_symbol(left, false)
 		}
 
@@ -933,7 +938,10 @@ build_checked_node :: proc(c: ^Checker, node: Parsed_Node) -> (result: Checked_N
 	return
 }
 
-build_checked_expr :: proc(c: ^Checker, expr: Parsed_Expression) -> (
+build_checked_expr :: proc(
+	c: ^Checker,
+	expr: Parsed_Expression,
+) -> (
 	result: Checked_Expression,
 	err: Error,
 ) {
@@ -1381,7 +1389,11 @@ build_array_method_call :: proc(
 	return
 }
 
-symbol_from_type_expr :: proc(c: ^Checker, expr: Parsed_Expression, loc := #caller_location) -> (
+symbol_from_type_expr :: proc(
+	c: ^Checker,
+	expr: Parsed_Expression,
+	loc := #caller_location,
+) -> (
 	result: ^Symbol,
 	err: Error,
 ) {
@@ -1493,7 +1505,11 @@ symbol_from_type_expr :: proc(c: ^Checker, expr: Parsed_Expression, loc := #call
 	return
 }
 
-check_dependency_graph :: proc(modules: []^Parsed_Module, lookup: map[string]int, e: string) -> (
+check_dependency_graph :: proc(
+	modules: []^Parsed_Module,
+	lookup: map[string]int,
+	e: string,
+) -> (
 	out: []int,
 	err: Error,
 ) {

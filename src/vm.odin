@@ -118,8 +118,12 @@ get_var_stack_addr :: proc(vm: ^Vm, var_addr: i16) -> int {
 	return vm.chunk.variables[var_addr].stack_addr
 }
 
+run_vm_fn :: proc(vm: ^Vm, fn_addr: i16) {
+	push_call_frame(vm, &vm.current.functions[fn_addr].chunk)
+	run_vm(vm)
+}
+
 run_vm :: proc(vm: ^Vm) {
-	vm.stack_ptr = 0
 	vm.ip = 0
 	run: for {
 		op := get_op_code(vm)
@@ -247,8 +251,18 @@ run_vm :: proc(vm: ^Vm) {
 
 		case .Op_Call_Foreign:
 			fn_addr := get_i16(vm)
+			has_return := false if get_i16(vm) == -1 else true
+			return_val: Value
+
 			fn_values := vm.stack[get_scope_start_addr(vm):vm.stack_ptr]
 			vm.call_foreign(vm.state, vm.current.functions[fn_addr].foreign_fn, fn_values)
+			if has_return {
+				return_val = fn_values[0]
+			}
+			pop_stack_scope(vm)
+			if has_return {
+				push_stack_value(vm, return_val)
+			}
 
 		case .Op_Call_Method:
 			method_addr := get_i16(vm)
@@ -398,8 +412,12 @@ run_vm :: proc(vm: ^Vm) {
 		if vm.show_debug_stack_info {
 			print_stack(vm, op)
 		}
-		if vm.ip >= len(vm.chunk.bytecode) {
+		if vm_finished(vm) {
 			break run
 		}
 	}
+}
+
+vm_finished :: proc(vm: ^Vm) -> bool {
+	return vm.chunk == nil || vm.ip >= len(vm.chunk.bytecode)
 }

@@ -26,6 +26,21 @@ Value :: struct {
 	data: Value_Data,
 }
 
+data_to_value :: proc(data: Value_Data) -> Value {
+	v := Value {
+		data = data,
+	}
+	switch d in data {
+	case bool:
+		v.kind = .Boolean
+	case f64:
+		v.kind = .Number
+	case ^Object:
+		assert(false)
+	}
+	return v
+}
+
 value_equal :: proc(v1, v2: Value) -> bool {
 	if v1.kind == v2.kind {
 		switch v1.kind {
@@ -95,9 +110,7 @@ Class_Vtable :: struct {
 }
 
 new_string_object :: proc(from := "") -> Value {
-	str_object := new_clone(
-	String_Object{base = Object{kind = .String}, data = make([]rune, len(from))},
-	)
+	str_object := new_clone(String_Object{base = Object{kind = .String}, data = make([]rune, len(from))})
 	for r, i in from {
 		str_object.data[i] = r
 	}
@@ -108,7 +121,7 @@ new_array_object :: proc() -> Value {
 	return Value{
 		kind = .Object_Ref,
 		data = cast(^Object)new_clone(
-		Array_Object{base = Object{kind = .Array}, data = make([dynamic]Value)},
+			Array_Object{base = Object{kind = .Array}, data = make([dynamic]Value)},
 		),
 	}
 }
@@ -116,9 +129,7 @@ new_array_object :: proc() -> Value {
 new_map_object :: proc() -> Value {
 	return Value{
 		kind = .Object_Ref,
-		data = cast(^Object)new_clone(
-		Map_Object{base = Object{kind = .Map}, data = make(map[Value]Value)},
-		),
+		data = cast(^Object)new_clone(Map_Object{base = Object{kind = .Map}, data = make(map[Value]Value)}),
 	}
 }
 

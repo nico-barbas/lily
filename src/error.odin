@@ -6,6 +6,7 @@ import "core:fmt"
 Error :: union {
 	Parsing_Error,
 	Semantic_Error,
+	Runtime_Error,
 	Internal_Error,
 }
 
@@ -23,6 +24,12 @@ set_error_location :: proc(err: Error, loc := #caller_location) -> (result: Erro
 		r := e
 		r.compiler_loc = loc
 		result = r
+
+	case Runtime_Error:
+		r := e
+		r.compiler_loc = loc
+		result = r
+
 	case Internal_Error:
 		r := e
 		r.compiler_loc = loc
@@ -61,11 +68,7 @@ Semantic_Error :: struct {
 
 rhs_assign_semantic_err :: proc(s: ^Symbol, t: Token, loc := #caller_location) -> Error {
 	return format_error(
-		Semantic_Error{
-			kind = .Invalid_Symbol,
-			token = t,
-			details = fmt.tprintf("Cannot assign %s", s.name),
-		},
+		Semantic_Error{kind = .Invalid_Symbol, token = t, details = fmt.tprintf("Cannot assign %s", s.name)},
 		loc,
 	)
 }
@@ -137,6 +140,16 @@ dot_operand_semantic_err :: proc(s: ^Symbol, t: Token, loc := #caller_location) 
 	)
 }
 
+Runtime_Error :: struct {
+	kind:         enum {
+		Invalid_Source_File_Name,
+		Invalid_Module_Name,
+		Invalid_Fn_Name,
+	},
+	details:      string,
+	compiler_loc: runtime.Source_Code_Location,
+}
+
 Internal_Error :: struct {
 	kind:         enum {
 		Unknown_Scope_Name,
@@ -150,6 +163,8 @@ error_message :: proc(err: Error) -> string {
 	case Parsing_Error:
 		return e.details
 	case Semantic_Error:
+		return e.details
+	case Runtime_Error:
 		return e.details
 	case Internal_Error:
 		return e.details

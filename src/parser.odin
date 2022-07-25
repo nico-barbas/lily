@@ -1,8 +1,6 @@
 package lily
 
-import "core:os"
 import "core:strconv"
-import "core:strings"
 import "core:fmt"
 
 //odinfmt: disable
@@ -72,7 +70,7 @@ Expr_Loop_State :: enum {
 }
 
 parse_dependencies :: proc(
-	sources: ^[dynamic]string,
+	s: ^State,
 	buf: ^[dynamic]^Parsed_Module,
 	lookup: ^map[string]int,
 	entry_point: ^Parsed_Module,
@@ -96,15 +94,9 @@ parse_dependencies :: proc(
 			append(buf, std_module)
 			lookup["std"] = len(buf) - 1
 		} else {
-			module_path := strings.concatenate(
-				{import_stmt.identifier.text, ".lily"},
-				context.temp_allocator,
-			)
 			imported_module := make_parsed_module(import_stmt.identifier.text)
-			// FIXME: check for read errros
-			imported_source, _ := os.read_entire_file(module_path)
-			parse_module(string(imported_source), imported_module) or_return
-			append(sources, string(imported_source))
+			imported_source := s->internal_load_module_source(imported_module.name) or_return
+			parse_module(imported_source, imported_module) or_return
 			append(buf, imported_module)
 			lookup[imported_module.name] = len(buf) - 1
 		}
@@ -115,7 +107,7 @@ parse_dependencies :: proc(
 	}
 	imported_modules := buf[start:len(buf)]
 	for module in imported_modules {
-		parse_dependencies(sources, buf, lookup, module) or_return
+		parse_dependencies(s, buf, lookup, module) or_return
 	}
 	return
 }
@@ -306,7 +298,10 @@ parse_expression_stmt :: proc(p: ^Parser) -> (result: ^Parsed_Expression_Stateme
 	return
 }
 
-parse_assign_stmt :: proc(p: ^Parser, lhs: Parsed_Expression) -> (
+parse_assign_stmt :: proc(
+	p: ^Parser,
+	lhs: Parsed_Expression,
+) -> (
 	result: ^Parsed_Assignment_Statement,
 	err: Error,
 ) {
@@ -319,7 +314,11 @@ parse_assign_stmt :: proc(p: ^Parser, lhs: Parsed_Expression) -> (
 }
 
 parse_if_stmt :: proc(p: ^Parser) -> (result: ^Parsed_If_Statement, err: Error) {
-	parse_branch :: proc(p: ^Parser, is_end_branch: bool, loc := #caller_location) -> (
+	parse_branch :: proc(
+		p: ^Parser,
+		is_end_branch: bool,
+		loc := #caller_location,
+	) -> (
 		result: ^Parsed_If_Statement,
 		err: Error,
 	) {
@@ -531,10 +530,7 @@ parse_match_stmt :: proc(p: ^Parser) -> (result: ^Parsed_Match_Statement, err: E
 
 parse_flow_stmt :: proc(p: ^Parser) -> (result: ^Parsed_Flow_Statement, err: Error) {
 	result = new_clone(
-		Parsed_Flow_Statement{
-			token = p.current,
-			kind = .Break if p.current.kind == .Break else .Continue,
-		},
+		Parsed_Flow_Statement{token = p.current, kind = .Break if p.current.kind == .Break else .Continue},
 	)
 	err = match_token_kind_next(p, .Newline)
 	return
@@ -664,7 +660,7 @@ parse_fn_decl :: proc(p: ^Parser) -> (result: ^Parsed_Fn_Declaration, err: Error
 			continue params
 		case .Expect_Next:
 			param: Typed_Identifier
-			match_token_kind_next(p, .Identifier) or_return
+			match_token_kind(p, .Identifier) or_return
 			param.name = p.current
 			match_token_kind_next(p, .Colon) or_return
 			consume_token(p)
@@ -754,9 +750,7 @@ parse_type_decl :: proc(p: ^Parser) -> (result: ^Parsed_Type_Declaration, err: E
 
 				case .Constructor:
 					constructor := parse_fn_decl(p) or_return
-					constructor.return_type_expr = new_clone(
-						Parsed_Identifier_Expression{name = name_token},
-					)
+					constructor.return_type_expr = new_clone(Parsed_Identifier_Expression{name = name_token})
 					append(&result.constructors, constructor)
 
 
@@ -886,7 +880,10 @@ parse_call :: proc(p: ^Parser, left: Parsed_Expression) -> (result: Parsed_Expre
 	return
 }
 
-parse_infix_open_bracket :: proc(p: ^Parser, left: Parsed_Expression) -> (
+parse_infix_open_bracket :: proc(
+	p: ^Parser,
+	left: Parsed_Expression,
+) -> (
 	result: Parsed_Expression,
 	err: Error,
 ) {

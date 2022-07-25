@@ -1,0 +1,37 @@
+import std
+import rl
+
+type Game is class
+    x: number
+    y: number
+    clr: rl.Color
+
+    ballX: number
+    ballY: number
+
+    constructor new():
+        self.x = 20
+        self.y = 100
+        self.clr = rl.Color.new(255, 255, 255, 255)
+    end
+
+    fn updateBall():
+
+    end
+end
+
+var game = Game.new()
+
+fn update():
+    if rl.isKeyDown("w"):
+        game.y = game.y - 5
+    end
+    if rl.isKeyDown("s"):
+        game.y = game.y + 5
+    end
+    rl.drawRectangle(game.x, game.y, 10, 100, game.clr)
+end
+
+fn test(a: number):
+    std.print(a)
+end

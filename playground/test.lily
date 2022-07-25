@@ -1,2 +1,4 @@
-var b = 10
+import another
+
+var b = another.c
 b = b * 2
