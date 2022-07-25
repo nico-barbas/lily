@@ -196,32 +196,32 @@ run_vm :: proc(vm: ^Vm) {
 			push_stack_value(vm, val)
 
 		case .Op_Add:
-			v1, v2 := pop_stack_value(vm), pop_stack_value(vm)
+			v2, v1 := pop_stack_value(vm), pop_stack_value(vm)
 			push_stack_value(vm, Value{kind = .Number, data = v1.data.(f64) + v2.data.(f64)})
 
 		case .Op_Mul:
-			v1, v2 := pop_stack_value(vm), pop_stack_value(vm)
+			v2, v1 := pop_stack_value(vm), pop_stack_value(vm)
 			push_stack_value(vm, Value{kind = .Number, data = v1.data.(f64) * v2.data.(f64)})
 
 		case .Op_Div:
-			v1, v2 := pop_stack_value(vm), pop_stack_value(vm)
+			v2, v1 := pop_stack_value(vm), pop_stack_value(vm)
 			push_stack_value(vm, Value{kind = .Number, data = v1.data.(f64) / v2.data.(f64)})
 
 		case .Op_Rem:
-			v1, v2 := pop_stack_value(vm), pop_stack_value(vm)
+			v2, v1 := pop_stack_value(vm), pop_stack_value(vm)
 			result := int(v1.data.(f64)) % int(v2.data.(f64))
 			push_stack_value(vm, Value{kind = .Number, data = f64(result)})
 
 		case .Op_And:
-			v1, v2 := pop_stack_value(vm), pop_stack_value(vm)
+			v2, v1 := pop_stack_value(vm), pop_stack_value(vm)
 			push_stack_value(vm, Value{kind = .Boolean, data = v1.data.(bool) && v2.data.(bool)})
 
 		case .Op_Or:
-			v1, v2 := pop_stack_value(vm), pop_stack_value(vm)
+			v2, v1 := pop_stack_value(vm), pop_stack_value(vm)
 			push_stack_value(vm, Value{kind = .Boolean, data = v1.data.(bool) || v2.data.(bool)})
 
 		case .Op_Eq:
-			v1, v2 := pop_stack_value(vm), pop_stack_value(vm)
+			v2, v1 := pop_stack_value(vm), pop_stack_value(vm)
 			#partial switch v1.kind {
 			case .Number:
 				push_stack_value(vm, Value{kind = .Boolean, data = v1.data.(f64) == v2.data.(f64)})
@@ -230,20 +230,20 @@ run_vm :: proc(vm: ^Vm) {
 			}
 
 		case .Op_Greater:
-			v1, v2 := pop_stack_value(vm), pop_stack_value(vm)
+			v2, v1 := pop_stack_value(vm), pop_stack_value(vm)
 			push_stack_value(vm, Value{kind = .Boolean, data = v1.data.(f64) > v2.data.(f64)})
 
 		case .Op_Greater_Eq:
-			v1, v2 := pop_stack_value(vm), pop_stack_value(vm)
+			v2, v1 := pop_stack_value(vm), pop_stack_value(vm)
 			push_stack_value(vm, Value{kind = .Boolean, data = v1.data.(f64) >= v2.data.(f64)})
 
 		case .Op_Lesser:
-			v1, v2 := pop_stack_value(vm), pop_stack_value(vm)
-			push_stack_value(vm, Value{kind = .Boolean, data = v1.data.(f64) > v2.data.(f64)})
+			v2, v1 := pop_stack_value(vm), pop_stack_value(vm)
+			push_stack_value(vm, Value{kind = .Boolean, data = v1.data.(f64) < v2.data.(f64)})
 
 		case .Op_Lesser_Eq:
-			v1, v2 := pop_stack_value(vm), pop_stack_value(vm)
-			push_stack_value(vm, Value{kind = .Boolean, data = v1.data.(f64) >= v2.data.(f64)})
+			v2, v1 := pop_stack_value(vm), pop_stack_value(vm)
+			push_stack_value(vm, Value{kind = .Boolean, data = v1.data.(f64) <= v2.data.(f64)})
 
 		case .Op_Begin:
 			push_stack_scope(vm)

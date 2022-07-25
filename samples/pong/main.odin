@@ -88,3 +88,12 @@ is_key_down_fn :: proc(s: ^lily.State) {
 		s->set_value(rl.IsKeyDown(.S), 0)
 	}
 }
+
+/*
+std.print("x")
+        std.print(self.ball.x)
+        std.print("y")
+        std.print(self.ball.y)
+        std.print(self.ball.y <= 0)
+        std.print(self.ball.y >= 600)
+*/

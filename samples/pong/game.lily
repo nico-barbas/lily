@@ -6,20 +6,45 @@ type Game is class
     y: number
     clr: rl.Color
 
-    ballX: number
-    ballY: number
-    velX: number
-    velY: number
+    ball: Vector
+    velocity: Vector
 
     constructor new():
         self.x = 20
         self.y = 100
         self.clr = rl.Color.new(255, 255, 255, 255)
-        std.print(10)
+        self.ball = Vector.new(400, 300)
+        self.velocity = Vector.new(std.rand(), std.rand())
+        self.velocity.normalize()
     end
 
-    fn updateBall():
+    fn updateBall(dt: number):
+        var scaledSpeed = speed * dt
+        self.ball.x = self.ball.x + (self.velocity.x * scaledSpeed)
+        self.ball.y = self.ball.y + (self.velocity.y * scaledSpeed)
+        
+        if self.ball.y <= 0 or self.ball.y >= 600:
+            self.velocity.y = -self.velocity.y
+        end 
+        if self.ball.x <= 0 or self.ball.x >= 800:
+            self.velocity.x = -self.velocity.x
+        end
+    end
+end
 
+type Vector is class
+    x: number
+    y: number
+
+    constructor new(_x: number, _y: number):
+        self.x = _x
+        self.y = _y
+    end
+
+    fn normalize():
+        var len = std.sqrt((self.x * self.x) + (self.y * self.y))
+        self.x = self.x / len
+        self.y = self.y / len
     end
 end
 
@@ -33,9 +58,7 @@ fn update(dt: number):
     if rl.isKeyDown("s"):
         game.y = game.y + (speed * dt)
     end
+    game.updateBall(dt)
     rl.drawRectangle(game.x, game.y, 10, 100, game.clr)
-end
-
-fn test(a: number):
-    std.print(a)
+    rl.drawRectangle(game.ball.x, game.ball.y, 10, 10, game.clr)
 end

@@ -185,8 +185,8 @@ compile_module :: proc(state: ^State, index: int) {
 		defer pop_scope(c.current_read)
 
 		vtable := &c.current_write.vtables[i]
-		c.constants = &c.current_write.class_consts[i]
 		for constructor, j in n.constructors {
+			c.constants = &c.current_write.class_consts[i]
 			fn_info := constructor.identifier.info.(Fn_Symbol_Info)
 			enter_child_scope_by_id(c.current_read, fn_info.sub_scope_id)
 			defer pop_scope(c.current_read)
@@ -211,6 +211,7 @@ compile_module :: proc(state: ^State, index: int) {
 		}
 
 		for method, j in n.methods {
+			c.constants = &c.current_write.class_consts[i]
 			fn_info := method.identifier.info.(Fn_Symbol_Info)
 			enter_child_scope_by_id(c.current_read, fn_info.sub_scope_id)
 			defer pop_scope(c.current_read)
@@ -602,12 +603,18 @@ compile_dot_expr :: proc(c: ^Compiler, expr: ^Checked_Dot_Expression, lhs: bool,
 		case .Var_Symbol:
 			var_info := left.symbol.info.(Var_Symbol_Info)
 			if var_info.symbol.kind == .Class_Symbol {
-				if var_info.depth == 0 {
-					var_addr := get_global_addr_from_frame(c, frame, left.symbol)
-					push_simple_instruction(&c.chunk, .Op_Get_Global, var_addr)
+				if frame.access == .Instance_Access {
+					class_module := c.state.compiled_modules[frame.class.module_id]
+					field_addr := get_field_addr(class_module, frame.class.name, left.symbol.name)
+					push_simple_instruction(&c.chunk, .Op_Get_Field, field_addr)
 				} else {
-					var_addr, module_level := get_var_addr(c, left.symbol)
-					push_simple_instruction(&c.chunk, .Op_Get, var_addr)
+					if var_info.depth == 0 {
+						var_addr := get_global_addr_from_frame(c, frame, left.symbol)
+						push_simple_instruction(&c.chunk, .Op_Get_Global, var_addr)
+					} else {
+						var_addr, module_level := get_var_addr(c, left.symbol)
+						push_simple_instruction(&c.chunk, .Op_Get, var_addr)
+					}
 				}
 				frame.class = var_info.symbol
 			}

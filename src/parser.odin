@@ -28,13 +28,13 @@ parser_rules := map[Token_Kind]struct {
 	.Star =            {prec = .Factor,  prefix_fn = nil             , infix_fn = parse_binary},
 	.Slash =           {prec = .Factor,  prefix_fn = nil             , infix_fn = parse_binary},
 	.Percent =         {prec = .Factor,  prefix_fn = nil             , infix_fn = parse_binary},
-	.And =             {prec = .Factor,  prefix_fn = nil             , infix_fn = parse_binary},
-	.Or =              {prec = .Factor,  prefix_fn = nil             , infix_fn = parse_binary},
-	.Equal =           {prec = .Factor,  prefix_fn = nil             , infix_fn = parse_binary},
-	.Greater =         {prec = .Factor,  prefix_fn = nil             , infix_fn = parse_binary},
-	.Greater_Equal =   {prec = .Factor,  prefix_fn = nil             , infix_fn = parse_binary},
-	.Lesser =          {prec = .Factor,  prefix_fn = nil             , infix_fn = parse_binary},
-	.Lesser_Equal =    {prec = .Factor,  prefix_fn = nil             , infix_fn = parse_binary},
+	.And =             {prec = .Comparison,  prefix_fn = nil             , infix_fn = parse_binary},
+	.Or =              {prec = .Comparison,  prefix_fn = nil             , infix_fn = parse_binary},
+	.Equal =           {prec = .Equality,  prefix_fn = nil             , infix_fn = parse_binary},
+	.Greater =         {prec = .Equality,  prefix_fn = nil             , infix_fn = parse_binary},
+	.Greater_Equal =   {prec = .Equality,  prefix_fn = nil             , infix_fn = parse_binary},
+	.Lesser =          {prec = .Equality,  prefix_fn = nil             , infix_fn = parse_binary},
+	.Lesser_Equal =    {prec = .Equality,  prefix_fn = nil             , infix_fn = parse_binary},
 	.Open_Paren =      {prec = .Call, prefix_fn = parse_group     , infix_fn = parse_call},
 	.Open_Bracket =    {prec = .Call, prefix_fn = nil             , infix_fn = parse_infix_open_bracket},
 	.Dot =             {prec = .Call, prefix_fn = nil             , infix_fn = parse_dot},
@@ -51,10 +51,8 @@ Parser :: struct {
 Precedence :: enum {
 	Lowest,
 	Asssignment,
-	Or,
-	And,
-	Equality,
 	Comparison,
+	Equality,
 	Term,
 	Factor,
 	Unary,
@@ -845,7 +843,9 @@ parse_unary :: proc(p: ^Parser) -> (result: Parsed_Expression, err: Error) {
 }
 
 parse_binary :: proc(p: ^Parser, left: Parsed_Expression) -> (result: Parsed_Expression, err: Error) {
-	binary := new_clone(Parsed_Binary_Expression{left = left, op = token_to_operator(p.previous.kind)})
+	binary := new_clone(
+		Parsed_Binary_Expression{token = p.previous, left = left, op = token_to_operator(p.previous.kind)},
+	)
 	binary.right, err = parse_expr(p, parser_rules[p.previous.kind].prec)
 	result = binary
 	return

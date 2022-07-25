@@ -46,21 +46,24 @@ playground :: proc() {
 	// 	a.add(13)
 	// `
 	input := `
-	import std
-
-	type Game is class
-		msg: string
+	type Foo is class
+		bar: Bar
 
 		constructor new():
-			self.msg = "Hello world!"
+			self.bar = Bar.new()
 		end
 	end
 
-	var game = Game.new()
+	type Bar is class
+		s: bool
 
-	fn load():
-		std.print(game.msg)
+		constructor new():
+			self.s = false
+		end
 	end
+
+	var foo = Foo.new()
+	var b = foo.bar.s
 	`
 
 	state := new_state(Config{})

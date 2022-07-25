@@ -20,6 +20,7 @@ Checker :: struct {
 
 	// to keep track of if "break" and "continue" are allowed in the current context
 	allow_flow_operator: bool,
+	allow_new_dot_chain: bool,
 	// Temp data for checking dot expressions
 	dot_frames:          [25]Dot_Frame,
 	dot_frame_count:     int,
@@ -109,6 +110,7 @@ init_checker :: proc(c: ^Checker) {
 		append(&c.types, ARRAY_ID)
 	}
 	c.type_id_ptr = BUILT_IN_ID_COUNT
+	c.allow_new_dot_chain = true
 }
 
 free_checker :: proc(c: ^Checker) {
@@ -187,6 +189,7 @@ pop_dot_frame :: proc(c: ^Checker, loc := #caller_location) {
 	c.current.scope = c.dot.start_scope
 	c.dot_frame_count -= 1
 	c.dot = &c.dot_frames[c.dot_frame_count]
+	c.allow_new_dot_chain = true
 }
 
 restore_dot_frame_start :: proc(c: ^Checker) {
@@ -929,7 +932,6 @@ build_checked_node :: proc(c: ^Checker, node: Parsed_Node) -> (result: Checked_N
 				checked_method := build_checked_node(c, method) or_return
 				class_decl.methods[i] = checked_method.(^Checked_Fn_Declaration)
 			}
-
 			result = class_decl
 		}
 
@@ -1027,22 +1029,25 @@ build_checked_expr :: proc(
 			},
 		)
 
+		expect_type(c, binary_expr.right, checked_expr_symbol(binary_expr.left)) or_return
 		#partial switch e.op {
 		case .Minus_Op, .Plus_Op, .Mult_Op, .Div_Op, .Rem_Op:
 			expect_type(c, binary_expr.left, &c.builtin_symbols[NUMBER_SYMBOL]) or_return
 			expect_type(c, binary_expr.right, &c.builtin_symbols[NUMBER_SYMBOL]) or_return
+			binary_expr.symbol = checked_expr_symbol(binary_expr.left)
 
 		case .Or_Op, .And_Op:
 			expect_type(c, binary_expr.left, &c.builtin_symbols[BOOL_SYMBOL]) or_return
 			expect_type(c, binary_expr.right, &c.builtin_symbols[BOOL_SYMBOL]) or_return
+			binary_expr.symbol = &c.builtin_symbols[BOOL_SYMBOL]
 
 		case .Equal_Op, .Greater_Op, .Greater_Eq_Op, .Lesser_Op, .Lesser_Eq_Op:
 			expect_type(c, binary_expr.left, &c.builtin_symbols[NUMBER_SYMBOL]) or_return
 			expect_type(c, binary_expr.right, &c.builtin_symbols[NUMBER_SYMBOL]) or_return
+			binary_expr.symbol = &c.builtin_symbols[BOOL_SYMBOL]
 
 		}
-		binary_expr.symbol = checked_expr_symbol(binary_expr.left)
-		expect_type(c, binary_expr.right, binary_expr.symbol) or_return
+
 		result = binary_expr
 
 	case ^Parsed_Identifier_Expression:
@@ -1086,8 +1091,9 @@ build_checked_expr :: proc(
 		result = index_expr
 
 	case ^Parsed_Dot_Expression:
-		if c.dot_frame_count == 0 {
+		if c.allow_new_dot_chain {
 			push_dot_frame(c)
+			c.allow_new_dot_chain = false
 		}
 		c.dot.depth += 1
 
@@ -1163,15 +1169,16 @@ build_checked_expr :: proc(
 
 			restore_dot_frame_start(c)
 			{
-				push_dot_frame(c)
-				f_count := c.dot_frame_count
+				c.allow_new_dot_chain = true
+				defer c.allow_new_dot_chain = false
+				// f_count := c.dot_frame_count
 				index_expr.index = build_checked_expr(c, left.index) or_return
 				switch left_symbol.type_id {
 				case ARRAY_ID:
 					index_expr.kind = .Array
 					expect_type(c, index_expr.index, &c.builtin_symbols[NUMBER_SYMBOL]) or_return
 				}
-				if c.dot_frame_count == f_count do pop_dot_frame(c)
+				// if c.dot_frame_count == f_count do pop_dot_frame(c)
 			}
 			if !is_valid_accessor(index_expr.symbol) {
 				err = dot_operand_semantic_err(index_expr.symbol, left.token)
@@ -1208,11 +1215,13 @@ build_checked_expr :: proc(
 
 			restore_dot_frame_start(c)
 			for arg, i in left.args {
-				push_dot_frame(c)
-				f_count := c.dot_frame_count
+				c.allow_new_dot_chain = true
+				defer c.allow_new_dot_chain = false
+				// push_dot_frame(c)
+				// f_count := c.dot_frame_count
 				call_expr.args[i] = build_checked_expr(c, arg) or_return
 				expect_type(c, call_expr.args[i], fn_info.param_symbols[i]) or_return
-				if c.dot_frame_count == f_count do pop_dot_frame(c)
+				// if c.dot_frame_count == f_count do pop_dot_frame(c)
 			}
 			if !is_valid_accessor(call_expr.symbol) {
 				err = dot_operand_semantic_err(call_expr.symbol, left.token)
@@ -1271,15 +1280,17 @@ build_checked_expr :: proc(
 
 			restore_dot_frame_start(c)
 			{
-				push_dot_frame(c)
-				f_count := c.dot_frame_count
+				c.allow_new_dot_chain = true
+				defer c.allow_new_dot_chain = false
+				// push_dot_frame(c)
+				// f_count := c.dot_frame_count
 				index_expr.index = build_checked_expr(c, selector.index) or_return
 				switch left_symbol.type_id {
 				case ARRAY_ID:
 					index_expr.kind = .Array
 					expect_type(c, index_expr.index, &c.builtin_symbols[NUMBER_SYMBOL]) or_return
 				}
-				if c.dot_frame_count == f_count do pop_dot_frame(c)
+				// if c.dot_frame_count == f_count do pop_dot_frame(c)
 			}
 			dot_expr.symbol = index_expr.symbol
 			dot_expr.leaf_symbol = left_symbol
@@ -1297,7 +1308,6 @@ build_checked_expr :: proc(
 				if c.dot.previous.type_id == ARRAY_ID {
 					build_array_method_call(c, selector, call_expr) or_return
 				}
-
 			} else {
 				call_expr.func = build_checked_expr(c, selector.func) or_return
 
@@ -1311,11 +1321,10 @@ build_checked_expr :: proc(
 
 				restore_dot_frame_start(c)
 				for arg, i in selector.args {
-					push_dot_frame(c)
-					f_count := c.dot_frame_count
+					c.allow_new_dot_chain = true
+					defer c.allow_new_dot_chain = false
 					call_expr.args[i] = build_checked_expr(c, arg) or_return
 					expect_type(c, call_expr.args[i], fn_info.param_symbols[i]) or_return
-					if c.dot_frame_count == f_count do pop_dot_frame(c)
 				}
 			}
 			dot_expr.symbol = call_expr.symbol

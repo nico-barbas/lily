@@ -3,6 +3,8 @@ package lily
 import "core:fmt"
 import "core:strings"
 import "core:os"
+import "core:math"
+import "core:math/rand"
 
 State :: struct {
 	sources:                     [dynamic]string,
@@ -99,7 +101,7 @@ load_source :: proc(state: ^State, name: string) -> (source: string, err: Error)
 compile_source :: proc(s: ^State, module_name: string, source: string) -> (err: Error) {
 	DEBUG_PARSER :: false
 	DEBUG_SYMBOLS :: false
-	DEBUG_CHECKER :: false
+	DEBUG_CHECKER :: true
 	DEBUG_COMPILER :: true
 
 	s.import_modules_id = make(map[string]int)
@@ -132,7 +134,6 @@ compile_source :: proc(s: ^State, module_name: string, source: string) -> (err: 
 
 	s.checker.modules = s.checked_modules
 	build_checked_program(&s.checker, s.import_modules_id, parsed_modules[:], s.init_order) or_return
-
 	s.compiled_modules = make_compiled_program(s)
 	for i in 0 ..< len(s.compiled_modules) {
 		when DEBUG_SYMBOLS {
@@ -262,6 +263,12 @@ bind_foreign_fn :: proc(state: ^State, decl: ^Checked_Fn_Declaration) -> (fn: Fo
 		switch decl.identifier.name {
 		case "print":
 			return std_print
+		case "sqrt":
+			return std_sqrt
+		case "rand":
+			return std_rand
+		case "randN":
+			return std_rand_n
 		}
 	} else {
 		fn_info := decl.identifier.info.(Fn_Symbol_Info)
@@ -330,6 +337,9 @@ make_fn_handle :: proc(s: ^State, module_name, fn_name: string) -> (handle: Hand
 
 std_source :: `
 foreign fn print(s: any):
+foreign fn rand(): number
+foreign fn randN(n: number): number
+foreign fn sqrt(n: number): number
 `
 
 std_print :: proc(state: ^State) {
@@ -367,4 +377,19 @@ std_print :: proc(state: ^State) {
 			fmt.println(instance.fields)
 		}
 	}
+}
+
+std_sqrt :: proc(state: ^State) {
+	n := state->get_value(1).data.(f64)
+	sqrt_n := math.sqrt(n)
+	state->set_value(sqrt_n, 0)
+}
+
+std_rand :: proc(state: ^State) {
+	state->set_value(rand.float64(), 0)
+}
+
+std_rand_n :: proc(state: ^State) {
+	n := state->get_value(1).data.(f64)
+	state->set_value(rand.float64_range(0, n), 0)
 }
