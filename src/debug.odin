@@ -960,7 +960,12 @@ print_chunk :: proc(p: ^Debug_Printer, c: ^Chunk) {
 			fmt.sbprintf(&p.builder, " || module addr: %d", debug_get_i16(c, &ip))
 
 		case .Op_Prototype:
-			fmt.sbprintf(&p.builder, " || class addr: %d", debug_get_i16(c, &ip))
+			fmt.sbprintf(
+				&p.builder,
+				" || module id: %d, class addr: %d",
+				debug_get_i16(c, &ip),
+				debug_get_i16(c, &ip),
+			)
 
 		case .Op_Inc, .Op_Dec, .Op_Neg, .Op_Not:
 			fmt.sbprintf(&p.builder, " ||")
@@ -1103,6 +1108,7 @@ print_value :: proc(p: ^Debug_Printer, value: Value) {
 			fmt.sbprintf(&p.builder, "%p [", class_object)
 			// write(p, `[`)
 			for field, i in class_object.fields {
+				// fmt.println(field.data)
 				fmt.sbprintf(&p.builder, "%d: ", i)
 				print_value(p, field)
 				write(p, `,`)

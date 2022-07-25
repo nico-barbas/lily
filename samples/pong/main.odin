@@ -12,22 +12,18 @@ main :: proc() {
 	err := compile_file(state, "./game.lily")
 	assert(err == nil, fmt.tprint(err))
 
-	// update_handle, handle_err := make_fn_handle(state, "game", "update")
-	// assert(handle_err == nil)
+	update_handle, handle_err := make_fn_handle(state, "game", "update")
+	assert(handle_err == nil)
 
-	test_handle, test_err := make_fn_handle(state, "game", "test")
-	assert(test_err == nil)
-	prepare_call(state, test_handle)
-	// state->set_value(10, 0)
-	call(state, test_handle)
 
 	rl.InitWindow(800, 600, "lily-pong")
 	defer rl.CloseWindow()
-
 	rl.SetTargetFPS(60)
 	for !rl.WindowShouldClose() {
-		// prepare_call(state, update_handle)
-		// call(state, update_handle)
+		prepare_call(state, update_handle)
+		state->set_value(f64(rl.GetFrameTime()), 0)
+		call(state, update_handle)
+
 
 		rl.BeginDrawing()
 		rl.ClearBackground(rl.BLACK)

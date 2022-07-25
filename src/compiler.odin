@@ -614,8 +614,8 @@ compile_dot_expr :: proc(c: ^Compiler, expr: ^Checked_Dot_Expression, lhs: bool,
 			frame.access = .Instance_Access
 
 		case .Class_Symbol:
-			class_addr := get_class_addr(c.state.compiled_modules[frame.current_id], left.symbol.name)
-			push_simple_instruction(&c.chunk, .Op_Prototype, class_addr)
+			class_addr := get_class_addr(c.state.compiled_modules[left.symbol.module_id], left.symbol.name)
+			push_double_instruction(&c.chunk, .Op_Prototype, i16(left.symbol.module_id), class_addr)
 			frame.access = .Class_Access
 			frame.class = left.symbol
 

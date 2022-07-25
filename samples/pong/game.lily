@@ -8,11 +8,14 @@ type Game is class
 
     ballX: number
     ballY: number
+    velX: number
+    velY: number
 
     constructor new():
         self.x = 20
         self.y = 100
         self.clr = rl.Color.new(255, 255, 255, 255)
+        std.print(10)
     end
 
     fn updateBall():
@@ -21,13 +24,14 @@ type Game is class
 end
 
 var game = Game.new()
+var speed = 250
 
-fn update():
+fn update(dt: number):
     if rl.isKeyDown("w"):
-        game.y = game.y - 5
+        game.y = game.y - (speed * dt)
     end
     if rl.isKeyDown("s"):
-        game.y = game.y + 5
+        game.y = game.y + (speed * dt)
     end
     rl.drawRectangle(game.x, game.y, 10, 100, game.clr)
 end

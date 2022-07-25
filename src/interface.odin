@@ -44,8 +44,7 @@ new_state :: proc(c: Config) -> ^State {
 			if state.value_buf != nil {
 				state.value_buf[at] = value
 			} else {
-				fmt.println("boop")
-				set_stack_value(&state.vm, stack_addr(&state.vm) + at, value)
+				set_stack_value(&state.vm, get_scope_start_addr(&state.vm) + at, value)
 			}
 		},
 		get_value = proc(state: ^State, at: int) -> Value {
@@ -153,13 +152,6 @@ compile_source :: proc(s: ^State, module_name: string, source: string) -> (err: 
 }
 
 compile_file :: proc(s: ^State, file_path: string) -> (err: Error) {
-	// DEBUG_PARSER :: true
-	// DEBUG_CHECKER :: true
-	// DEBUG_COMPILER :: true
-
-	// s.import_modules_id = make(map[string]int)
-	// s.import_modules_name = make(map[int]string)
-
 	module_name: string
 	source: string
 	{
@@ -229,29 +221,23 @@ prepare_call :: proc(s: ^State, handle: Handle) {
 			s.vm.current = s.compiled_modules[id]
 			s.vm.chunk = &s.compiled_modules[id].main
 			run_vm(&s.vm)
+			reset_vm_stack(&s.vm)
 		}
 		delete(s.init_order)
 		s.need_init = false
 	}
 
-	s.vm.show_debug_stack_info = true
 	push_stack_scope(&s.vm)
-	// fn_decl := s.checked_modules[handle.module_id].functions[handle.primary_id].(^Checked_Fn_Declaration)
+	info := transmute([2]i32)handle.info
+	if info[1] == 1 {
+		push_stack_value(&s.vm, {})
+	}
+	for _ in 0 ..< info[0] {
+		push_stack_value(&s.vm, {})
+	}
 }
 
 call :: proc(s: ^State, handle: Handle) {
-	if s.need_init {
-		for id in s.init_order {
-			if len(s.compiled_modules[id].main.bytecode) == 0 {
-				continue
-			}
-			s.vm.current = s.compiled_modules[id]
-			s.vm.chunk = &s.compiled_modules[id].main
-			run_vm(&s.vm)
-		}
-		delete(s.init_order)
-		s.need_init = false
-	}
 	switch handle.kind {
 	case .Fn_Handle:
 		s.vm.current = s.compiled_modules[handle.module_id]
@@ -306,16 +292,23 @@ Handle :: struct {
 	module_id:    int,
 	primary_id:   i16,
 	secondary_id: i16,
+	info:         int,
 }
 
 make_fn_handle :: proc(s: ^State, module_name, fn_name: string) -> (handle: Handle, err: Error) {
 	if id, exist := s.import_modules_id[module_name]; exist {
 		module := s.compiled_modules[id]
 		if fn_id, exist := module.fn_addr[fn_name]; exist {
+			fn_decl := s.checked_modules[id].functions[fn_id].(^Checked_Fn_Declaration)
+			fn_info := fn_decl.identifier.info.(Fn_Symbol_Info)
+			arity_bits := i32(len(fn_decl.params))
+			return_bits := i32(1 if fn_info.has_return else -1)
 			handle = Handle {
 				module_id  = id,
 				primary_id = fn_id,
+				info       = transmute(int)[2]i32{arity_bits, return_bits},
 			}
+
 		} else {
 			err = format_error(
 				Runtime_Error{
@@ -369,6 +362,7 @@ std_print :: proc(state: ^State) {
 			fmt.println(strings.to_string(state.std_builder))
 
 		case .Class:
+			fmt.println("boop")
 			instance := cast(^Class_Object)obj
 			fmt.println(instance.fields)
 		}

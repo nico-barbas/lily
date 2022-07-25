@@ -68,6 +68,11 @@ push_stack_scope :: proc(vm: ^Vm) {
 	vm.stack_depth += 1
 }
 
+reset_vm_stack :: proc(vm: ^Vm) {
+	vm.stack_ptr = 0
+	vm.header_addr = 0
+}
+
 pop_stack_scope :: proc(vm: ^Vm) {
 	vm.stack_ptr = vm.header_addr
 	vm.header_addr = int(vm.stack[vm.header_addr].data.(f64))
@@ -162,10 +167,11 @@ run_vm :: proc(vm: ^Vm) {
 			vm.current = vm.modules[module_addr]
 
 		case .Op_Prototype:
+			module_id := get_i16(vm)
 			class_addr := get_i16(vm)
 			prototype := Value {
 				kind = .Object_Ref,
-				data = cast(^Object)&vm.current.protypes[class_addr],
+				data = cast(^Object)&vm.modules[module_id].protypes[class_addr],
 			}
 			push_stack_value(vm, prototype)
 
