@@ -482,7 +482,7 @@ check_module_signatures_symbols :: proc(c: ^Checker, module_id: int) -> (err: Er
 
 		for field in n.fields {
 			type_symbol := symbol_from_type_expr(c, field.type_expr) or_return
-			field_symbol, _ := get_scoped_symbol(c.current.scope, field.name)
+			field_symbol := get_scoped_symbol(c.current.scope, field.name) or_return
 			field_symbol_info := Var_Symbol_Info {
 				symbol  = type_symbol,
 				mutable = true,
@@ -597,8 +597,12 @@ add_inner_symbols :: proc(c: ^Checker, node: Parsed_Node) -> (err: Error) {
 
 	case ^Parsed_If_Statement:
 		push_scope(c.current, n.token)
-		defer pop_scope(c.current)
 		add_inner_symbols(c, n.body) or_return
+		pop_scope(c.current)
+
+		if n.next_branch != nil {
+			add_inner_symbols(c, n.next_branch) or_return
+		}
 
 	case ^Parsed_Range_Statement:
 		push_scope(c.current, n.token)

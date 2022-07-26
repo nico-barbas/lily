@@ -36,7 +36,7 @@ data_to_value :: proc(data: Value_Data) -> Value {
 	case f64:
 		v.kind = .Number
 	case ^Object:
-		assert(false)
+		v.kind = .Object_Ref
 	}
 	return v
 }
@@ -66,7 +66,7 @@ Object_Kind :: enum {
 }
 
 Object :: struct {
-	kind: Object_Kind,
+	kind:   Object_Kind,
 	marked: bool,
 }
 

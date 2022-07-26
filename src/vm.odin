@@ -132,6 +132,9 @@ call_frame_stack_depth :: proc(vm: ^Vm) -> int {
 run_vm_fn :: proc(vm: ^Vm, fn_addr: i16) {
 	push_call_frame(vm, &vm.current.functions[fn_addr].chunk)
 	run_vm(vm)
+	for var in &vm.current.functions[fn_addr].chunk.variables {
+		var.stack_addr = -1
+	}
 }
 
 run_vm :: proc(vm: ^Vm) {
@@ -361,7 +364,10 @@ run_vm :: proc(vm: ^Vm) {
 				addr := stack_addr(vm)
 				set_var_stack_addr(vm, var_addr, addr)
 			} else {
-				set_stack_value(vm, var_stack_addr, pop_stack_value(vm))
+				if var_stack_addr != stack_addr(vm) {
+					assert(var_stack_addr <= stack_addr(vm))
+					set_stack_value(vm, var_stack_addr, pop_stack_value(vm))
+				}
 			}
 
 

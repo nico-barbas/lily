@@ -4,35 +4,87 @@ import rl
 type Game is class
     x: number
     y: number
+    ax: number
+    ay: number
     w: number
     h: number
-    clr: rl.Color
 
     ball: Vector
     velocity: Vector
 
+    playerScore: number
+    aiScore: number
+    pStr: string
+    aStr: string
+
     constructor new():
         self.x = 20
         self.y = 100
+        self.ax = 800 - 30
+        self.ay = 100
         self.w = 10
         self.h = 100
-        self.clr = rl.Color.new(255, 255, 255, 255)
         self.ball = Vector.new(400, 300)
-        self.velocity = Vector.new(std.rand(), std.rand())
+        self.velocity = Vector.new(std.rand(), std.randRange(-0.5, 0.5))
         self.velocity.normalize()
+
+        self.playerScore = 0
+        self.aiScore = 0
+        self.pStr = std.toString(self.playerScore)
+        self.aStr = std.toString(self.aiScore)
     end
 
     fn updateBall(dt: number):
         var scaledSpeed = speed * dt
-        self.ball.x = self.ball.x + (self.velocity.x * scaledSpeed)
-        self.ball.y = self.ball.y + (self.velocity.y * scaledSpeed)
+        var nextX = self.ball.x + (self.velocity.x * scaledSpeed)
+        var nextY = self.ball.y + (self.velocity.y * scaledSpeed)
         
-        if self.ball.y <= 0 or self.ball.y >= 600:
+        if nextY <= 0 or nextY >= 600:
             self.velocity.y = -self.velocity.y
+            return
         end 
-        if self.ball.x <= 0 or self.ball.x >= 800:
-            self.velocity.x = -self.velocity.x
+        if nextX <= 0 or nextX >= 800:
+            self.restart(true)
+            return
         end
+
+        if nextX >= self.x and nextX <= self.x + self.w:
+            if nextY >= self.y and nextY <= self.y + self.h:
+                self.velocity.x = -self.velocity.x
+                return
+            end
+        end
+        if nextX >= self.ax and nextX <= self.ax + self.w:
+            if nextY >= self.ay and nextY <= self.ay + self.h:
+                self.velocity.x = -self.velocity.x
+                return
+            end
+        end
+        self.ball.x = nextX
+        self.ball.y = nextY
+    end
+
+    fn updateAI(dt: number):
+        self.ay = self.ball.y
+    end
+
+    fn restart(playerWin: bool):
+        if playerWin:
+            std.print("player")
+            std.print(self.playerScore)
+            self.playerScore = self.playerScore + 1
+            self.pStr = std.toString(self.playerScore)
+        else:
+            std.print("ai")
+            std.print(self.aiScore)
+            self.aiScore = self.aiScore + 1
+            self.aStr = std.toString(self.aiScore)
+        end
+        self.ball.x = 400
+        self.ball.y = 300
+        self.velocity.x = std.rand()
+        self.velocity.y = std.randRange(-0.5, 0.5)
+        self.velocity.normalize()
     end
 end
 
@@ -63,9 +115,15 @@ fn update(dt: number):
         game.y = game.y + (speed * dt)
     end
     game.updateBall(dt)
+    game.updateAI(dt)
 end
 
+var clr = rl.Color.new(255, 255, 255, 255)
+
 fn draw():
-    rl.drawRectangle(game.x, game.y, game.w, game.h, game.clr)
-    rl.drawRectangle(game.ball.x, game.ball.y, 10, 10, game.clr)
+    rl.drawText(game.pStr, 0, 0, clr)
+    rl.drawText(game.aStr, 100, 0, clr)
+    rl.drawRectangle(game.x, game.y, game.w, game.h, clr)
+    rl.drawRectangle(game.ax, game.ay, game.w, game.h, clr)
+    rl.drawRectangle(game.ball.x, game.ball.y, 10, 10, clr)
 end

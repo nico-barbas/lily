@@ -1,6 +1,7 @@
 package main
 
 import "core:fmt"
+import "core:unicode/utf8"
 import lily "../../src"
 import rl "vendor:raylib"
 
@@ -12,8 +13,10 @@ main :: proc() {
 	err := compile_file(state, "./game.lily")
 	assert(err == nil, fmt.tprint(err))
 
-	update_handle, handle_err := make_fn_handle(state, "game", "update")
-	assert(handle_err == nil)
+	update_handle, update_err := make_fn_handle(state, "game", "update")
+	assert(update_err == nil)
+	draw_handle, draw_err := make_fn_handle(state, "game", "draw")
+	assert(draw_err == nil)
 
 
 	rl.InitWindow(800, 600, "lily-pong")
@@ -27,6 +30,8 @@ main :: proc() {
 
 		rl.BeginDrawing()
 		rl.ClearBackground(rl.BLACK)
+		prepare_call(state, draw_handle)
+		call(state, draw_handle)
 		rl.EndDrawing()
 	}
 
@@ -49,6 +54,7 @@ type Color is class
 end
 
 foreign fn drawRectangle(x: number, y: number, w: number, h: number, clr: Color):
+foreign fn drawText(text: string, x: number, y: number, clr: Color):
 foreign fn isKeyDown(key: string): bool
 `
 
@@ -65,6 +71,8 @@ rl_bind_foreign_fn :: proc(s: ^lily.State, info: lily.Foreign_Decl_Info) -> lily
 	switch info.identifier {
 	case "drawRectangle":
 		return draw_rect_fn
+	case "drawText":
+		return draw_text_fn
 	case "isKeyDown":
 		return is_key_down_fn
 	}
@@ -79,6 +87,14 @@ draw_rect_fn :: proc(s: ^lily.State) {
 	rl.DrawRectanglePro({f32(x), f32(y), f32(w), f32(h)}, {}, 0, rl.WHITE)
 }
 
+draw_text_fn :: proc(s: ^lily.State) {
+	text := cast(^lily.String_Object)s->get_value(0).data.(^lily.Object)
+	x := s->get_value(1).data.(f64)
+	y := s->get_value(2).data.(f64)
+	t := utf8.runes_to_string(text.data, context.temp_allocator)
+	rl.DrawText(cstring(raw_data(t)), i32(x), i32(y), 16, rl.WHITE)
+}
+
 is_key_down_fn :: proc(s: ^lily.State) {
 	key := cast(^lily.String_Object)s->get_value(1).data.(^lily.Object)
 	switch key.data[0] {
@@ -88,12 +104,3 @@ is_key_down_fn :: proc(s: ^lily.State) {
 		s->set_value(rl.IsKeyDown(.S), 0)
 	}
 }
-
-/*
-std.print("x")
-        std.print(self.ball.x)
-        std.print("y")
-        std.print(self.ball.y)
-        std.print(self.ball.y <= 0)
-        std.print(self.ball.y >= 600)
-*/

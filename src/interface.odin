@@ -36,7 +36,7 @@ Config :: struct {
 }
 
 new_state :: proc(c: Config) -> ^State {
-	DEBUG_VM :: true
+	DEBUG_VM :: false
 
 	s := new_clone(State {
 		checker = Checker{},
@@ -101,8 +101,8 @@ load_source :: proc(state: ^State, name: string) -> (source: string, err: Error)
 compile_source :: proc(s: ^State, module_name: string, source: string) -> (err: Error) {
 	DEBUG_PARSER :: false
 	DEBUG_SYMBOLS :: false
-	DEBUG_CHECKER :: false
-	DEBUG_COMPILER :: true
+	DEBUG_CHECKER :: true
+	DEBUG_COMPILER :: false
 
 	s.import_modules_id = make(map[string]int)
 	s.import_modules_name = make(map[int]string)
@@ -263,12 +263,16 @@ bind_foreign_fn :: proc(state: ^State, decl: ^Checked_Fn_Declaration) -> (fn: Fo
 		switch decl.identifier.name {
 		case "print":
 			return std_print
+		case "toString":
+			return std_to_string
 		case "sqrt":
 			return std_sqrt
 		case "rand":
 			return std_rand
 		case "randN":
 			return std_rand_n
+		case "randRange":
+			return std_rand_range
 		}
 	} else {
 		fn_info := decl.identifier.info.(Fn_Symbol_Info)
@@ -337,8 +341,10 @@ make_fn_handle :: proc(s: ^State, module_name, fn_name: string) -> (handle: Hand
 
 std_source :: `
 foreign fn print(s: any):
+foreign fn toString(a: any): string
 foreign fn rand(): number
 foreign fn randN(n: number): number
+foreign fn randRange(lo: number, hi: number): number
 foreign fn sqrt(n: number): number
 `
 
@@ -372,11 +378,48 @@ std_print :: proc(state: ^State) {
 			fmt.println(strings.to_string(state.std_builder))
 
 		case .Class:
-			fmt.println("boop")
 			instance := cast(^Class_Object)obj
 			fmt.println(instance.fields)
 		}
 	}
+}
+
+std_to_string :: proc(state: ^State) {
+	value := state->get_value(1)
+	strings.builder_reset(&state.std_builder)
+	str: string
+	switch value.kind {
+	case .Nil:
+		str = "nil"
+	case .Boolean, .Number:
+		str = fmt.tprint(value.data)
+	case .Object_Ref:
+		obj := value.data.(^Object)
+		#partial switch obj.kind {
+		case .String:
+			str_object := cast(^String_Object)obj
+			for r in str_object.data {
+				strings.write_rune(&state.std_builder, r)
+			}
+			str = fmt.tprint(strings.to_string(state.std_builder))
+		case .Array:
+			array := cast(^Array_Object)obj
+			strings.write_rune(&state.std_builder, '[')
+			for elem, i in array.data {
+				fmt.sbprint(&state.std_builder, elem.data)
+				if i < len(array.data) - 1 {
+					fmt.sbprint(&state.std_builder, ", ")
+				}
+			}
+			strings.write_rune(&state.std_builder, ']')
+			str = fmt.tprint(strings.to_string(state.std_builder))
+
+		case .Class:
+			instance := cast(^Class_Object)obj
+			str = fmt.tprint(instance.fields)
+		}
+	}
+	state->set_value(new_string_object(str).data.(^Object), 0)
 }
 
 std_sqrt :: proc(state: ^State) {
@@ -392,4 +435,10 @@ std_rand :: proc(state: ^State) {
 std_rand_n :: proc(state: ^State) {
 	n := state->get_value(1).data.(f64)
 	state->set_value(rand.float64_range(0, n), 0)
+}
+
+std_rand_range :: proc(state: ^State) {
+	lo := state->get_value(1).data.(f64)
+	hi := state->get_value(2).data.(f64)
+	state->set_value(rand.float64_range(lo, hi), 0)
 }

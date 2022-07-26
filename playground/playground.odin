@@ -48,16 +48,29 @@ playground :: proc() {
 	input := `
 	import std
 
-	var a = true
-	fn add(): number
-		if a:
-			result = 10 
-			return
-		end
-		result = 20
+	type Vector is class
+
 	end
 
-	std.print(add())
+	type Game is class
+		x: number
+		y: number
+		ax: number
+		ay: number
+		w: number
+		h: number
+
+		ball: Vector
+		velocity: Vector
+
+		playerScore: number
+		aiScore: number
+		pScoreStr: string
+		aScoreStr: string
+		bScoreStr: string
+		cScoreStr: string
+		dScoreStr: string
+	end
 	`
 
 	state := new_state(Config{})

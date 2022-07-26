@@ -106,6 +106,7 @@ var fooVal = Foo.Bar
 
 ## Status and Roadmap:
 - [ ] Memory management (either GC or RC)
+- [ ] Zero initialize class fields
 - [ ] += (and others) assignment operators
 - [x] Control flow
     - [x] If statement
@@ -141,6 +142,7 @@ var fooVal = Foo.Bar
 ## Known Bugs:
 - User defined foreign fn declaration are not supported in the standalone compiler and should be disallowed
 - Many, many compiler memory leaks (will be fixed very soon)
+- Fix symbol table overflow
 
 <!-- ## Dot operator rules:
 

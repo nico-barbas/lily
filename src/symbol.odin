@@ -4,11 +4,12 @@ import "core:fmt"
 
 
 Semantic_Scope :: struct {
-	id:       Scope_ID,
-	symbols:  [dynamic]Symbol,
-	lookup:   map[string]^Symbol,
-	parent:   ^Semantic_Scope,
-	children: map[Scope_ID]^Semantic_Scope,
+	id:           Scope_ID,
+	symbols:      []Symbol,
+	symbol_count: int,
+	lookup:       map[string]^Symbol,
+	parent:       ^Semantic_Scope,
+	children:     map[Scope_ID]^Semantic_Scope,
 }
 
 Scope_ID :: distinct int
@@ -93,7 +94,8 @@ is_valid_accessor :: proc(s: ^Symbol) -> bool {
 
 new_scope :: proc() -> ^Semantic_Scope {
 	scope := new(Semantic_Scope)
-	scope.symbols = make([dynamic]Symbol)
+	// FIXME: Do some lookahead during checking to know how big the scope needs to be
+	scope.symbols = make([]Symbol, 32)
 	scope.lookup = make(map[string]^Symbol)
 	scope.children = make(map[Scope_ID]^Semantic_Scope)
 	return scope
@@ -109,8 +111,11 @@ free_scope :: proc(s: ^Semantic_Scope) {
 	free(s)
 }
 
-
-add_symbol_to_scope :: proc(s: ^Semantic_Scope, symbol: Symbol, shadow := false) -> (
+add_symbol_to_scope :: proc(
+	s: ^Semantic_Scope,
+	symbol: Symbol,
+	shadow := false,
+) -> (
 	result: ^Symbol,
 	err: Error,
 ) {
@@ -121,8 +126,9 @@ add_symbol_to_scope :: proc(s: ^Semantic_Scope, symbol: Symbol, shadow := false)
 		}
 		return
 	}
-	append(&s.symbols, symbol)
-	result = &s.symbols[len(s.symbols) - 1]
+	s.symbols[s.symbol_count] = symbol
+	result = &s.symbols[s.symbol_count]
+	s.symbol_count += 1
 	s.lookup[symbol.name] = result
 	return
 }
@@ -134,7 +140,11 @@ contain_scoped_symbol :: proc(s: ^Semantic_Scope, name: string) -> bool {
 	return false
 }
 
-get_scoped_symbol :: proc(s: ^Semantic_Scope, name: Token, loc := #caller_location) -> (
+get_scoped_symbol :: proc(
+	s: ^Semantic_Scope,
+	name: Token,
+	loc := #caller_location,
+) -> (
 	result: ^Symbol,
 	err: Error,
 ) {
