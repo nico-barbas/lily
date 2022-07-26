@@ -403,6 +403,7 @@ Checked_Node :: union {
 	^Checked_Range_Statement,
 	^Checked_Match_Statement,
 	^Checked_Flow_Statement,
+	^Checked_Return_Statement,
 	^Checked_Var_Declaration,
 	^Checked_Fn_Declaration,
 	^Checked_Type_Declaration,
@@ -457,6 +458,10 @@ Checked_Flow_Statement :: struct {
 	kind:  Control_Flow_Operator,
 }
 
+Checked_Return_Statement :: struct {
+	token: Token,
+}
+
 Checked_Var_Declaration :: struct {
 	token:       Token,
 	identifier:  ^Symbol,
@@ -508,6 +513,9 @@ checked_node_token :: proc(node: Checked_Node) -> Token {
 		return n.token
 
 	case ^Checked_Flow_Statement:
+		return n.token
+
+	case ^Checked_Return_Statement:
 		return n.token
 
 	case ^Checked_Var_Declaration:
@@ -571,6 +579,9 @@ free_checked_node :: proc(node: Checked_Node) {
 		free(n)
 
 	case ^Checked_Flow_Statement:
+		free(n)
+
+	case ^Checked_Return_Statement:
 		free(n)
 
 	case ^Checked_Var_Declaration:

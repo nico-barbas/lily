@@ -11,13 +11,13 @@ Parsed_Module :: struct {
 
 make_parsed_module :: proc(name: string) -> ^Parsed_Module {
 	return new_clone(
-	Parsed_Module{
-		name = name,
-		import_nodes = make([dynamic]Parsed_Node),
-		types = make([dynamic]Parsed_Node),
-		functions = make([dynamic]Parsed_Node),
-		nodes = make([dynamic]Parsed_Node),
-	},
+		Parsed_Module{
+			name = name,
+			import_nodes = make([dynamic]Parsed_Node),
+			types = make([dynamic]Parsed_Node),
+			functions = make([dynamic]Parsed_Node),
+			nodes = make([dynamic]Parsed_Node),
+		},
 	)
 }
 
@@ -269,6 +269,7 @@ Parsed_Node :: union {
 	^Parsed_Flow_Statement,
 	^Parsed_Range_Statement,
 	^Parsed_Import_Statement,
+	^Parsed_Return_Statement,
 
 	// Declarations
 	^Parsed_Var_Declaration,
@@ -322,6 +323,13 @@ Parsed_Match_Statement :: struct {
 Parsed_Flow_Statement :: struct {
 	token: Token,
 	kind:  Control_Flow_Operator,
+}
+
+// Still not entirely sure on the semantics of return statements.
+// For now return do not accept associated return values
+// They are only used for early returning from a function scope.
+Parsed_Return_Statement :: struct {
+	token: Token,
 }
 
 Parsed_Import_Statement :: struct {
@@ -407,6 +415,9 @@ free_parsed_node :: proc(node: Parsed_Node) {
 		free(n)
 
 	case ^Parsed_Flow_Statement:
+		free(n)
+
+	case ^Parsed_Return_Statement:
 		free(n)
 
 	case ^Parsed_Import_Statement:

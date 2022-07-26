@@ -20,6 +20,7 @@ Checker :: struct {
 
 	// to keep track of if "break" and "continue" are allowed in the current context
 	allow_flow_operator: bool,
+	allow_return:        bool,
 	allow_new_dot_chain: bool,
 	// Temp data for checking dot expressions
 	dot_frames:          [25]Dot_Frame,
@@ -631,6 +632,8 @@ add_inner_symbols :: proc(c: ^Checker, node: Parsed_Node) -> (err: Error) {
 
 	case ^Parsed_Flow_Statement:
 
+	case ^Parsed_Return_Statement:
+
 	case ^Parsed_Import_Statement:
 
 	case ^Parsed_Var_Declaration:
@@ -844,6 +847,19 @@ build_checked_node :: proc(c: ^Checker, node: Parsed_Node) -> (result: Checked_N
 		}
 		result = new_clone(Checked_Flow_Statement{token = n.token, kind = n.kind})
 
+	case ^Parsed_Return_Statement:
+		if !c.allow_return {
+			err = format_error(
+				Semantic_Error{
+					kind = .Invalid_Symbol,
+					token = n.token,
+					details = fmt.tprintf("%s only allowed at function body level", n.token.kind),
+				},
+			)
+			return
+		}
+		result = new_clone(Checked_Return_Statement{token = n.token})
+
 	case ^Parsed_Import_Statement:
 
 	case ^Parsed_Var_Declaration:
@@ -893,6 +909,8 @@ build_checked_node :: proc(c: ^Checker, node: Parsed_Node) -> (result: Checked_N
 			fn_decl.params[i] = get_scoped_symbol(c.current.scope, param.name) or_return
 		}
 		if n.kind != .Foreign {
+			c.allow_return = true
+			defer c.allow_return = false
 			fn_decl.body = build_checked_node(c, n.body) or_return
 		}
 		result = fn_decl

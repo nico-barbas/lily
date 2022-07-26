@@ -67,6 +67,7 @@ Object_Kind :: enum {
 
 Object :: struct {
 	kind: Object_Kind,
+	marked: bool,
 }
 
 String_Object :: struct {

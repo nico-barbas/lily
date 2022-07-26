@@ -282,6 +282,8 @@ parse_node :: proc(p: ^Parser) -> (result: Parsed_Node, err: Error) {
 		result, err = parse_match_stmt(p)
 	case .Break, .Continue:
 		result, err = parse_flow_stmt(p)
+	case .Return:
+		result, err = parse_return_stmt(p)
 	case:
 		// Parsed_Expression statement most likely
 		result, err = parse_expression_stmt(p)
@@ -531,6 +533,27 @@ parse_flow_stmt :: proc(p: ^Parser) -> (result: ^Parsed_Flow_Statement, err: Err
 		Parsed_Flow_Statement{token = p.current, kind = .Break if p.current.kind == .Break else .Continue},
 	)
 	err = match_token_kind_next(p, .Newline)
+	return
+}
+
+parse_return_stmt :: proc(p: ^Parser) -> (result: ^Parsed_Return_Statement, err: Error) {
+	result = new_clone(Parsed_Return_Statement{token = p.current})
+	#partial switch consume_token(p).kind {
+	case .Newline, .EOF:
+	case:
+		err = format_error(
+			Parsing_Error{
+				kind = .Invalid_Syntax,
+				token = p.previous,
+				details = fmt.tprintf(
+					"Expected %s or %s, got %s",
+					Token_Kind.Newline,
+					Token_Kind.EOF,
+					p.current.kind,
+				),
+			},
+		)
+	}
 	return
 }
 

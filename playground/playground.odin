@@ -46,31 +46,25 @@ playground :: proc() {
 	// 	a.add(13)
 	// `
 	input := `
-	type Foo is class
-		bar: Bar
+	import std
 
-		constructor new():
-			self.bar = Bar.new()
+	var a = true
+	fn add(): number
+		if a:
+			result = 10 
+			return
 		end
+		result = 20
 	end
 
-	type Bar is class
-		s: bool
-
-		constructor new():
-			self.s = false
-		end
-	end
-
-	var foo = Foo.new()
-	var b = foo.bar.s
+	std.print(add())
 	`
 
 	state := new_state(Config{})
 	err := compile_source(state, "main", input)
 	assert(err == nil, fmt.tprint(err))
 
-	// run_module(state, "main")
+	run_module(state, "main")
 	// update_handle, handle_err := make_fn_handle(state, "main", "update")
 	// assert(handle_err == nil)
 	// call(state, update_handle)

@@ -257,6 +257,9 @@ print_parsed_node :: proc(p: ^Debug_Printer, node: Parsed_Node) {
 			write(p, "Continue")
 		}
 
+	case ^Parsed_Return_Statement:
+		write_line(p, "Return Statement:")
+
 	case ^Parsed_Import_Statement:
 		write_line(p, "Import Statement: ")
 		write(p, n.identifier.text)
@@ -573,6 +576,9 @@ print_checked_node :: proc(p: ^Debug_Printer, c: ^Checker, node: Checked_Node) {
 		case .Continue:
 			write(p, "Continue")
 		}
+
+	case ^Checked_Return_Statement:
+		write_line(p, "Return Statement:")
 
 	case ^Checked_Var_Declaration:
 		write_line(p, "Var Declaration: ")

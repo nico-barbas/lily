@@ -4,20 +4,21 @@ import "core:fmt"
 import "core:sort"
 
 Compiler :: struct {
-	state:           ^State,
-	current_read:    ^Checked_Module,
-	current_write:   ^Compiled_Module,
+	state:               ^State,
+	current_read:        ^Checked_Module,
+	current_write:       ^Compiled_Module,
 
 	// Data for the current chunk compiling
-	chunk:           Chunk,
-	chunk_variables: map[string]i16,
-	var_count:       i16,
-	constants:       ^Const_Pool,
+	chunk:               Chunk,
+	chunk_variables:     map[string]i16,
+	var_count:           i16,
+	constants:           ^Const_Pool,
 
 	// 
-	loop_start_addr: int,
-	break_locations: [50]int,
-	break_count:     int,
+	loop_start_addr:     int,
+	break_locations:     [50]int,
+	break_count:         int,
+	current_return_addr: i16,
 }
 
 Compiler_Frame :: struct {
@@ -186,6 +187,7 @@ compile_module :: proc(state: ^State, index: int) {
 
 		vtable := &c.current_write.vtables[i]
 		for constructor, j in n.constructors {
+			c.current_return_addr = SELF_STACK_ADDR
 			c.constants = &c.current_write.class_consts[i]
 			fn_info := constructor.identifier.info.(Fn_Symbol_Info)
 			enter_child_scope_by_id(c.current_read, fn_info.sub_scope_id)
@@ -224,15 +226,12 @@ compile_module :: proc(state: ^State, index: int) {
 				result_addr := add_variable(&c, "result", false)
 				push_double_instruction(&c.chunk, .Op_Bind, result_addr, METHOD_RESULT_STACK_ADDR)
 			}
+			c.current_return_addr = METHOD_RESULT_STACK_ADDR if fn_info.has_return else -1
 
 			compile_fn_parameters(&c, method.params, 2 if fn_info.has_return else 1)
 			compile_node(&c, method.body)
 
-			if fn_info.has_return {
-				push_simple_instruction(&c.chunk, .Op_Return, METHOD_RESULT_STACK_ADDR)
-			} else {
-				push_simple_instruction(&c.chunk, .Op_Return, -1)
-			}
+			push_simple_instruction(&c.chunk, .Op_Return, c.current_return_addr)
 
 			c.chunk.constants = c.current_write.class_consts[i]
 			vtable.methods[j] = Fn_Object {
@@ -272,15 +271,12 @@ compile_module :: proc(state: ^State, index: int) {
 				result_addr := add_variable(&c, "result", false)
 				push_double_instruction(&c.chunk, .Op_Bind, result_addr, FN_RESULT_STACK_ADDR)
 			}
+			c.current_return_addr = FN_RESULT_STACK_ADDR if fn_info.has_return else -1
 
 			compile_fn_parameters(&c, n.params, 1 if fn_info.has_return else 0)
 			compile_node(&c, n.body)
 
-			if fn_info.has_return {
-				push_simple_instruction(&c.chunk, .Op_Return, FN_RESULT_STACK_ADDR)
-			} else {
-				push_simple_instruction(&c.chunk, .Op_Return, -1)
-			}
+			push_simple_instruction(&c.chunk, .Op_Return, c.current_return_addr)
 
 			c.current_write.functions[i] = Fn_Object {
 				base = Object{kind = .Fn},
@@ -424,6 +420,9 @@ compile_node :: proc(c: ^Compiler, node: Checked_Node) {
 			break_addr := reserve_bytes(&c.chunk, instr_length[.Op_End] + instr_length[.Op_Jump])
 			add_break_location(c, break_addr)
 		}
+
+	case ^Checked_Return_Statement:
+		push_simple_instruction(&c.chunk, .Op_Return, c.current_return_addr)
 
 	case ^Checked_Match_Statement:
 		exit_jmps := make([]int, len(n.cases), context.temp_allocator)

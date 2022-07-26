@@ -14,8 +14,9 @@ Vm :: struct {
 
 	// Stack states
 	call_stack:            [255]struct {
-		chunk: ^Chunk,
-		ip:    int,
+		chunk:       ^Chunk,
+		ip:          int,
+		stack_depth: int,
 	},
 	call_count:            int,
 	stack:                 [255]Value,
@@ -44,8 +45,9 @@ get_i16 :: proc(vm: ^Vm) -> i16 {
 
 push_call_frame :: proc(vm: ^Vm, next: ^Chunk) {
 	vm.call_stack[vm.call_count] = {
-		chunk = vm.chunk,
-		ip    = vm.ip,
+		chunk       = vm.chunk,
+		ip          = vm.ip,
+		stack_depth = vm.stack_depth,
 	}
 	vm.call_count += 1
 	vm.chunk = next
@@ -121,6 +123,10 @@ set_var_stack_addr :: proc(vm: ^Vm, var_addr: i16, addr: int) {
 
 get_var_stack_addr :: proc(vm: ^Vm, var_addr: i16) -> int {
 	return vm.chunk.variables[var_addr].stack_addr
+}
+
+call_frame_stack_depth :: proc(vm: ^Vm) -> int {
+	return vm.call_stack[vm.call_count - 1].stack_depth
 }
 
 run_vm_fn :: proc(vm: ^Vm, fn_addr: i16) {
@@ -290,7 +296,10 @@ run_vm :: proc(vm: ^Vm) {
 			if result_addr >= 0 {
 				result_val = get_stack_value(vm, get_var_stack_addr(vm, result_addr))
 			}
-			pop_stack_scope(vm)
+			pop_count := vm.stack_depth - call_frame_stack_depth(vm)
+			for _ in 0 ..= pop_count {
+				pop_stack_scope(vm)
+			}
 			pop_call_frame(vm)
 			if result_addr >= 0 {
 				push_stack_value(vm, result_val)
@@ -347,8 +356,13 @@ run_vm :: proc(vm: ^Vm) {
 
 		case .Op_Set:
 			var_addr := get_i16(vm)
-			addr := stack_addr(vm)
-			set_var_stack_addr(vm, var_addr, addr)
+			var_stack_addr := vm.chunk.variables[var_addr].stack_addr
+			if var_stack_addr == -1 {
+				addr := stack_addr(vm)
+				set_var_stack_addr(vm, var_addr, addr)
+			} else {
+				set_stack_value(vm, var_stack_addr, pop_stack_value(vm))
+			}
 
 
 		case .Op_Set_Global:
