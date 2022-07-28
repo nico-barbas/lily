@@ -427,10 +427,11 @@ Checked_Assigment_Statement :: struct {
 }
 
 Checked_If_Statement :: struct {
-	token:       Token,
-	condition:   Checked_Expression,
-	body:        Checked_Node,
-	next_branch: Checked_Node,
+	token:          Token,
+	is_alternative: bool,
+	condition:      Checked_Expression,
+	body:           Checked_Node,
+	next_branch:    Checked_Node,
 }
 
 Checked_Range_Statement :: struct {

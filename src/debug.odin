@@ -203,8 +203,10 @@ print_parsed_node :: proc(p: ^Debug_Printer, node: Parsed_Node) {
 		write_line(p, "If Statement: ")
 		increment(p)
 		{
-			write_line(p, "Condition: ")
-			print_parsed_expr(p, n.condition)
+			if !n.is_alternative {
+				write_line(p, "Condition: ")
+				print_parsed_expr(p, n.condition)
+			}
 			print_parsed_node(p, n.body)
 			if n.next_branch != nil {
 				write_line(p, "Else: ")
@@ -525,8 +527,10 @@ print_checked_node :: proc(p: ^Debug_Printer, c: ^Checker, node: Checked_Node) {
 		write_line(p, "If Statement: ")
 		increment(p)
 		{
-			write_line(p, "Condition: ")
-			print_checked_expr(p, c, n.condition)
+			if !n.is_alternative {
+				write_line(p, "Condition: ")
+				print_checked_expr(p, c, n.condition)
+			}
 			print_checked_node(p, c, n.body)
 			if n.next_branch != nil {
 				write_line(p, "Else: ")
@@ -950,7 +954,10 @@ print_chunk :: proc(p: ^Debug_Printer, c: ^Chunk) {
 		write(p, op_code_str[op])
 		format(p, op_code_str[op], max_str)
 		switch op {
-		case .Op_None, .Op_Push, .Op_Pop, .Op_Push_Back:
+		case .Op_None:
+			fmt.sbprintf(&p.builder, " || !ERROR!")
+
+		case .Op_Push, .Op_Pop, .Op_Push_Back:
 			fmt.sbprintf(&p.builder, " ||")
 
 		case .Op_Move:

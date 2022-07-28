@@ -101,7 +101,7 @@ load_source :: proc(state: ^State, name: string) -> (source: string, err: Error)
 compile_source :: proc(s: ^State, module_name: string, source: string) -> (err: Error) {
 	DEBUG_PARSER :: false
 	DEBUG_SYMBOLS :: false
-	DEBUG_CHECKER :: true
+	DEBUG_CHECKER :: false
 	DEBUG_COMPILER :: false
 
 	s.import_modules_id = make(map[string]int)

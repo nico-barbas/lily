@@ -16,9 +16,9 @@ Compiler :: struct {
 
 	// 
 	loop_start_addr:     int,
-	break_locations:     [50]int,
-	break_count:         int,
+	jump_lists:          [dynamic]Jump_Insertion_List,
 	current_return_addr: i16,
+	if_branches:         int,
 }
 
 Compiler_Frame :: struct {
@@ -151,19 +151,38 @@ get_var_addr :: proc(c: ^Compiler, symbol: ^Symbol) -> (addr: i16, module_level:
 	return
 }
 
-add_break_location :: proc(c: ^Compiler, addr: int) {
-	c.break_locations[c.break_count] = addr
-	c.break_count += 1
+Jump_Insertion_List :: struct {
+	bytecode_locs: [dynamic]int,
 }
 
-insert_breaks :: proc(c: ^Compiler, addr: i16) {
-	for loc in c.break_locations[:c.break_count] {
+push_jump_insertion_list :: proc(c: ^Compiler) {
+	append(&c.jump_lists, Jump_Insertion_List{bytecode_locs = make([dynamic]int)})
+}
+
+add_jump_location :: proc(c: ^Compiler, addr: int) {
+	last := len(c.jump_lists) - 1
+	append(&c.jump_lists[last].bytecode_locs, addr)
+}
+
+insert_break_jumps :: proc(c: ^Compiler, addr: i16) {
+	list := pop(&c.jump_lists)
+	for loc in list.bytecode_locs {
 		c.chunk.bytecode[loc] = byte(Op_Code.Op_End)
 		c.chunk.bytecode[loc + 1] = byte(Op_Code.Op_Jump)
 		c.chunk.bytecode[loc + 2] = byte(addr)
 		c.chunk.bytecode[loc + 3] = byte(addr >> 8)
 	}
-	c.break_count = 0
+	delete(list.bytecode_locs)
+}
+
+insert_end_if_jumps :: proc(c: ^Compiler, addr: i16) {
+	list := pop(&c.jump_lists)
+	for loc in list.bytecode_locs {
+		c.chunk.bytecode[loc] = byte(Op_Code.Op_Jump)
+		c.chunk.bytecode[loc + 1] = byte(addr)
+		c.chunk.bytecode[loc + 2] = byte(addr >> 8)
+	}
+	delete(list.bytecode_locs)
 }
 
 reset_compiler :: proc(c: ^Compiler) {
@@ -335,6 +354,9 @@ compile_node :: proc(c: ^Compiler, node: Checked_Node) {
 		compile_expr(c, n.expr)
 
 	case ^Checked_Block_Statement:
+		previous_branch_count := c.if_branches
+		c.if_branches = 0
+		defer c.if_branches = previous_branch_count
 		for inner_node in n.nodes {
 			compile_node(c, inner_node)
 		}
@@ -363,19 +385,39 @@ compile_node :: proc(c: ^Compiler, node: Checked_Node) {
 		}
 
 	case ^Checked_If_Statement:
-		push_op_code(&c.chunk, .Op_Begin)
-		compile_expr(c, n.condition)
-		jmp_start := reserve_bytes(&c.chunk, instr_length[.Op_Jump_False])
+		if c.if_branches == 0 {
+			push_jump_insertion_list(c)
+			push_op_code(&c.chunk, .Op_Begin)
+			c.if_branches = 1
+		}
+		jump_start: int
+		branch_end_addr: i16
+		if !n.is_alternative {
+			compile_expr(c, n.condition)
+			jump_start = reserve_bytes(&c.chunk, instr_length[.Op_Jump_False])
+		}
 		compile_node(c, n.body)
 
-		jmp_addr := i16(len(c.chunk.bytecode))
-		c.chunk.bytecode[jmp_start] = byte(Op_Code.Op_Jump_False)
-		c.chunk.bytecode[jmp_start + 1] = byte(jmp_addr)
-		c.chunk.bytecode[jmp_start + 2] = byte(jmp_addr >> 8)
 		if n.next_branch != nil {
-			compile_node(c, n.next_branch)
+			true_jump_addr := reserve_bytes(&c.chunk, instr_length[.Op_Jump])
+			add_jump_location(c, true_jump_addr)
 		}
-		push_op_code(&c.chunk, .Op_End)
+		if !n.is_alternative {
+			branch_end_addr = i16(len(c.chunk.bytecode))
+			c.chunk.bytecode[jump_start] = byte(Op_Code.Op_Jump_False)
+			c.chunk.bytecode[jump_start + 1] = byte(branch_end_addr)
+			c.chunk.bytecode[jump_start + 2] = byte(branch_end_addr >> 8)
+		}
+		if n.next_branch != nil {
+			c.if_branches += 1
+			compile_node(c, n.next_branch)
+		} else {
+			jump_addr := i16(len(c.chunk.bytecode))
+			insert_end_if_jumps(c, jump_addr)
+			push_op_code(&c.chunk, .Op_End)
+			c.if_branches = 0
+		}
+
 
 	case ^Checked_Range_Statement:
 		push_op_code(&c.chunk, .Op_Begin)
@@ -393,8 +435,9 @@ compile_node :: proc(c: ^Compiler, node: Checked_Node) {
 		case .Inclusive:
 			push_op_code(&c.chunk, .Op_Lesser_Eq)
 		}
-		jmp_start := reserve_bytes(&c.chunk, instr_length[.Op_Jump_False])
+		jump_start := reserve_bytes(&c.chunk, instr_length[.Op_Jump_False])
 
+		push_jump_insertion_list(c)
 		compile_node(c, n.body)
 
 		push_simple_instruction(&c.chunk, .Op_Copy, 0)
@@ -402,10 +445,10 @@ compile_node :: proc(c: ^Compiler, node: Checked_Node) {
 		push_simple_instruction(&c.chunk, .Op_Move, 0)
 		push_simple_instruction(&c.chunk, .Op_Jump, i16(c.loop_start_addr))
 		jmp_addr := i16(len(c.chunk.bytecode))
-		insert_breaks(c, jmp_addr)
-		c.chunk.bytecode[jmp_start] = byte(Op_Code.Op_Jump_False)
-		c.chunk.bytecode[jmp_start + 1] = byte(jmp_addr)
-		c.chunk.bytecode[jmp_start + 2] = byte(jmp_addr >> 8)
+		insert_break_jumps(c, jmp_addr)
+		c.chunk.bytecode[jump_start] = byte(Op_Code.Op_Jump_False)
+		c.chunk.bytecode[jump_start + 1] = byte(jmp_addr)
+		c.chunk.bytecode[jump_start + 2] = byte(jmp_addr >> 8)
 
 		push_op_code(&c.chunk, .Op_End)
 
@@ -418,7 +461,7 @@ compile_node :: proc(c: ^Compiler, node: Checked_Node) {
 			push_simple_instruction(&c.chunk, .Op_Jump, i16(c.loop_start_addr))
 		case .Break:
 			break_addr := reserve_bytes(&c.chunk, instr_length[.Op_End] + instr_length[.Op_Jump])
-			add_break_location(c, break_addr)
+			add_jump_location(c, break_addr)
 		}
 
 	case ^Checked_Return_Statement:

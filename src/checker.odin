@@ -763,9 +763,11 @@ build_checked_node :: proc(c: ^Checker, node: Parsed_Node) -> (result: Checked_N
 		result = assign_stmt
 
 	case ^Parsed_If_Statement:
-		if_stmt := new_clone(Checked_If_Statement{token = n.token})
-		if_stmt.condition = build_checked_expr(c, n.condition) or_return
-		expect_type(c, if_stmt.condition, &c.builtin_symbols[BOOL_SYMBOL]) or_return
+		if_stmt := new_clone(Checked_If_Statement{token = n.token, is_alternative = n.is_alternative})
+		if !n.is_alternative {
+			if_stmt.condition = build_checked_expr(c, n.condition) or_return
+			expect_type(c, if_stmt.condition, &c.builtin_symbols[BOOL_SYMBOL]) or_return
+		}
 
 		enter_child_scope_by_name(c.current, n.token)
 		if_stmt.body = build_checked_node(c, n.body) or_return

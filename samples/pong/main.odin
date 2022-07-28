@@ -54,7 +54,7 @@ type Color is class
 end
 
 foreign fn drawRectangle(x: number, y: number, w: number, h: number, clr: Color):
-foreign fn drawText(text: string, x: number, y: number, clr: Color):
+foreign fn drawText(text: string, x: number, y: number, size: number, clr: Color):
 foreign fn isKeyDown(key: string): bool
 `
 
@@ -91,8 +91,9 @@ draw_text_fn :: proc(s: ^lily.State) {
 	text := cast(^lily.String_Object)s->get_value(0).data.(^lily.Object)
 	x := s->get_value(1).data.(f64)
 	y := s->get_value(2).data.(f64)
+	size := s->get_value(3).data.(f64)
 	t := utf8.runes_to_string(text.data, context.temp_allocator)
-	rl.DrawText(cstring(raw_data(t)), i32(x), i32(y), 16, rl.WHITE)
+	rl.DrawText(cstring(raw_data(t)), i32(x), i32(y), i32(size), rl.WHITE)
 }
 
 is_key_down_fn :: proc(s: ^lily.State) {

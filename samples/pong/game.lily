@@ -44,7 +44,7 @@ type Game is class
             return
         end 
         if nextX <= 0 or nextX >= 800:
-            self.restart(true)
+            self.restart(nextX >= 800)
             return
         end
 
@@ -70,13 +70,9 @@ type Game is class
 
     fn restart(playerWin: bool):
         if playerWin:
-            std.print("player")
-            std.print(self.playerScore)
             self.playerScore = self.playerScore + 1
             self.pStr = std.toString(self.playerScore)
         else:
-            std.print("ai")
-            std.print(self.aiScore)
             self.aiScore = self.aiScore + 1
             self.aStr = std.toString(self.aiScore)
         end
@@ -121,8 +117,8 @@ end
 var clr = rl.Color.new(255, 255, 255, 255)
 
 fn draw():
-    rl.drawText(game.pStr, 0, 0, clr)
-    rl.drawText(game.aStr, 100, 0, clr)
+    rl.drawText(game.pStr, 0, 0, 32, clr)
+    rl.drawText(game.aStr, 700, 0, 32, clr)
     rl.drawRectangle(game.x, game.y, game.w, game.h, clr)
     rl.drawRectangle(game.ax, game.ay, game.w, game.h, clr)
     rl.drawRectangle(game.ball.x, game.ball.y, 10, 10, clr)

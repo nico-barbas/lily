@@ -325,9 +325,7 @@ parse_if_stmt :: proc(p: ^Parser) -> (result: ^Parsed_If_Statement, err: Error) 
 		result = new(Parsed_If_Statement)
 		switch is_end_branch {
 		case true:
-			result.condition = new_clone(
-				Parsed_Literal_Expression{value = Value{kind = .Boolean, data = true}},
-			)
+			result.is_alternative = true
 			result.body = new_clone(Parsed_Block_Statement{nodes = make([dynamic]Parsed_Node)})
 			else_body: for {
 				body_node := parse_node(p) or_return
@@ -382,8 +380,7 @@ parse_if_stmt :: proc(p: ^Parser) -> (result: ^Parsed_If_Statement, err: Error) 
 		return
 	}
 
-	result = new(Parsed_If_Statement)
-	result.token = p.current
+	result = new_clone(Parsed_If_Statement{token = p.current})
 	consume_token(p)
 	result.condition = parse_expr(p, .Lowest) or_return
 	match_token_kind(p, .Colon) or_return

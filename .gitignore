@@ -1,5 +1,8 @@
 tests/.exe
 playground/playground.exe
 playground/playground.pdb
+samples/pong/pong.exe
+samples/pong/pong.lib
+samples/pong/pong.exp
 .vscode/
 ols.json

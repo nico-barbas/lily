@@ -294,10 +294,11 @@ Parsed_Assignment_Statement :: struct {
 }
 
 Parsed_If_Statement :: struct {
-	token:       Token, // the "if" token
-	condition:   Parsed_Expression,
-	body:        ^Parsed_Block_Statement,
-	next_branch: ^Parsed_If_Statement,
+	token:          Token, // the "if" token
+	is_alternative: bool,
+	condition:      Parsed_Expression,
+	body:           ^Parsed_Block_Statement,
+	next_branch:    ^Parsed_If_Statement,
 }
 
 Parsed_Range_Statement :: struct {

@@ -48,28 +48,11 @@ playground :: proc() {
 	input := `
 	import std
 
-	type Vector is class
-
-	end
-
-	type Game is class
-		x: number
-		y: number
-		ax: number
-		ay: number
-		w: number
-		h: number
-
-		ball: Vector
-		velocity: Vector
-
-		playerScore: number
-		aiScore: number
-		pScoreStr: string
-		aScoreStr: string
-		bScoreStr: string
-		cScoreStr: string
-		dScoreStr: string
+	var a = false
+	if a:
+		std.print("hello")
+	else:
+		std.print("world")
 	end
 	`
 
