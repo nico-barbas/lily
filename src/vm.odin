@@ -180,7 +180,7 @@ run_vm :: proc(vm: ^Vm) {
 			class_addr := get_i16(vm)
 			prototype := Value {
 				kind = .Object_Ref,
-				data = cast(^Object)&vm.modules[module_id].protypes[class_addr],
+				data = cast(^Object)&vm.modules[module_id].prototypes[class_addr],
 			}
 			push_stack_value(vm, prototype)
 
@@ -402,6 +402,9 @@ run_vm :: proc(vm: ^Vm) {
 					vtable = prototype.vtable,
 				},
 			)
+			for field, j in prototype.fields {
+				instance.fields[j] = field
+			}
 			push_stack_value(vm, Value{kind = .Object_Ref, data = cast(^Object)instance})
 
 		case .Op_Make_Array:

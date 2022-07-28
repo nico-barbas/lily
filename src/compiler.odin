@@ -35,7 +35,7 @@ Compiled_Module :: struct {
 	class_fields:       []map[string]i16,
 	class_constructors: []map[string]i16,
 	class_methods:      []map[string]i16,
-	protypes:           []Class_Object,
+	prototypes:         []Class_Object,
 	vtables:            []Class_Vtable,
 	fn_addr:            map[string]i16,
 	functions:          []Fn_Object,
@@ -58,7 +58,7 @@ make_compiled_program :: proc(state: ^State) -> []^Compiled_Module {
 				class_fields = make([]map[string]i16, len(module.classes)),
 				class_constructors = make([]map[string]i16, len(module.classes)),
 				class_methods = make([]map[string]i16, len(module.classes)),
-				protypes = make([]Class_Object, len(module.classes)),
+				prototypes = make([]Class_Object, len(module.classes)),
 				vtables = make([]Class_Vtable, len(module.classes)),
 				fn_addr = make(map[string]i16),
 				functions = make([]Fn_Object, len(module.functions)),
@@ -260,10 +260,24 @@ compile_module :: proc(state: ^State, index: int) {
 			reset_compiler(&c)
 		}
 
+		fields := make([]Value, len(n.fields))
+		for field, j in n.fields {
+			kind: Value_Kind
+			switch field.type_id {
+			case BOOL_ID:
+				kind = .Boolean
+			case NUMBER_ID:
+				kind = .Number
+			case:
+				kind = .Object_Ref
+			}
+			z_value := zero_value(kind)
+			fields[j] = z_value
+		}
 
-		c.current_write.protypes[i] = Class_Object {
+		c.current_write.prototypes[i] = Class_Object {
 			base = Object{kind = .Class},
-			fields = make([]Value, len(n.fields)),
+			fields = fields,
 			vtable = vtable,
 		}
 	}

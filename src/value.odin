@@ -110,6 +110,18 @@ Class_Vtable :: struct {
 	methods:      []Fn_Object,
 }
 
+zero_value :: proc(kind: Value_Kind) -> (value: Value) {
+	value.kind = kind
+	switch kind {
+	case .Nil, .Object_Ref:
+	case .Boolean:
+		value.data = false
+	case .Number:
+		value.data = 0
+	}
+	return
+}
+
 new_string_object :: proc(from := "") -> Value {
 	str_object := new_clone(String_Object{base = Object{kind = .String}, data = make([]rune, len(from))})
 	for r, i in from {
