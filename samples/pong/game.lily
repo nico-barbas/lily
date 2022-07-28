@@ -65,15 +65,15 @@ type Game is class
     end
 
     fn updateAI(dt: number):
-        self.ay = self.ball.y
+        self.ay = self.ball.y - (self.h / 2)
     end
 
     fn restart(playerWin: bool):
         if playerWin:
-            self.playerScore = self.playerScore + 1
+            self.playerScore += 1
             self.pStr = std.toString(self.playerScore)
         else:
-            self.aiScore = self.aiScore + 1
+            self.aiScore += 1
             self.aStr = std.toString(self.aiScore)
         end
         self.ball.x = 400
@@ -95,8 +95,8 @@ type Vector is class
 
     fn normalize():
         var len = std.sqrt((self.x * self.x) + (self.y * self.y))
-        self.x = self.x / len
-        self.y = self.y / len
+        self.x /= len
+        self.y /= len
     end
 end
 
@@ -104,11 +104,12 @@ var game = Game.new()
 var speed = 250
 
 fn update(dt: number):
+    var scaledSpeed = speed * dt
     if rl.isKeyDown("w"):
-        game.y = game.y - (speed * dt)
+        game.y -= (scaledSpeed)
     end
     if rl.isKeyDown("s"):
-        game.y = game.y + (speed * dt)
+        game.y += (scaledSpeed)
     end
     game.updateBall(dt)
     game.updateAI(dt)
