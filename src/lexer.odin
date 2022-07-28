@@ -48,6 +48,10 @@ Token_Kind :: enum {
 	// Operators
 	_operator_start_,
 	Assign,
+	Plus_Assign,
+	Minus_Assign,
+	Mul_Assign,
+	Div_Assign,
 	Equal,
 	Lesser,
 	Lesser_Equal,
@@ -179,9 +183,17 @@ scan_token :: proc(l: ^Lexer) -> (t: Token) {
 		}
 
 	case '+':
-		t.kind = .Plus
+		if peek(l) == '=' {
+			advance(l)
+			t.kind = .Plus_Assign
+		} else {
+			t.kind = .Plus
+		}
+
 	case '-':
-		if peek(l) == '-' {
+		next := peek(l)
+		switch next {
+		case '-':
 			advance(l)
 			t.kind = .Comment
 			comment_loop: for {
@@ -190,13 +202,29 @@ scan_token :: proc(l: ^Lexer) -> (t: Token) {
 					break comment_loop
 				}
 			}
-		} else {
+		case '=':
+			advance(l)
+			t.kind = .Minus_Assign
+
+		case:
 			t.kind = .Minus
 		}
 	case '*':
-		t.kind = .Star
+		if peek(l) == '=' {
+			advance(l)
+			t.kind = .Mul_Assign
+		} else {
+			t.kind = .Star
+		}
+
 	case '/':
-		t.kind = .Slash
+		if peek(l) == '=' {
+			advance(l)
+			t.kind = .Div_Assign
+		} else {
+			t.kind = .Slash
+		}
+
 	case '%':
 		t.kind = .Percent
 
@@ -285,6 +313,15 @@ is_letter :: proc(c: byte) -> bool {
 
 is_type_token :: proc(t: Token_Kind) -> bool {
 	return t == .Identifier || t == .Number || t == .Boolean
+}
+
+is_assign_token :: proc(t: Token_Kind) -> bool {
+	#partial switch t {
+	case .Assign, .Plus_Assign, .Minus_Assign, .Mul_Assign, .Div_Assign:
+		return true
+	case:
+		return false
+	}
 }
 
 lex_identifier :: proc(word: string) -> Token_Kind {

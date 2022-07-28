@@ -183,7 +183,7 @@ match_token_kind_next :: proc(p: ^Parser, kind: Token_Kind, loc := #caller_locat
 	return
 }
 
-advance_expr_loop :: proc(p: ^Parser, end_token: Token_Kind) -> (s: Expr_Loop_State, err: Error) {
+advance_expr_list :: proc(p: ^Parser, end_token: Token_Kind) -> (s: Expr_Loop_State, err: Error) {
 	#partial switch p.current.kind {
 	case .EOF:
 		err = format_error(
@@ -268,10 +268,9 @@ parse_node :: proc(p: ^Parser) -> (result: Parsed_Node, err: Error) {
 		result, err = parse_type_decl(p)
 	case .Identifier, .Self, .Result:
 		lhs := parse_expr(p, .Lowest) or_return
-		#partial switch p.current.kind {
-		case .Assign:
+		if is_assign_token(p.current.kind) {
 			result, err = parse_assign_stmt(p, lhs)
-		case:
+		} else {
 			result = new_clone(Parsed_Expression_Statement{token = token, expr = lhs})
 		}
 	case .If:
@@ -309,7 +308,20 @@ parse_assign_stmt :: proc(
 	result.token = p.current
 	result.left = lhs
 	consume_token(p)
-	result.right = parse_expr(p, .Lowest) or_return
+	rhs := parse_expr(p, .Lowest) or_return
+	#partial switch result.token.kind {
+	case .Assign:
+		result.right = rhs
+	case:
+		result.right = new_clone(
+			Parsed_Binary_Expression{
+				token = result.token,
+				left = lhs,
+				right = rhs,
+				op = assign_token_to_operator(result.token.kind),
+			},
+		)
+	}
 	return
 }
 
@@ -672,7 +684,7 @@ parse_fn_decl :: proc(p: ^Parser) -> (result: ^Parsed_Fn_Declaration, err: Error
 
 	p.expect_punctuation = false
 	params: for {
-		state := advance_expr_loop(p, .Close_Paren) or_return
+		state := advance_expr_list(p, .Close_Paren) or_return
 		switch state {
 		case .Loop:
 			continue params
@@ -884,7 +896,7 @@ parse_call :: proc(p: ^Parser, left: Parsed_Expression) -> (result: Parsed_Expre
 
 	p.expect_punctuation = false
 	args: for {
-		state := advance_expr_loop(p, .Close_Paren) or_return
+		state := advance_expr_list(p, .Close_Paren) or_return
 		switch state {
 		case .Loop:
 			continue args
@@ -924,7 +936,7 @@ parse_array :: proc(p: ^Parser, left: Parsed_Expression) -> (result: Parsed_Expr
 	p.expect_punctuation = false
 	array.values = make([dynamic]Parsed_Expression)
 	array_elements: for {
-		state := advance_expr_loop(p, .Close_Bracket) or_return
+		state := advance_expr_list(p, .Close_Bracket) or_return
 		switch state {
 		case .Loop:
 			continue array_elements
@@ -951,7 +963,7 @@ parse_map :: proc(p: ^Parser, left: Parsed_Expression) -> (result: Parsed_Expres
 
 	p.expect_punctuation = false
 	map_elements: for {
-		state := advance_expr_loop(p, .Close_Bracket) or_return
+		state := advance_expr_list(p, .Close_Bracket) or_return
 		switch state {
 		case .Loop:
 			continue map_elements

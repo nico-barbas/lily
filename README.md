@@ -107,7 +107,7 @@ var fooVal = Foo.Bar
 ## Status and Roadmap:
 - [ ] Memory management (either GC or RC)
 - [ ] Zero initialize class fields
-- [ ] += (and others) assignment operators
+- [x] += (and others) assignment operators
 - [x] Control flow
     - [x] If statement
     - [x] For statement

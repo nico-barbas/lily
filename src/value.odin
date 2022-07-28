@@ -189,6 +189,23 @@ token_to_operator :: proc(kind: Token_Kind) -> Operator {
 	}
 }
 
+assign_token_to_operator :: proc(kind: Token_Kind) -> Operator {
+	#partial switch kind {
+	case .Plus_Assign:
+		return .Plus_Op
+	case .Minus_Assign:
+		return .Minus_Op
+	case .Mul_Assign:
+		return .Mult_Op
+	case .Div_Assign:
+		return .Div_Op
+	case:
+		// This is a bit dodgy, but the operator has already been checked
+		// by the parse_expr() and there is no way it is an invalid Token_Kind
+		return .Plus_Op
+	}
+}
+
 Operator :: enum {
 	Not_Op,
 	Minus_Op,

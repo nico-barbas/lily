@@ -48,12 +48,11 @@ playground :: proc() {
 	input := `
 	import std
 
-	var a = false
-	if a:
-		std.print("hello")
-	else:
-		std.print("world")
-	end
+	var a = 10
+	a += 1
+	a -= 5
+	a *= 2
+	a /= 3
 	`
 
 	state := new_state(Config{})
