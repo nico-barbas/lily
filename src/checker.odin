@@ -337,6 +337,8 @@ add_module_decl_symbols :: proc(c: ^Checker, module_id: int) -> (err: Error) {
 						scope_id = c.current.root.id,
 					},
 				) or_return
+
+			case .Enum:
 			case .Class:
 				push_class_scope(c.current, n.identifier) or_return
 				defer pop_scope(c.current)
@@ -344,7 +346,7 @@ add_module_decl_symbols :: proc(c: ^Checker, module_id: int) -> (err: Error) {
 					add_symbol_to_scope(
 						c.current.scope,
 						Symbol{
-							name = field.name.text,
+							name = field.name.(^Parsed_Identifier_Expression).name.text,
 							kind = .Var_Symbol,
 							module_id = module_id,
 							scope_id = c.current.scope.id,
@@ -443,6 +445,7 @@ add_module_type_decl :: proc(c: ^Checker, module_id: int) -> (err: Error) {
 			case .Alias:
 				// add_type_alias(c, n.identifier, UNTYPED_ID)
 				assert(false)
+			case .Enum:
 			case .Class:
 				add_module_class_type(c, n)
 			}
@@ -481,8 +484,19 @@ check_module_signatures_symbols :: proc(c: ^Checker, module_id: int) -> (err: Er
 		defer pop_scope(c.current)
 
 		for field in n.fields {
-			type_symbol := symbol_from_type_expr(c, field.type_expr) or_return
-			field_symbol := get_scoped_symbol(c.current.scope, field.name) or_return
+			if field.type_expr == nil {
+				err = format_error(
+					Semantic_Error{
+						kind = .Invalid_Symbol,
+						token = field.token,
+						details = "Expected type expression for class's field declaration",
+					},
+				)
+				return
+			}
+			type_symbol := symbol_from_type_expr(c, field.type_expr.?) or_return
+			field_name := field.name.(^Parsed_Identifier_Expression).name
+			field_symbol := get_scoped_symbol(c.current.scope, field_name) or_return
 			field_symbol_info := Var_Symbol_Info {
 				symbol  = type_symbol,
 				mutable = true,
@@ -539,12 +553,23 @@ check_fn_signature_symbols :: proc(c: ^Checker, fn_decl: ^Parsed_Fn_Declaration)
 			) or_return
 		}
 		for param, i in fn_decl.parameters {
-			type_symbol := symbol_from_type_expr(c, param.type_expr) or_return
+			if param.type_expr == nil {
+				err = format_error(
+					Semantic_Error{
+						kind = .Invalid_Symbol,
+						token = param.token,
+						details = "Expected type expression in function's parameter declaration",
+					},
+				)
+				return
+			}
+			type_symbol := symbol_from_type_expr(c, param.type_expr.?) or_return
+			param_name := param.name.(^Parsed_Identifier_Expression).name
 					//odinfmt: disable
 			param_symbol := add_symbol_to_scope(
 				c.current.scope, 
 				Symbol {
-					name = param.name.text,
+					name = param_name.text,
 					kind = .Var_Symbol,
 					type_id = type_symbol.type_id,
 					module_id = c.current.id,
@@ -639,6 +664,8 @@ add_inner_symbols :: proc(c: ^Checker, node: Parsed_Node) -> (err: Error) {
 	case ^Parsed_Return_Statement:
 
 	case ^Parsed_Import_Statement:
+
+	case ^Parsed_Field_Declaration:
 
 	case ^Parsed_Var_Declaration:
 		add_symbol_to_scope(
@@ -867,6 +894,7 @@ build_checked_node :: proc(c: ^Checker, node: Parsed_Node) -> (result: Checked_N
 		result = new_clone(Checked_Return_Statement{token = n.token})
 
 	case ^Parsed_Import_Statement:
+	case ^Parsed_Field_Declaration:
 
 	case ^Parsed_Var_Declaration:
 		var_decl := new_clone(
@@ -912,7 +940,8 @@ build_checked_node :: proc(c: ^Checker, node: Parsed_Node) -> (result: Checked_N
 		defer pop_scope(c.current)
 
 		for param, i in n.parameters {
-			fn_decl.params[i] = get_scoped_symbol(c.current.scope, param.name) or_return
+			param_name := param.name.(^Parsed_Identifier_Expression).name
+			fn_decl.params[i] = get_scoped_symbol(c.current.scope, param_name) or_return
 		}
 		if n.kind != .Foreign {
 			c.allow_return = true
@@ -926,6 +955,7 @@ build_checked_node :: proc(c: ^Checker, node: Parsed_Node) -> (result: Checked_N
 		switch n.type_kind {
 		case .Alias:
 			assert(false)
+		case .Enum:
 		case .Class:
 			class_decl := new_clone(
 				Checked_Class_Declaration{
@@ -944,7 +974,8 @@ build_checked_node :: proc(c: ^Checker, node: Parsed_Node) -> (result: Checked_N
 			defer pop_scope(c.current)
 
 			for field, i in n.fields {
-				class_decl.fields[i] = get_scoped_symbol(c.current.scope, field.name) or_return
+				field_name := field.name.(^Parsed_Identifier_Expression).name
+				class_decl.fields[i] = get_scoped_symbol(c.current.scope, field_name) or_return
 			}
 
 			for constructor, i in n.constructors {

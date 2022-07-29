@@ -41,12 +41,6 @@ delete_parsed_module :: proc(p: ^Parsed_Module) {
 	free(p)
 }
 
-
-Typed_Identifier :: struct {
-	name:      Token,
-	type_expr: Parsed_Expression,
-}
-
 Parsed_Expression :: union {
 	// Value Expressions
 	^Parsed_Literal_Expression,
@@ -272,6 +266,7 @@ Parsed_Node :: union {
 	^Parsed_Return_Statement,
 
 	// Declarations
+	^Parsed_Field_Declaration,
 	^Parsed_Var_Declaration,
 	^Parsed_Fn_Declaration,
 	^Parsed_Type_Declaration,
@@ -338,6 +333,12 @@ Parsed_Import_Statement :: struct {
 	identifier: Token,
 }
 
+Parsed_Field_Declaration :: struct {
+	token:     Token,
+	name:      Parsed_Expression,
+	type_expr: Maybe(Parsed_Expression),
+}
+
 Parsed_Var_Declaration :: struct {
 	token:      Token, // the "var" token
 	identifier: Token,
@@ -349,7 +350,7 @@ Parsed_Fn_Declaration :: struct {
 	token:            Token,
 	identifier:       Token,
 	kind:             Fn_Kind,
-	parameters:       [dynamic]Typed_Identifier,
+	parameters:       [dynamic]^Parsed_Field_Declaration,
 	body:             ^Parsed_Block_Statement,
 	return_type_expr: Parsed_Expression,
 }
@@ -362,8 +363,9 @@ Parsed_Type_Declaration :: struct {
 	type_kind:    enum {
 		Alias,
 		Class,
+		Enum,
 	},
-	fields:       [dynamic]Typed_Identifier,
+	fields:       [dynamic]^Parsed_Field_Declaration,
 	constructors: [dynamic]^Parsed_Fn_Declaration,
 	methods:      [dynamic]^Parsed_Fn_Declaration,
 }
@@ -424,14 +426,21 @@ free_parsed_node :: proc(node: Parsed_Node) {
 	case ^Parsed_Import_Statement:
 		free(n)
 
+	case ^Parsed_Field_Declaration:
+		free_parsed_expression(n.name)
+		if n.type_expr != nil {
+			free_parsed_expression(n.type_expr.?)
+		}
+		free(n)
+
 	case ^Parsed_Var_Declaration:
 		free_parsed_expression(n.type_expr)
 		free_parsed_expression(n.expr)
 		free(n)
 
 	case ^Parsed_Fn_Declaration:
-		for identifier in n.parameters {
-			free_parsed_expression(identifier.type_expr)
+		for param in n.parameters {
+			free_parsed_node(param)
 		}
 		delete(n.parameters)
 		if n.body != nil {
@@ -444,7 +453,7 @@ free_parsed_node :: proc(node: Parsed_Node) {
 		free_parsed_expression(n.type_expr)
 		if n.type_kind == .Class {
 			for field in n.fields {
-				free_parsed_expression(field.type_expr)
+				free_parsed_node(field)
 			}
 			delete(n.fields)
 			for constructor in n.constructors {

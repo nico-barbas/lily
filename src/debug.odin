@@ -279,6 +279,19 @@ print_parsed_node :: proc(p: ^Debug_Printer, node: Parsed_Node) {
 		}
 		decrement(p)
 
+	case ^Parsed_Field_Declaration:
+		write_line(p, "Field Declaration: ")
+		increment(p)
+		{
+			write_line(p, "Identifier name: ")
+			print_parsed_expr(p, n.name)
+			write_line(p, "Type: ")
+			if n.type_expr != nil {
+				print_parsed_expr(p, n.type_expr.?)
+			}
+		}
+		decrement(p)
+
 	case ^Parsed_Fn_Declaration:
 		write_line(p, "Function Declaration: ")
 		increment(p)
@@ -288,9 +301,7 @@ print_parsed_node :: proc(p: ^Debug_Printer, node: Parsed_Node) {
 			write_line(p, "Parameters: ")
 			increment(p)
 			for param in n.parameters {
-				write_line(p)
-				fmt.sbprintf(&p.builder, "Name: %s, Type: ", param.name.text)
-				print_parsed_expr(p, param.type_expr)
+				print_parsed_node(p, param)
 			}
 			decrement(p)
 			write_line(p, "Return type: ")
@@ -316,9 +327,7 @@ print_parsed_node :: proc(p: ^Debug_Printer, node: Parsed_Node) {
 				write_line(p, "Fields: ")
 				increment(p)
 				for field in n.fields {
-					write_line(p)
-					fmt.sbprintf(&p.builder, "Name: %s, Type: ", field.name.text)
-					print_parsed_expr(p, field.type_expr)
+					print_parsed_node(p, field)
 				}
 				decrement(p)
 
@@ -335,6 +344,8 @@ print_parsed_node :: proc(p: ^Debug_Printer, node: Parsed_Node) {
 					print_parsed_node(p, method)
 				}
 				decrement(p)
+
+			case .Enum:
 			}
 		}
 		decrement(p)

@@ -61,10 +61,33 @@ Precedence :: enum {
 	Highest,
 }
 
-Expr_Loop_State :: enum {
+Expr_List_Rule :: struct {
+	ignored:     Token_Kind_Group,
+	punctuation: Token_Kind,
+	end:         Token_Kind,
+}
+
+Expr_List_State :: enum {
 	Loop,
 	Expect_Next,
 	End,
+}
+
+TYPE_FIELD_LIST_RULE :: Expr_List_Rule {
+	punctuation = .Newline,
+	end         = .Close_Paren,
+}
+
+FN_PARAMS_LIST_RULE :: Expr_List_Rule {
+	ignored = {.Newline},
+	punctuation = .Comma,
+	end = .Close_Paren,
+}
+
+CONTAINER_ELEM_LIST_RULE :: Expr_List_Rule {
+	ignored = {.Newline},
+	punctuation = .Comma,
+	end = .Close_Bracket,
 }
 
 parse_dependencies :: proc(
@@ -155,6 +178,20 @@ peek_next_token :: proc(p: ^Parser) -> (result: Token) {
 	return
 }
 
+match_token_kind_previous :: proc(p: ^Parser, kind: Token_Kind, loc := #caller_location) -> (err: Error) {
+	if p.previous.kind != kind {
+		err = format_error(
+			Parsing_Error{
+				kind = .Invalid_Syntax,
+				token = p.current,
+				details = fmt.tprintf("Expected %s, got %s", kind, p.previous.kind),
+			},
+			loc,
+		)
+	}
+	return
+}
+
 match_token_kind :: proc(p: ^Parser, kind: Token_Kind, loc := #caller_location) -> (err: Error) {
 	if p.current.kind != kind {
 		err = format_error(
@@ -183,40 +220,21 @@ match_token_kind_next :: proc(p: ^Parser, kind: Token_Kind, loc := #caller_locat
 	return
 }
 
-advance_expr_list :: proc(p: ^Parser, end_token: Token_Kind) -> (s: Expr_Loop_State, err: Error) {
+advance_expr_list :: proc(p: ^Parser, rule: Expr_List_Rule) -> (s: Expr_List_State, err: Error) {
 	#partial switch p.current.kind {
 	case .EOF:
 		err = format_error(
 			Parsing_Error{
 				kind = .Invalid_Syntax,
 				token = p.previous,
-				details = fmt.tprintf("Expected %s, got %s", end_token, p.current.kind),
+				details = fmt.tprintf("Expected %s, got %s", rule.end, p.current.kind),
 			},
 		)
 		return
-	case .Newline:
-		if p.expect_punctuation {
-			err = format_error(
-				Parsing_Error{
-					kind = .Invalid_Syntax,
-					token = p.previous,
-					details = fmt.tprintf(
-						"Expected one of: %s, %s, got %s",
-						Token_Kind.Comma,
-						end_token,
-						p.current.kind,
-					),
-				},
-			)
-			return
-		} else {
-			consume_token(p)
-			s = .Loop
-		}
-	case end_token:
+	case rule.end:
 		s = .End
 		consume_token(p)
-	case .Comma:
+	case rule.punctuation:
 		if !p.expect_punctuation {
 			err = format_error(
 				Parsing_Error{
@@ -239,13 +257,16 @@ advance_expr_list :: proc(p: ^Parser, end_token: Token_Kind) -> (s: Expr_Loop_St
 					token = p.previous,
 					details = fmt.tprintf(
 						"Expected one of: %s, %s, got %s",
-						Token_Kind.Comma,
-						end_token,
+						rule.punctuation,
+						rule.end,
 						p.current.kind,
 					),
 				},
 			)
 			return
+		} else if p.current.kind in rule.ignored {
+			s = .Loop
+			consume_token(p)
 		} else {
 			s = .Expect_Next
 		}
@@ -590,6 +611,40 @@ parse_import_stmt :: proc(p: ^Parser) -> (result: ^Parsed_Import_Statement, err:
 	return
 }
 
+parse_field_list :: proc(p: ^Parser, fields: ^[dynamic]^Parsed_Field_Declaration) -> (err: Error) {
+	start := len(fields)
+	list: for {
+		match_token_kind(p, .Identifier) or_return
+		field := new(Parsed_Field_Declaration)
+		field.token = p.current
+		field.name = parse_expr(p, .Lowest) or_return
+		append(fields, field)
+		#partial switch p.current.kind {
+		case .Comma:
+			consume_token(p)
+		case .Colon:
+			consume_token(p)
+			break list
+		case:
+			err = format_error(
+				Parsing_Error{
+					kind = .Invalid_Syntax,
+					token = p.current,
+					details = fmt.tprintf("Expected %s, got %s", Token_Kind.Colon, p.current.kind),
+				},
+			)
+			return
+		}
+	}
+
+	type_expr := parse_expr(p, .Lowest) or_return
+	match_token_kind_previous(p, .Newline)
+	for field in fields[start:] {
+		field.type_expr = type_expr
+	}
+	return
+}
+
 // FIXME: Allow for "var a, b := 10, false"
 // FIXME: Allow for uninitialized variable declaration: "var a: number"
 parse_var_decl :: proc(p: ^Parser) -> (result: ^Parsed_Var_Declaration, err: Error) {
@@ -684,15 +739,16 @@ parse_fn_decl :: proc(p: ^Parser) -> (result: ^Parsed_Fn_Declaration, err: Error
 
 	p.expect_punctuation = false
 	params: for {
-		state := advance_expr_list(p, .Close_Paren) or_return
+		state := advance_expr_list(p, FN_PARAMS_LIST_RULE) or_return
 		switch state {
 		case .Loop:
 			continue params
 		case .Expect_Next:
-			param: Typed_Identifier
+			param := new(Parsed_Field_Declaration)
 			match_token_kind(p, .Identifier) or_return
-			param.name = p.current
-			match_token_kind_next(p, .Colon) or_return
+			param.token = p.current
+			param.name = parse_expr(p, .Lowest) or_return
+			match_token_kind(p, .Colon) or_return
 			consume_token(p)
 			param.type_expr = parse_expr(p, .Lowest) or_return
 			append(&result.parameters, param)
@@ -741,8 +797,7 @@ parse_type_decl :: proc(p: ^Parser) -> (result: ^Parsed_Type_Declaration, err: E
 		case .Class:
 			result.type_kind = .Class
 			fields: for {
-				t := consume_token(p)
-				#partial switch t.kind {
+				#partial switch consume_token(p).kind {
 				case .Comment, .Newline:
 					continue fields
 
@@ -750,29 +805,8 @@ parse_type_decl :: proc(p: ^Parser) -> (result: ^Parsed_Type_Declaration, err: E
 					break fields
 
 				case .Identifier:
-					// Allow for "a, b: number"
-					// expect ':' or ','
-					// expect expression
-					// expect newline?
-					field := Typed_Identifier {
-						name = t,
-					}
-					next := consume_token(p)
-					#partial switch next.kind {
-					case .Comma:
-						assert(false, "Multiple field declaration not supported yet")
-					case .Colon:
-						consume_token(p)
-						field.type_expr = parse_expr(p, .Lowest) or_return
-						match_token_kind(p, .Newline)
-						append(&result.fields, field)
-					case:
-						err = Parsing_Error {
-							kind    = .Invalid_Syntax,
-							token   = p.current,
-							details = fmt.tprintf("Expected %s, got %s", Token_Kind.Colon, next.kind),
-						}
-					}
+					parse_field_list(p, &result.fields)
+					match_token_kind(p, .Newline)
 
 				case .Fn:
 					method := parse_fn_decl(p) or_return
@@ -785,13 +819,43 @@ parse_type_decl :: proc(p: ^Parser) -> (result: ^Parsed_Type_Declaration, err: E
 
 
 				case:
-					err = Parsing_Error {
-						kind    = .Invalid_Syntax,
-						token   = p.current,
-						details = fmt.tprintf("Expected %s, got %s", Token_Kind.Identifier, t.kind),
-					}
+					err = format_error(
+						Parsing_Error{
+							kind = .Invalid_Syntax,
+							token = p.current,
+							details = fmt.tprintf(
+								"Expected on of %s, %s, %s, got %s",
+								Token_Kind.Identifier,
+								Token_Kind.Fn,
+								Token_Kind.Constructor,
+								p.current.kind,
+							),
+						},
+					)
+					return
 				}
 			}
+
+		case .Enum:
+			enum_fields: for {
+				state := advance_expr_list(p, TYPE_FIELD_LIST_RULE) or_return
+				switch state {
+				case .Loop:
+					continue enum_fields
+				case .Expect_Next:
+					field := new_clone(
+						Parsed_Field_Declaration{
+							token = p.previous,
+							name = parse_expr(p, .Lowest) or_return,
+						},
+					)
+					append(&result.fields, field)
+					p.expect_punctuation = true
+				case .End:
+					break enum_fields
+				}
+			}
+
 
 		case:
 			result.type_kind = .Alias
@@ -896,7 +960,7 @@ parse_call :: proc(p: ^Parser, left: Parsed_Expression) -> (result: Parsed_Expre
 
 	p.expect_punctuation = false
 	args: for {
-		state := advance_expr_list(p, .Close_Paren) or_return
+		state := advance_expr_list(p, FN_PARAMS_LIST_RULE) or_return
 		switch state {
 		case .Loop:
 			continue args
@@ -936,7 +1000,7 @@ parse_array :: proc(p: ^Parser, left: Parsed_Expression) -> (result: Parsed_Expr
 	p.expect_punctuation = false
 	array.values = make([dynamic]Parsed_Expression)
 	array_elements: for {
-		state := advance_expr_list(p, .Close_Bracket) or_return
+		state := advance_expr_list(p, CONTAINER_ELEM_LIST_RULE) or_return
 		switch state {
 		case .Loop:
 			continue array_elements
@@ -963,7 +1027,7 @@ parse_map :: proc(p: ^Parser, left: Parsed_Expression) -> (result: Parsed_Expres
 
 	p.expect_punctuation = false
 	map_elements: for {
-		state := advance_expr_list(p, .Close_Bracket) or_return
+		state := advance_expr_list(p, CONTAINER_ELEM_LIST_RULE) or_return
 		switch state {
 		case .Loop:
 			continue map_elements

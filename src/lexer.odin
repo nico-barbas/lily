@@ -15,6 +15,7 @@ Token_Kind :: enum {
 	Type,
 	Is,
 	Class,
+	Enum,
 	Constructor,
 	Self,
 	Return,
@@ -81,6 +82,8 @@ Token_Kind :: enum {
 	_punctuation_end_,
 }
 
+Token_Kind_Group :: bit_set[Token_Kind]
+
 Token :: struct {
 	kind:  Token_Kind,
 	text:  string,
@@ -97,6 +100,7 @@ keywords := map[string]Token_Kind {
 	"type"        = .Type,
 	"is"          = .Is,
 	"class"       = .Class,
+	"enum"        = .Enum,
 	"constructor" = .Constructor,
 	"self"        = .Self,
 	"return"      = .Return,
@@ -358,3 +362,23 @@ skip_whitespace :: proc(l: ^Lexer) {
 		}
 	}
 }
+
+
+// A :: union {
+// 	bool,
+// }
+
+// B :: union {
+// 	f64,
+// }
+
+// AB :: union {
+// 	A,
+// 	B,
+// }
+
+// t :: proc() {
+// 	ab: AB
+// 	ab = false
+// 	ab = 10
+// }

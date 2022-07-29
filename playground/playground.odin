@@ -48,11 +48,11 @@ playground :: proc() {
 	input := `
 	import std
 
-	var a = 10
-	a += 1
-	a -= 5
-	a *= 2
-	a /= 3
+	type Foo is class
+		x, y: number
+		z: bool
+		a, b, c, d: string
+	end
 	`
 
 	state := new_state(Config{})
