@@ -38,6 +38,12 @@ var foo: number = 10
 -- The type of a variable can be infered at compile time.
 var bar = false -- is of type 'bool'
 
+-- assignment operators:
+foo += 1
+foo -= 4
+foo *= 0.25
+foo /= 3
+
 -- More builtin types:
 -- Strings are managed by the VM, are immutable and are dynamically allocated.
 var str: string = "Hello world!"

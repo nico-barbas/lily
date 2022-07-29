@@ -294,11 +294,10 @@ Parsed_Assignment_Statement :: struct {
 }
 
 Parsed_If_Statement :: struct {
-	token:          Token, // the "if" token
-	is_alternative: bool,
-	condition:      Parsed_Expression,
-	body:           ^Parsed_Block_Statement,
-	next_branch:    ^Parsed_If_Statement,
+	token:       Token, // the "if" token
+	condition:   Parsed_Expression,
+	body:        ^Parsed_Block_Statement,
+	next_branch: ^Parsed_If_Statement,
 }
 
 Parsed_Range_Statement :: struct {
@@ -328,7 +327,7 @@ Parsed_Flow_Statement :: struct {
 
 // Still not entirely sure on the semantics of return statements.
 // For now return do not accept associated return values
-// They are only used for early returning from a function scope.
+// Its only purpose it to break early from a function's scope.
 Parsed_Return_Statement :: struct {
 	token: Token,
 }
@@ -343,6 +342,12 @@ Parsed_Var_Declaration :: struct {
 	identifier: Token,
 	type_expr:  Parsed_Expression,
 	expr:       Parsed_Expression,
+}
+
+Parsed_Field_Statement :: struct {
+	token: Token,
+	identifier: Parsed_Expression,
+	type_expr: Parsed_Expression,
 }
 
 Parsed_Fn_Declaration :: struct {
