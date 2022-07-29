@@ -48,10 +48,8 @@ playground :: proc() {
 	input := `
 	import std
 
-	type Foo is class
-		x, y: number
-		z: bool
-		a, b, c, d: string
+	fn add(n, m: number): number
+
 	end
 	`
 

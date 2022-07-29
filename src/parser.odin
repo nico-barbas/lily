@@ -744,14 +744,15 @@ parse_fn_decl :: proc(p: ^Parser) -> (result: ^Parsed_Fn_Declaration, err: Error
 		case .Loop:
 			continue params
 		case .Expect_Next:
-			param := new(Parsed_Field_Declaration)
-			match_token_kind(p, .Identifier) or_return
-			param.token = p.current
-			param.name = parse_expr(p, .Lowest) or_return
-			match_token_kind(p, .Colon) or_return
-			consume_token(p)
-			param.type_expr = parse_expr(p, .Lowest) or_return
-			append(&result.parameters, param)
+			// param := new(Parsed_Field_Declaration)
+			// match_token_kind(p, .Identifier) or_return
+			// param.token = p.current
+			// param.name = parse_expr(p, .Lowest) or_return
+			// match_token_kind(p, .Colon) or_return
+			// consume_token(p)
+			// param.type_expr = parse_expr(p, .Lowest) or_return
+			// append(&result.parameters, param)
+			parse_field_list(p, &result.parameters)
 			p.expect_punctuation = true
 		case .End:
 			break params
