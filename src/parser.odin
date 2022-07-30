@@ -73,11 +73,6 @@ Expr_List_State :: enum {
 	End,
 }
 
-TYPE_FIELD_LIST_RULE :: Expr_List_Rule {
-	punctuation = .Newline,
-	end         = .Close_Paren,
-}
-
 FN_PARAMS_LIST_RULE :: Expr_List_Rule {
 	ignored = {.Newline},
 	punctuation = .Comma,
@@ -236,6 +231,7 @@ advance_expr_list :: proc(p: ^Parser, rule: Expr_List_Rule) -> (s: Expr_List_Sta
 		consume_token(p)
 	case rule.punctuation:
 		if !p.expect_punctuation {
+			fmt.println(p.previous, p.current)
 			err = format_error(
 				Parsing_Error{
 					kind = .Invalid_Syntax,
@@ -744,14 +740,6 @@ parse_fn_decl :: proc(p: ^Parser) -> (result: ^Parsed_Fn_Declaration, err: Error
 		case .Loop:
 			continue params
 		case .Expect_Next:
-			// param := new(Parsed_Field_Declaration)
-			// match_token_kind(p, .Identifier) or_return
-			// param.token = p.current
-			// param.name = parse_expr(p, .Lowest) or_return
-			// match_token_kind(p, .Colon) or_return
-			// consume_token(p)
-			// param.type_expr = parse_expr(p, .Lowest) or_return
-			// append(&result.parameters, param)
 			parse_field_list(p, &result.parameters)
 			p.expect_punctuation = true
 		case .End:
@@ -838,12 +826,13 @@ parse_type_decl :: proc(p: ^Parser) -> (result: ^Parsed_Type_Declaration, err: E
 			}
 
 		case .Enum:
+			result.type_kind = .Enum
 			enum_fields: for {
-				state := advance_expr_list(p, TYPE_FIELD_LIST_RULE) or_return
-				switch state {
-				case .Loop:
+				#partial switch consume_token(p).kind {
+				case .Newline, .Comment:
 					continue enum_fields
-				case .Expect_Next:
+
+				case .Identifier:
 					field := new_clone(
 						Parsed_Field_Declaration{
 							token = p.previous,
@@ -851,10 +840,26 @@ parse_type_decl :: proc(p: ^Parser) -> (result: ^Parsed_Type_Declaration, err: E
 						},
 					)
 					append(&result.fields, field)
-					p.expect_punctuation = true
+
 				case .End:
 					break enum_fields
+
+				case:
+					err = format_error(
+						Parsing_Error{
+							kind = .Invalid_Syntax,
+							token = p.current,
+							details = fmt.tprintf(
+								"Expected on of %s, %s, %s, got %s",
+								Token_Kind.Identifier,
+								Token_Kind.Newline,
+								p.current.kind,
+							),
+						},
+					)
+					return
 				}
+
 			}
 
 

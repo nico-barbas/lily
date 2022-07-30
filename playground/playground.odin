@@ -48,8 +48,9 @@ playground :: proc() {
 	input := `
 	import std
 
-	fn add(n, m: number): number
-
+	type Foo is enum
+		Bar
+		Baz
 	end
 	`
 

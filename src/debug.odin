@@ -283,10 +283,10 @@ print_parsed_node :: proc(p: ^Debug_Printer, node: Parsed_Node) {
 		write_line(p, "Field Declaration: ")
 		increment(p)
 		{
-			write_line(p, "Identifier name: ")
+			write_line(p)
 			print_parsed_expr(p, n.name)
-			write_line(p, "Type: ")
 			if n.type_expr != nil {
+				write_line(p, "Type: ")
 				print_parsed_expr(p, n.type_expr.?)
 			}
 		}
@@ -346,6 +346,12 @@ print_parsed_node :: proc(p: ^Debug_Printer, node: Parsed_Node) {
 				decrement(p)
 
 			case .Enum:
+				write_line(p, "Fields: ")
+				increment(p)
+				for field in n.fields {
+					print_parsed_node(p, field)
+				}
+				decrement(p)
 			}
 		}
 		decrement(p)
