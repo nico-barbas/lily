@@ -299,6 +299,7 @@ Parsed_If_Statement :: struct {
 Parsed_Range_Statement :: struct {
 	token:         Token, // the "for" token
 	iterator_name: Token,
+	op_token:      Token,
 	low:           Parsed_Expression,
 	high:          Parsed_Expression,
 	reverse:       bool,
@@ -349,6 +350,7 @@ Parsed_Var_Declaration :: struct {
 Parsed_Fn_Declaration :: struct {
 	token:            Token,
 	identifier:       Token,
+	colon:            Token,
 	kind:             Fn_Kind,
 	parameters:       [dynamic]^Parsed_Field_Declaration,
 	body:             ^Parsed_Block_Statement,
@@ -369,6 +371,51 @@ Parsed_Type_Declaration :: struct {
 	constructors: [dynamic]^Parsed_Fn_Declaration,
 	methods:      [dynamic]^Parsed_Fn_Declaration,
 }
+
+parsed_node_token :: proc(node: Parsed_Node) -> (result: Token) {
+	switch n in node {
+	case ^Parsed_Expression_Statement:
+		result = n.token
+
+	case ^Parsed_Block_Statement:
+		result = n.token
+
+	case ^Parsed_Assignment_Statement:
+		result = n.token
+
+	case ^Parsed_If_Statement:
+		result = n.token
+
+	case ^Parsed_Range_Statement:
+		result = n.token
+
+	case ^Parsed_Match_Statement:
+		result = n.token
+
+	case ^Parsed_Flow_Statement:
+		result = n.token
+
+	case ^Parsed_Return_Statement:
+		result = n.token
+
+	case ^Parsed_Import_Statement:
+		result = n.token
+
+	case ^Parsed_Field_Declaration:
+		result = n.token
+
+	case ^Parsed_Var_Declaration:
+		result = n.token
+
+	case ^Parsed_Fn_Declaration:
+		result = n.token
+
+	case ^Parsed_Type_Declaration:
+		result = n.token
+	}
+	return
+}
+
 
 free_parsed_node :: proc(node: Parsed_Node) {
 	switch n in node {

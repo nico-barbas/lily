@@ -93,6 +93,8 @@ Fn_Kind :: enum {
 	Function,
 }
 
+Fn_Kind_Set :: bit_set[Fn_Kind]
+
 Fn_Object :: struct {
 	using base: Object,
 	chunk:      Chunk,

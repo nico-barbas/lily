@@ -46,7 +46,7 @@ make_checked_module :: proc(name: string, id: int) -> ^Checked_Module {
 
 format_scope_name :: proc(c: ^Checked_Module, name: Token) -> (result: string) {
 	result = strings.concatenate(
-		{c.name, name.text, fmt.tprint(name.line, name.start)},
+		{c.name, name.text, fmt.tprint(name.line, name.offset.start)},
 		context.temp_allocator,
 	)
 	return

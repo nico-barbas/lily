@@ -476,6 +476,7 @@ parse_range_stmt :: proc(p: ^Parser) -> (result: ^Parsed_Range_Statement, err: E
 			}
 			return
 		}
+		result.op_token = p.current
 		consume_token(p)
 		result.high = parse_expr(p, .Lowest) or_return
 
@@ -711,7 +712,7 @@ parse_fn_decl :: proc(p: ^Parser) -> (result: ^Parsed_Fn_Declaration, err: Error
 	case .Fn, .Constructor:
 		match_token_kind_next(p, .Identifier) or_return
 		result.identifier = p.current
-		result.kind = .Function
+		result.kind = .Function if p.previous.kind == .Fn else .Constructor
 	case .Foreign:
 		match_token_kind_next(p, .Fn) or_return
 		match_token_kind_next(p, .Identifier) or_return
@@ -749,6 +750,7 @@ parse_fn_decl :: proc(p: ^Parser) -> (result: ^Parsed_Fn_Declaration, err: Error
 
 	// The after ':' after the parameters parenthesis
 	match_token_kind(p, .Colon) or_return
+	result.colon = p.current
 
 	// We check if the function has a return value or if it is void
 	// A newline is the delimiter for the function declaration signature 
@@ -757,7 +759,8 @@ parse_fn_decl :: proc(p: ^Parser) -> (result: ^Parsed_Fn_Declaration, err: Error
 		match_token_kind(p, .Newline)
 	}
 
-	if result.kind == .Function {
+	with_body := Fn_Kind_Set{.Function, .Constructor, .Method}
+	if result.kind in with_body {
 		result.body = new_clone(Parsed_Block_Statement{nodes = make([dynamic]Parsed_Node)})
 		body: for {
 			body_node := parse_node(p) or_return
@@ -799,11 +802,13 @@ parse_type_decl :: proc(p: ^Parser) -> (result: ^Parsed_Type_Declaration, err: E
 
 				case .Fn:
 					method := parse_fn_decl(p) or_return
+					method.kind = .Method
 					append(&result.methods, method)
 
 				case .Constructor:
 					constructor := parse_fn_decl(p) or_return
 					constructor.return_type_expr = new_clone(Parsed_Identifier_Expression{name = name_token})
+					constructor.kind = .Constructor
 					append(&result.constructors, constructor)
 
 
@@ -923,7 +928,9 @@ parse_number :: proc(p: ^Parser) -> (result: Parsed_Expression, err: Error) {
 
 parse_boolean :: proc(p: ^Parser) -> (result: Parsed_Expression, err: Error) {
 	b := false if p.previous.kind == .False else true
-	result = new_clone(Parsed_Literal_Expression{value = Value{kind = .Boolean, data = b}})
+	result = new_clone(
+		Parsed_Literal_Expression{token = p.previous, value = Value{kind = .Boolean, data = b}},
+	)
 	return
 }
 
@@ -938,7 +945,7 @@ parse_string :: proc(p: ^Parser) -> (result: Parsed_Expression, err: Error) {
 }
 
 parse_unary :: proc(p: ^Parser) -> (result: Parsed_Expression, err: Error) {
-	unary := new_clone(Parsed_Unary_Expression{op = token_to_operator(p.previous.kind)})
+	unary := new_clone(Parsed_Unary_Expression{token = p.previous, op = token_to_operator(p.previous.kind)})
 	unary.expr, err = parse_expr(p, parser_rules[p.previous.kind].prec)
 	result = unary
 	return

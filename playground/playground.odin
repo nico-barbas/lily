@@ -2,7 +2,7 @@ package playground
 
 import "core:fmt"
 import "core:mem"
-import lily "../src"
+import lily "../lib"
 
 main :: proc() {
 	track := mem.Tracking_Allocator{}
@@ -48,10 +48,8 @@ playground :: proc() {
 	input := `
 	import std
 
-	type Foo is enum
-		Bar
-		Baz
-	end
+	var a = 10
+	a += 1
 	`
 
 	state := new_state(Config{})

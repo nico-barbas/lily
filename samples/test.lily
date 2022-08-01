@@ -1,0 +1,65 @@
+import std
+import myModule
+
+var a = 10
+a += 1
+a = -a
+a[0]
+
+type Foo is class
+    x: number
+        y: string
+    longerName: number
+
+    constructor new(n: number):
+
+    end
+
+    fn veryyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyLoooooooooooooooooooooooooooooooooooooooongName(n: number, m:bool, xyz: string): number
+
+    end
+end
+
+fn add(n: number, m:number): number
+
+end
+
+add(aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa, bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb)
+
+map of (string, number)
+
+foo.bar.baz()
+
+foo.bar.add(aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa, bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb)
+
+array of string["aaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "bbbbbbbbbbbbbbbbbbbbbbbbbb", "cccccccccccccccccccccccccccccccccccccccccccccc"]
+
+map of (string, number)["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" = 100000000000000000000, "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" = 2000000000000000000000000000]
+
+if true:
+    var b = 20
+    var xc = b - 2
+    else if a == 10:
+    std.print("hello")
+        else:
+std.print("world")
+            end
+
+for i in 0..10:
+    var b = 10000
+    b += a
+end
+
+match a:
+    when 1:
+
+
+
+
+
+
+
+    end
+    when 2:
+    end
+end

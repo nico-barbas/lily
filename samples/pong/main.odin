@@ -2,7 +2,7 @@ package main
 
 import "core:fmt"
 import "core:unicode/utf8"
-import lily "../../src"
+import lily "../../lib"
 import rl "vendor:raylib"
 
 main :: proc() {

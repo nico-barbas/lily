@@ -85,9 +85,14 @@ Token_Kind :: enum {
 Token_Kind_Group :: bit_set[Token_Kind]
 
 Token :: struct {
-	kind:  Token_Kind,
-	text:  string,
-	line:  int,
+	kind:   Token_Kind,
+	text:   string,
+	line:   int,
+	column: Span,
+	offset: Span,
+}
+
+Span :: struct {
 	start: int,
 	end:   int,
 }
@@ -132,11 +137,12 @@ Lexer :: struct {
 	input:   string,
 	current: int,
 	line:    int,
+	column:  int,
 }
 
 set_lexer_input :: proc(l: ^Lexer, input: string) {
 	l.input = input
-	l.line = 0
+	l.line = 1
 	l.current = 0
 }
 
@@ -146,13 +152,15 @@ scan_token :: proc(l: ^Lexer) -> (t: Token) {
 		t.kind = .EOF
 		return
 	}
-	t.start = l.current
+	t.offset.start = l.current
+	t.column.start = l.column
 	t.line = l.line
 	c := advance(l)
 	switch c {
 	case '\n':
 		t.kind = .Newline
 		l.line += 1
+		l.column = 0
 
 	case '"':
 		t.kind = .String_Literal
@@ -271,7 +279,7 @@ scan_token :: proc(l: ^Lexer) -> (t: Token) {
 					break identifier
 				}
 			}
-			word := l.input[t.start:l.current]
+			word := text_from_span(l, {t.offset.start, l.current})
 			t.kind = lex_identifier(word)
 
 		case is_number(c):
@@ -298,8 +306,9 @@ scan_token :: proc(l: ^Lexer) -> (t: Token) {
 		case: // ??
 		}
 	}
-	t.end = l.current
-	t.text = l.input[t.start:t.end]
+	t.offset.end = l.current
+	t.column.end = l.column
+	t.text = text_from_span(l, t.offset)
 	return
 }
 
@@ -338,6 +347,7 @@ lex_identifier :: proc(word: string) -> Token_Kind {
 
 advance :: proc(l: ^Lexer) -> byte {
 	l.current += 1
+	l.column += 1
 	return l.input[l.current - 1]
 }
 
@@ -363,22 +373,6 @@ skip_whitespace :: proc(l: ^Lexer) {
 	}
 }
 
-
-// A :: union {
-// 	bool,
-// }
-
-// B :: union {
-// 	f64,
-// }
-
-// AB :: union {
-// 	A,
-// 	B,
-// }
-
-// t :: proc() {
-// 	ab: AB
-// 	ab = false
-// 	ab = 10
-// }
+text_from_span :: proc(l: ^Lexer, s: Span) -> string {
+	return l.input[s.start:s.end]
+}
