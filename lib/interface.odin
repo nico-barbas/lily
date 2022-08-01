@@ -5,8 +5,12 @@ import "core:strings"
 import "core:os"
 import "core:math"
 import "core:math/rand"
+import "core:mem"
 
 State :: struct {
+	allocator:                   mem.Allocator,
+	temp_allocator:              mem.Allocator,
+	runtime_allocator:           mem.Allocator,
 	sources:                     [dynamic]string,
 	checked_modules:             []^Checked_Module,
 	import_modules_id:           map[string]int,
@@ -31,16 +35,29 @@ State :: struct {
 }
 
 Config :: struct {
+	allocator:          mem.Allocator,
+	temp_allocator:     mem.Allocator,
+	runtime_allocator:  mem.Allocator,
 	load_module_source: proc(state: ^State, name: string) -> (string, bool),
 	bind_fn:            proc(state: ^State, info: Foreign_Decl_Info) -> Foreign_Procedure,
 }
 
-new_state :: proc(c: Config) -> ^State {
+new_state :: proc(
+	c: Config,
+	allocator := context.allocator,
+	temp_allocator := context.temp_allocator,
+) -> ^State {
 	DEBUG_VM :: false
 
-	s := new_clone(State {
+	s := new(State, allocator)
+	s^ = State {
+		allocator = c.allocator if c.allocator.data != nil else allocator,
+		temp_allocator = c.temp_allocator if c.temp_allocator.data != nil else temp_allocator,
+		sources = make([dynamic]string, allocator),
+		import_modules_id = make(T = map[string]int, allocator = allocator),
+		import_modules_name = make(T = map[int]string, allocator = allocator),
 		checker = Checker{},
-		std_builder = strings.builder_make(0, 200),
+		std_builder = strings.builder_make(0, 200, allocator),
 		set_value = proc(state: ^State, data: Value_Data, at: int) {
 			value := data_to_value(data)
 			if state.value_buf != nil {
@@ -56,8 +73,8 @@ new_state :: proc(c: Config) -> ^State {
 		internal_bind_fn = bind_foreign_fn,
 		user_bind_fn = c.bind_fn,
 		user_load_module_source = c.load_module_source,
-	})
-	init_checker(&s.checker)
+	}
+	init_checker(&s.checker, allocator)
 	s.vm = {
 		state                 = s,
 		call_foreign          = call_foreign_fn,
@@ -74,17 +91,16 @@ free_state :: proc(s: ^State) {
 }
 
 load_source :: proc(state: ^State, name: string) -> (source: string, err: Error) {
-	module_path := strings.concatenate({name, ".lily"}, context.temp_allocator)
+	module_path := strings.concatenate({name, ".lily"}, state.temp_allocator)
 
 	if state.user_load_module_source != nil {
 		if src, found := state->user_load_module_source(name); found {
-			source = strings.clone(src)
+			source = strings.clone(src, state.allocator)
 			append(&state.sources, source)
-
 			return
 		}
 	}
-	source_slice, ok := os.read_entire_file(module_path)
+	source_slice, ok := os.read_entire_file(module_path, state.allocator)
 	if !ok {
 		err = format_error(
 			Runtime_Error{
@@ -95,6 +111,7 @@ load_source :: proc(state: ^State, name: string) -> (source: string, err: Error)
 		return
 	}
 	source = string(source_slice)
+	append(&state.sources, source)
 	return
 }
 
@@ -104,23 +121,20 @@ compile_source :: proc(s: ^State, module_name: string, source: string) -> (err: 
 	DEBUG_CHECKER :: false
 	DEBUG_COMPILER :: false
 
-	s.import_modules_id = make(map[string]int)
-	s.import_modules_name = make(map[int]string)
-	module := make_parsed_module(module_name)
-	parse_module(source, module) or_return
+	context.allocator = s.allocator
+	context.temp_allocator = s.temp_allocator
+
+	// s.import_modules_id = make(map[string]int)
+	// s.import_modules_name = make(map[int]string)
+	module := make_parsed_module(module_name, s.temp_allocator)
+	parse_module(source, module, s.temp_allocator) or_return
 	append(&s.sources, source)
 
-	parsed_modules := make([dynamic]^Parsed_Module)
-	// defer {
-	// 	for module in parsed_modules {
-	// 		delete_parsed_module(module)
-	// 	}
-	// 	delete(parsed_modules)
-	// }
+	parsed_modules := make([dynamic]^Parsed_Module, s.temp_allocator)
 	append(&parsed_modules, module)
 	s.import_modules_id[module_name] = 0
 
-	parse_dependencies(s, &parsed_modules, &s.import_modules_id, module) or_return
+	parse_dependencies(s, &parsed_modules, &s.import_modules_id, module, s.temp_allocator) or_return
 	for name, id in s.import_modules_id {
 		s.import_modules_name[id] = name
 	}

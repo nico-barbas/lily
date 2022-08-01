@@ -90,9 +90,11 @@ parse_dependencies :: proc(
 	buf: ^[dynamic]^Parsed_Module,
 	lookup: ^map[string]int,
 	entry_point: ^Parsed_Module,
+	allocator := context.allocator,
 ) -> (
 	err: Error,
 ) {
+	context.allocator = allocator
 	if len(entry_point.import_nodes) == 0 {
 		return
 	}
@@ -128,18 +130,15 @@ parse_dependencies :: proc(
 	return
 }
 
-parse_module :: proc(input: string, mod: ^Parsed_Module) -> (err: Error) {
+parse_module :: proc(input: string, mod: ^Parsed_Module, allocator := context.allocator) -> (err: Error) {
+	context.allocator = allocator
 	parser := Parser {
 		lexer = Lexer{},
 	}
 	set_lexer_input(&parser.lexer, input)
 	ast: for {
 		node: Parsed_Node
-		node, err = parse_node(&parser)
-		if err != nil {
-			if node != nil do free_parsed_node(node)
-			return
-		}
+		node = parse_node(&parser) or_return
 		if node != nil {
 			#partial switch n in node {
 			case ^Parsed_Import_Statement:

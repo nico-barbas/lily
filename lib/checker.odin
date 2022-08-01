@@ -60,7 +60,7 @@ MAP_ID :: 6
 
 BUILTIN_MODULE_ID :: -1
 
-init_checker :: proc(c: ^Checker) {
+init_checker :: proc(c: ^Checker, allocator := context.allocator) {
     //odinfmt: disable
 	c.builtin_symbols = {
 		Symbol{name = "untyped", kind = .Name, type_id = UNTYPED_ID, module_id = BUILTIN_MODULE_ID},
@@ -72,7 +72,7 @@ init_checker :: proc(c: ^Checker) {
 		Symbol{name = "map", kind = .Generic_Symbol, type_id = MAP_ID, module_id = BUILTIN_MODULE_ID},
 	}
     //odinfmt: enable
-	c.builtin_fn[ARRAY_SYMBOL] = new_scope()
+	c.builtin_fn[ARRAY_SYMBOL] = new_scope(allocator)
 	{
 		add_symbol_to_scope(
 			c.builtin_fn[ARRAY_SYMBOL],
@@ -102,7 +102,7 @@ init_checker :: proc(c: ^Checker) {
 		)
 	}
 
-	c.types = make([dynamic]Type_ID)
+	c.types = make([dynamic]Type_ID, allocator)
 	{
 		append(&c.types, UNTYPED_ID)
 		append(&c.types, NUMBER_ID)
@@ -1573,6 +1573,7 @@ check_dependency_graph :: proc(
 	modules: []^Parsed_Module,
 	lookup: map[string]int,
 	e: string,
+	allocator := context.temp_allocator,
 ) -> (
 	out: []int,
 	err: Error,
@@ -1628,8 +1629,8 @@ check_dependency_graph :: proc(
 	data := Graph_Data {
 		modules   = modules,
 		lookup    = lookup,
-		white_set = make(map[string]int, len(modules), context.temp_allocator),
-		gray_set  = make(map[string]int, len(modules), context.temp_allocator),
+		white_set = make(map[string]int, len(modules), allocator),
+		gray_set  = make(map[string]int, len(modules), allocator),
 		output    = out,
 		current   = modules[lookup[e]],
 	}

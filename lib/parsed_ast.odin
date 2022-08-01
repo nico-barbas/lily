@@ -9,7 +9,7 @@ Parsed_Module :: struct {
 	nodes:        [dynamic]Parsed_Node,
 }
 
-make_parsed_module :: proc(name: string) -> ^Parsed_Module {
+make_parsed_module :: proc(name: string, allocator := context.allocator) -> ^Parsed_Module {
 	return new_clone(
 		Parsed_Module{
 			name = name,
@@ -18,6 +18,7 @@ make_parsed_module :: proc(name: string) -> ^Parsed_Module {
 			functions = make([dynamic]Parsed_Node),
 			nodes = make([dynamic]Parsed_Node),
 		},
+		allocator,
 	)
 }
 

@@ -327,9 +327,8 @@ format_fn_signature :: proc(f: ^Formatter, decl: ^lib.Parsed_Fn_Declaration) -> 
 		last_param := i == len(decl.parameters) - 1
 		inner := list(
 			format_expr(f, param.name),
-			space_if_break(" ", max(0, max_len - 1) if i != max_at else 0),
 			text(":"),
-			space(),
+			space_if_break(" ", max(1, max_len) if i != max_at else 1),
 			format_expr(f, param.type_expr.?),
 			text(",") if !last_param else text_if_break(","),
 		)
@@ -376,9 +375,8 @@ format_field_list :: proc(f: ^Formatter, fields: []^lib.Parsed_Field_Declaration
 		join(
 			list,
 			format_expr(f, field.name),
-			space(" ", max(0, max_len - 1) if i != max_at else 0),
 			text(":"),
-			space(),
+			space(" ", max(1, max_len) if i != max_at else 1),
 			format_expr(f, field.type_expr.?),
 			newline(1),
 		)

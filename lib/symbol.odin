@@ -92,12 +92,12 @@ is_valid_accessor :: proc(s: ^Symbol) -> bool {
 	}
 }
 
-new_scope :: proc() -> ^Semantic_Scope {
-	scope := new(Semantic_Scope)
+new_scope :: proc(allocator := context.allocator) -> ^Semantic_Scope {
+	scope := new(Semantic_Scope, allocator)
 	// FIXME: Do some lookahead during checking to know how big the scope needs to be
-	scope.symbols = make([]Symbol, 32)
-	scope.lookup = make(map[string]^Symbol)
-	scope.children = make(map[Scope_ID]^Semantic_Scope)
+	scope.symbols = make([]Symbol, 32, allocator)
+	scope.lookup = make(T = map[string]^Symbol, allocator = allocator)
+	scope.children = make(T = map[Scope_ID]^Semantic_Scope, allocator = allocator)
 	return scope
 }
 

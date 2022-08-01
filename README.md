@@ -139,22 +139,12 @@ var fooVal = Foo.Bar
     - [ ] Compiler
     - [ ] VM
 
+## Tooling:
+- [x] lilyfmt:   Functioning but very simple
+- [ ] lilycheck: 0%
+
+
 ## Known Bugs:
 - User defined foreign fn declaration are not supported in the standalone compiler and should be disallowed
 - Many, many compiler memory leaks (will be fixed very soon)
 - Fix symbol table overflow
-
-<!-- ## Dot operator rules:
-
-- **`Right-handside Dot expression`** => | `Left Dot Operand` | . | `Selector Dot Operand` |
-    - `Left Dot Operand` =>  | `Module Name` | `Class Name` | `Variable Name` | `Call Expression` | `Index Expression` |
-    - `Selector Dot Operand` => `Class Name` | `Variable Name` | `Call Expression` | `Chained Selector` |
-    - `Chained Selector` => | `Chained Selector` | . | `Call Expression` | `Field Name` | `Index Expression` |
-    - `Chained Selector` => `Call Expression` | `Field Name` | `Index Expression` | -->
-
-
-<!-- - **`Left-handside Dot expression`** => | `Left Dot Operand` | . | `Selector Dot Operand` |
-    - `Left Dot Operand` =>  | `Module Name` | `Variable Name` | `Call Expression` | `Index Expression` |
-    - `Selector Dot Operand` => `Variable Name` | `Chained Selector` |
-    - `Chained Selector` => | `Chained Selector` | . | `Call Expression` | `Field Name` | `Index Expression` |
-    - `Chained Selector` => `Call Expression` | `Field Name` | `Index Expression` | -->
