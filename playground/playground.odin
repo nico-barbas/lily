@@ -10,20 +10,19 @@ main :: proc() {
 	context.allocator = mem.tracking_allocator(&track)
 	playground()
 
-	// fmt.println()
-	// if len(track.allocation_map) > 0 {
-	// 	fmt.printf("Leaks:")
-	// 	for _, v in track.allocation_map {
-	// 		fmt.printf("\t%v\n\n", v)
-	// 	}
-	// }
-	// fmt.printf("Leak count: %d\n", len(track.allocation_map))
-	// if len(track.bad_free_array) > 0 {
-	// 	fmt.printf("Bad Frees:")
-	// 	for v in track.bad_free_array {
-	// 		fmt.printf("\t%v\n\n", v)
-	// 	}
-	// }
+	if len(track.allocation_map) > 0 {
+		fmt.printf("Leaks:")
+		for _, v in track.allocation_map {
+			fmt.printf("\t%v\n\n", v)
+		}
+	}
+	fmt.printf("Leak count: %d\n", len(track.allocation_map))
+	if len(track.bad_free_array) > 0 {
+		fmt.printf("Bad Frees:")
+		for v in track.bad_free_array {
+			fmt.printf("\t%v\n\n", v)
+		}
+	}
 }
 
 playground :: proc() {
@@ -51,8 +50,21 @@ playground :: proc() {
 	var a = 10
 	a += 1
 	`
+	init_global_temporary_allocator(mem.Megabyte * 20, )
 
-	state := new_state(Config{})
+	buf := make([]byte, mem.Megabyte * 20)
+	compiler_arena: mem.Arena
+	mem.init_arena(&compiler_arena, buf)
+	compiler_allocator := mem.arena_allocator(&compiler_arena)
+	defer {
+		free_all(compiler_allocator)
+		delete(buf) 
+	}
+	
+	state := new_state(Config{
+		allocator = compiler_allocator,
+		temp_allocator = context.temp_allocator,
+	})
 	err := compile_source(state, "main", input)
 	assert(err == nil, fmt.tprint(err))
 

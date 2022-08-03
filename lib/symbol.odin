@@ -96,8 +96,8 @@ new_scope :: proc(allocator := context.allocator) -> ^Semantic_Scope {
 	scope := new(Semantic_Scope, allocator)
 	// FIXME: Do some lookahead during checking to know how big the scope needs to be
 	scope.symbols = make([]Symbol, 32, allocator)
-	scope.lookup = make(T = map[string]^Symbol, allocator = allocator)
-	scope.children = make(T = map[Scope_ID]^Semantic_Scope, allocator = allocator)
+	scope.lookup = make(map[string]^Symbol, 32, allocator)
+	scope.children = make(map[Scope_ID]^Semantic_Scope, 32, allocator)
 	return scope
 }
 

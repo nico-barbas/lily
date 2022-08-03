@@ -7,6 +7,8 @@ import "core:math"
 import "core:math/rand"
 import "core:mem"
 
+DEFAULT_MODULE_COUNT :: 32
+
 State :: struct {
 	allocator:                   mem.Allocator,
 	temp_allocator:              mem.Allocator,
@@ -49,13 +51,16 @@ new_state :: proc(
 ) -> ^State {
 	DEBUG_VM :: false
 
+	allocator := c.allocator if c.allocator.data != nil else allocator
+	temp_allocator := c.temp_allocator if c.temp_allocator.data != nil else temp_allocator
+
 	s := new(State, allocator)
 	s^ = State {
-		allocator = c.allocator if c.allocator.data != nil else allocator,
-		temp_allocator = c.temp_allocator if c.temp_allocator.data != nil else temp_allocator,
-		sources = make([dynamic]string, allocator),
-		import_modules_id = make(T = map[string]int, allocator = allocator),
-		import_modules_name = make(T = map[int]string, allocator = allocator),
+		allocator = allocator,
+		temp_allocator = temp_allocator,
+		sources = make([dynamic]string, DEFAULT_MODULE_COUNT, allocator),
+		import_modules_id = make(map[string]int, DEFAULT_MODULE_COUNT, allocator),
+		import_modules_name = make(map[int]string, DEFAULT_MODULE_COUNT, allocator),
 		checker = Checker{},
 		std_builder = strings.builder_make(0, 200, allocator),
 		set_value = proc(state: ^State, data: Value_Data, at: int) {
@@ -83,12 +88,7 @@ new_state :: proc(
 	return s
 }
 
-free_state :: proc(s: ^State) {
-	strings.builder_destroy(&s.std_builder)
-	free_checker(&s.checker)
-	delete(s.import_modules_name)
-	free(s)
-}
+free_state :: proc(s: ^State) {}
 
 load_source :: proc(state: ^State, name: string) -> (source: string, err: Error) {
 	module_path := strings.concatenate({name, ".lily"}, state.temp_allocator)
@@ -116,7 +116,7 @@ load_source :: proc(state: ^State, name: string) -> (source: string, err: Error)
 }
 
 compile_source :: proc(s: ^State, module_name: string, source: string) -> (err: Error) {
-	DEBUG_PARSER :: true
+	DEBUG_PARSER :: false
 	DEBUG_SYMBOLS :: false
 	DEBUG_CHECKER :: false
 	DEBUG_COMPILER :: false
@@ -124,8 +124,6 @@ compile_source :: proc(s: ^State, module_name: string, source: string) -> (err: 
 	context.allocator = s.allocator
 	context.temp_allocator = s.temp_allocator
 
-	// s.import_modules_id = make(map[string]int)
-	// s.import_modules_name = make(map[int]string)
 	module := make_parsed_module(module_name, s.temp_allocator)
 	parse_module(source, module, s.temp_allocator) or_return
 	append(&s.sources, source)
@@ -216,7 +214,6 @@ run_module :: proc(s: ^State, module_name: string) {
 			s.vm.chunk = &s.compiled_modules[id].main
 			run_vm(&s.vm)
 		}
-		delete(s.init_order)
 		s.need_init = false
 	}
 
@@ -238,7 +235,7 @@ prepare_call :: proc(s: ^State, handle: Handle) {
 			run_vm(&s.vm)
 			reset_vm_stack(&s.vm)
 		}
-		delete(s.init_order)
+		
 		s.need_init = false
 	}
 
