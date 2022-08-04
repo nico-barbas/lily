@@ -66,8 +66,10 @@ Object_Kind :: enum {
 }
 
 Object :: struct {
-	kind:   Object_Kind,
-	marked: bool,
+	kind:          Object_Kind,
+	marked:        bool,
+	traced:        bool,
+	tracing_color: Trace_Color,
 }
 
 String_Object :: struct {
@@ -124,28 +126,52 @@ zero_value :: proc(kind: Value_Kind) -> (value: Value) {
 	return
 }
 
-new_string_object :: proc(from := "") -> Value {
-	str_object := new_clone(String_Object{base = Object{kind = .String}, data = make([]rune, len(from))})
+new_string_object :: proc(from := "", allocator := context.allocator) -> Value {
+	object := new(String_Object, allocator)
+	object^ = String_Object {
+		base = Object{kind = .String},
+		data = make([]rune, len(from), allocator),
+	}
 	for r, i in from {
-		str_object.data[i] = r
+		object.data[i] = r
 	}
-	return Value{kind = .Object_Ref, data = cast(^Object)str_object}
+	return Value{kind = .Object_Ref, data = cast(^Object)object}
 }
 
-new_array_object :: proc() -> Value {
-	return Value{
-		kind = .Object_Ref,
-		data = cast(^Object)new_clone(
-			Array_Object{base = Object{kind = .Array}, data = make([dynamic]Value)},
-		),
+new_array_object :: proc(allocator := context.allocator) -> Value {
+	object := new(Array_Object, allocator)
+	object^ = Array_Object {
+		base = Object{kind = .Array},
+		data = make([dynamic]Value, allocator),
 	}
+	return Value{kind = .Object_Ref, data = cast(^Object)object}
 }
 
-new_map_object :: proc() -> Value {
-	return Value{
-		kind = .Object_Ref,
-		data = cast(^Object)new_clone(Map_Object{base = Object{kind = .Map}, data = make(map[Value]Value)}),
+new_map_object :: proc(allocator := context.allocator) -> Value {
+	DEFAULT_MAP_SIZE :: 16
+
+	object := new(Map_Object, allocator)
+	object^ = Map_Object {
+		base = Object{kind = .Map},
+		data = make(map[Value]Value, DEFAULT_MAP_SIZE, allocator),
 	}
+	return Value{kind = .Object_Ref, data = cast(^Object)object}
+}
+
+new_class_object :: proc(
+	prototype: Class_Object,
+	allocator := context.allocator,
+) -> Value {
+	object := new(Class_Object)
+	object^ = Class_Object {
+		base = Object{kind = .Class},
+		fields = make([]Value, len(prototype.fields), allocator),
+		vtable = prototype.vtable,
+	}
+	for field, i in prototype.fields {
+		object.fields[i] = field
+	}
+	return Value{kind = .Object_Ref, data = cast(^Object)object}
 }
 
 free_object :: proc(object: ^Object) {
