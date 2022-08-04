@@ -9,6 +9,7 @@ Vm :: struct {
 	chunk:                 ^Chunk,
 
 	// Callbacks
+	gc:                    ^Gc,
 	state:                 ^State,
 	call_foreign:          proc(s: ^State, fn: Foreign_Procedure, stack_slice: []Value),
 

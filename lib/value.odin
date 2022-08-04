@@ -158,10 +158,7 @@ new_map_object :: proc(allocator := context.allocator) -> Value {
 	return Value{kind = .Object_Ref, data = cast(^Object)object}
 }
 
-new_class_object :: proc(
-	prototype: Class_Object,
-	allocator := context.allocator,
-) -> Value {
+new_class_object :: proc(prototype: ^Class_Object, allocator := context.allocator) -> Value {
 	object := new(Class_Object)
 	object^ = Class_Object {
 		base = Object{kind = .Class},
@@ -190,7 +187,6 @@ free_object :: proc(object: ^Object) {
 				free_object(field_object)
 			}
 		}
-	// delete_chunk(class_object.fields)
 	}
 }
 
