@@ -1,4 +1,0 @@
-import another
-
-var b = another.c
-b = b * 2

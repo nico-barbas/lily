@@ -49,9 +49,11 @@ main :: proc() {
 		free_all(compiler_allocator)
 		delete(buf)
 	}
-	err := lib.compile_file(state, file_path)
-	if err != nil {
-		fmt.println(err)
+	errors := lib.compile_file(state, file_path)
+	if len(errors) > 0 {
+		for err in errors {
+			fmt.println(err)
+		}
 		return
 	}
 

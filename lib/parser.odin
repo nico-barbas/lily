@@ -9,37 +9,133 @@ parser_rules := map[Token_Kind]struct {
 	prefix_fn: proc(p: ^Parser) -> (Parsed_Expression, Error),
 	infix_fn:  proc(p: ^Parser, left: Parsed_Expression) -> (Parsed_Expression, Error),
 } {
-	.Identifier =      {prec = .Lowest,  prefix_fn = parse_identifier, infix_fn = nil},
-	.Self=             {prec = .Lowest,  prefix_fn = parse_identifier, infix_fn = nil},
-	.Result =          {prec = .Lowest,  prefix_fn = parse_identifier, infix_fn = nil},
-	.Any =             {prec = .Lowest,  prefix_fn = parse_identifier, infix_fn = nil},
-	.Number =          {prec = .Lowest,  prefix_fn = parse_identifier, infix_fn = nil},
-	.Boolean =         {prec = .Lowest,  prefix_fn = parse_identifier, infix_fn = nil},
-	.String =          {prec = .Lowest,  prefix_fn = parse_identifier, infix_fn = nil},
-	.Array =           {prec = .Lowest,  prefix_fn = parse_array_type, infix_fn = nil},
-	.Map =             {prec = .Lowest,  prefix_fn = parse_map_type  , infix_fn = nil},
-	.Number_Literal =  {prec = .Lowest,  prefix_fn = parse_number    , infix_fn = nil},
-    .String_Literal =  {prec = .Lowest,  prefix_fn = parse_string    , infix_fn = nil},
-	.True =            {prec = .Lowest,  prefix_fn = parse_boolean   , infix_fn = nil},
-	.False =           {prec = .Lowest,  prefix_fn = parse_boolean   , infix_fn = nil},
-	.Not = 	           {prec = .Unary  ,  prefix_fn = parse_unary    , infix_fn = nil},
-	.Plus =            {prec = .Term  ,  prefix_fn = nil             , infix_fn = parse_binary},
-	.Minus =           {prec = .Term  ,  prefix_fn = parse_unary     , infix_fn = parse_binary},
-	.Star =            {prec = .Factor,  prefix_fn = nil             , infix_fn = parse_binary},
-	.Slash =           {prec = .Factor,  prefix_fn = nil             , infix_fn = parse_binary},
-	.Percent =         {prec = .Factor,  prefix_fn = nil             , infix_fn = parse_binary},
-	.And =             {prec = .Comparison,  prefix_fn = nil             , infix_fn = parse_binary},
-	.Or =              {prec = .Comparison,  prefix_fn = nil             , infix_fn = parse_binary},
-	.Equal =           {prec = .Equality,  prefix_fn = nil             , infix_fn = parse_binary},
-	.Greater =         {prec = .Equality,  prefix_fn = nil             , infix_fn = parse_binary},
-	.Greater_Equal =   {prec = .Equality,  prefix_fn = nil             , infix_fn = parse_binary},
-	.Lesser =          {prec = .Equality,  prefix_fn = nil             , infix_fn = parse_binary},
-	.Lesser_Equal =    {prec = .Equality,  prefix_fn = nil             , infix_fn = parse_binary},
-	.Open_Paren =      {prec = .Call, prefix_fn = parse_group     , infix_fn = parse_call},
-	.Open_Bracket =    {prec = .Call, prefix_fn = nil             , infix_fn = parse_infix_open_bracket},
-	.Dot =             {prec = .Call, prefix_fn = nil             , infix_fn = parse_dot},
+	.Identifier =      {prec = .Lowest,     prefix_fn = parse_identifier, infix_fn = nil},
+	.Self=             {prec = .Lowest,     prefix_fn = parse_identifier, infix_fn = nil},
+	.Result =          {prec = .Lowest,     prefix_fn = parse_identifier, infix_fn = nil},
+	.Any =             {prec = .Lowest,     prefix_fn = parse_identifier, infix_fn = nil},
+	.Number =          {prec = .Lowest,     prefix_fn = parse_identifier, infix_fn = nil},
+	.Boolean =         {prec = .Lowest,     prefix_fn = parse_identifier, infix_fn = nil},
+	.String =          {prec = .Lowest,     prefix_fn = parse_identifier, infix_fn = nil},
+	.Array =           {prec = .Lowest,     prefix_fn = parse_array_type, infix_fn = nil},
+	.Map =             {prec = .Lowest,     prefix_fn = parse_map_type,   infix_fn = nil},
+	.Number_Literal =  {prec = .Lowest,     prefix_fn = parse_number,     infix_fn = nil},
+    .String_Literal =  {prec = .Lowest,     prefix_fn = parse_string,     infix_fn = nil},
+	.True =            {prec = .Lowest,     prefix_fn = parse_boolean,    infix_fn = nil},
+	.False =           {prec = .Lowest,     prefix_fn = parse_boolean,    infix_fn = nil},
+	.Not = 	           {prec = .Unary  ,    prefix_fn = parse_unary,     infix_fn = nil},
+	.Plus =            {prec = .Term  ,     prefix_fn = nil,              infix_fn = parse_binary},
+	.Minus =           {prec = .Term  ,     prefix_fn = parse_unary,      infix_fn = parse_binary},
+	.Star =            {prec = .Factor,     prefix_fn = nil,              infix_fn = parse_binary},
+	.Slash =           {prec = .Factor,     prefix_fn = nil,              infix_fn = parse_binary},
+	.Percent =         {prec = .Factor,     prefix_fn = nil,              infix_fn = parse_binary},
+	.And =             {prec = .Comparison, prefix_fn = nil,          infix_fn = parse_binary},
+	.Or =              {prec = .Comparison, prefix_fn = nil,          infix_fn = parse_binary},
+	.Equal =           {prec = .Equality,   prefix_fn = nil,            infix_fn = parse_binary},
+	.Greater =         {prec = .Equality,   prefix_fn = nil,            infix_fn = parse_binary},
+	.Greater_Equal =   {prec = .Equality,   prefix_fn = nil,            infix_fn = parse_binary},
+	.Lesser =          {prec = .Equality,   prefix_fn = nil,            infix_fn = parse_binary},
+	.Lesser_Equal =    {prec = .Equality,   prefix_fn = nil,            infix_fn = parse_binary},
+	.Open_Paren =      {prec = .Call,       prefix_fn = parse_group,         infix_fn = parse_call},
+	.Open_Bracket =    {prec = .Call,       prefix_fn = nil,                 infix_fn = parse_infix_open_bracket},
+	.Dot =             {prec = .Call,       prefix_fn = nil,                 infix_fn = parse_dot},
 }
 //odinfmt: enable
+
+Parse_Node_Command:: enum {
+	Exit,
+	Skip,
+	Parse_Node,
+}
+
+node_parsing_rules := map[Token_Kind]Parse_Node_Command {
+	.EOF = .Exit,
+	.Newline = .Skip,
+	.End = .Skip,
+	.Else = .Skip,
+	.Import = .Parse_Node,
+	.Var = .Parse_Node,
+	.Fn = .Parse_Node,
+	.Foreign = .Parse_Node,
+	.Type = .Parse_Node,
+	.Identifier = .Parse_Node,
+	.Self = .Parse_Node,
+	.Result = .Parse_Node,
+	.Number_Literal = .Parse_Node,
+	.True = .Parse_Node,
+	.False = .Parse_Node,
+	.String_Literal = .Parse_Node,
+	.If = .Parse_Node,
+	.For = .Parse_Node,
+	.Match = .Parse_Node,
+	.Break = .Parse_Node,
+	.Continue = .Parse_Node,
+	.Return = .Parse_Node,
+}
+
+consume_token :: proc(p: ^Parser) -> Token {
+	p.previous = p.current
+	p.current = scan_token(&p.lexer)
+	return p.current
+}
+
+consume_token_until :: proc(p: ^Parser, end: Token_Kind) {
+	loop: for {
+		if p.current.kind == .EOF || p.current.kind == end {
+			break loop
+		} else {
+			consume_token(p)
+		}
+	}
+}
+
+peek_next_token :: proc(p: ^Parser) -> (result: Token) {
+	start := p.lexer.current
+	result = scan_token(&p.lexer)
+	p.lexer.current = start
+	return
+}
+
+match_token_kind_previous :: proc(p: ^Parser, kind: Token_Kind, loc := #caller_location) -> (err: Error) {
+	if p.previous.kind != kind {
+		err = format_error(
+			Parsing_Error{
+				kind = .Invalid_Syntax,
+				token = p.current,
+				details = fmt.tprintf("Expected %s, got %s", kind, p.previous.kind),
+			},
+			loc,
+		)
+	}
+	return
+}
+
+match_token_kind :: proc(p: ^Parser, kind: Token_Kind, loc := #caller_location) -> (err: Error) {
+	if p.current.kind != kind {
+		err = format_error(
+			Parsing_Error{
+				kind = .Invalid_Syntax,
+				token = p.current,
+				details = fmt.tprintf("Expected %s, got %s", kind, p.current.kind),
+			},
+			loc,
+		)
+	}
+	return
+}
+
+match_token_kind_next :: proc(p: ^Parser, kind: Token_Kind, loc := #caller_location) -> (err: Error) {
+	if consume_token(p).kind != kind {
+		err = format_error(
+			Parsing_Error{
+				kind = .Invalid_Syntax,
+				token = p.current,
+				details = fmt.tprintf("Expected %s, got %s", kind, p.current.kind),
+			},
+			loc,
+		)
+	}
+	return
+}
 
 Parser :: struct {
 	lexer:              Lexer,
@@ -92,7 +188,7 @@ parse_dependencies :: proc(
 	entry_point: ^Parsed_Module,
 	allocator := context.allocator,
 ) -> (
-	err: Error,
+	ok: bool,
 ) {
 	context.allocator = allocator
 	if len(entry_point.import_nodes) == 0 {
@@ -106,18 +202,25 @@ parse_dependencies :: proc(
 		if _, exist := lookup[import_stmt.identifier.text]; exist {
 			continue
 		}
+		import_ok: bool
 		if import_stmt.identifier.text == "std" {
 			std_module := make_parsed_module("std")
-			parse_module(std_source, std_module) or_return
+			import_ok = parse_module(std_source, std_module)
 			append(buf, std_module)
 			lookup["std"] = len(buf) - 1
 		} else {
 			imported_module := make_parsed_module(import_stmt.identifier.text)
-			imported_source := s->internal_load_module_source(imported_module.name) or_return
-			parse_module(imported_source, imported_module) or_return
-			append(buf, imported_module)
-			lookup[imported_module.name] = len(buf) - 1
+			imported_source, err := s->internal_load_module_source(imported_module.name)
+			if err != nil {
+				import_ok = false
+				append(&imported_module.errors, err)
+			} else {
+				import_ok = parse_module(imported_source, imported_module)
+				append(buf, imported_module)
+				lookup[imported_module.name] = len(buf) - 1
+			}
 		}
+		ok |= import_ok
 	}
 
 	if start == len(buf) - 1 {
@@ -125,155 +228,63 @@ parse_dependencies :: proc(
 	}
 	imported_modules := buf[start:len(buf)]
 	for module in imported_modules {
-		parse_dependencies(s, buf, lookup, module) or_return
+		ok |= parse_dependencies(s, buf, lookup, module)
 	}
 	return
 }
 
-parse_module :: proc(input: string, mod: ^Parsed_Module, allocator := context.allocator) -> (err: Error) {
+parse_module :: proc(input: string, mod: ^Parsed_Module, allocator := context.allocator) -> (ok: bool) {
 	context.allocator = allocator
+	err_count := len(mod.errors)
 	parser := Parser {
 		lexer = Lexer{},
 	}
 	set_lexer_input(&parser.lexer, input)
 	ast: for {
-		node: Parsed_Node
-		node = parse_node(&parser) or_return
-		if node != nil {
-			#partial switch n in node {
-			case ^Parsed_Import_Statement:
-				append(&mod.import_nodes, node)
-			case ^Parsed_Var_Declaration:
-				append(&mod.variables, node)
-			case ^Parsed_Type_Declaration:
-				append(&mod.types, node)
-			case ^Parsed_Fn_Declaration:
-				append(&mod.functions, node)
-			case:
-				append(&mod.nodes, node)
+		t := consume_token(&parser)
+		if rule, exist := node_parsing_rules[t.kind]; exist {
+			switch rule {
+			case .Parse_Node:
+				node, node_err := parse_node(&parser) 
+				if node_err != nil {
+					consume_token_until(&parser, .Newline)
+					append(&mod.errors, node_err)
+				}
+				if node != nil {
+					#partial switch n in node {
+					case ^Parsed_Import_Statement:
+						append(&mod.import_nodes, node)
+					case ^Parsed_Var_Declaration:
+						append(&mod.variables, node)
+					case ^Parsed_Type_Declaration:
+						append(&mod.types, node)
+					case ^Parsed_Fn_Declaration:
+						append(&mod.functions, node)
+					case:
+						append(&mod.nodes, node)
+					}
+				}
+			case .Skip:
+				continue ast
+			case .Exit:
+				break ast
 			}
-		} else if parser.current.kind == .EOF {
-			break ast
-		}
-	}
-	return
-}
-
-consume_token :: proc(p: ^Parser) -> Token {
-	p.previous = p.current
-	p.current = scan_token(&p.lexer)
-	return p.current
-}
-
-peek_next_token :: proc(p: ^Parser) -> (result: Token) {
-	start := p.lexer.current
-	result = scan_token(&p.lexer)
-	p.lexer.current = start
-	return
-}
-
-match_token_kind_previous :: proc(p: ^Parser, kind: Token_Kind, loc := #caller_location) -> (err: Error) {
-	if p.previous.kind != kind {
-		err = format_error(
-			Parsing_Error{
-				kind = .Invalid_Syntax,
-				token = p.current,
-				details = fmt.tprintf("Expected %s, got %s", kind, p.previous.kind),
-			},
-			loc,
-		)
-	}
-	return
-}
-
-match_token_kind :: proc(p: ^Parser, kind: Token_Kind, loc := #caller_location) -> (err: Error) {
-	if p.current.kind != kind {
-		err = format_error(
-			Parsing_Error{
-				kind = .Invalid_Syntax,
-				token = p.current,
-				details = fmt.tprintf("Expected %s, got %s", kind, p.current.kind),
-			},
-			loc,
-		)
-	}
-	return
-}
-
-match_token_kind_next :: proc(p: ^Parser, kind: Token_Kind, loc := #caller_location) -> (err: Error) {
-	if consume_token(p).kind != kind {
-		err = format_error(
-			Parsing_Error{
-				kind = .Invalid_Syntax,
-				token = p.current,
-				details = fmt.tprintf("Expected %s, got %s", kind, p.current.kind),
-			},
-			loc,
-		)
-	}
-	return
-}
-
-advance_expr_list :: proc(p: ^Parser, rule: Expr_List_Rule) -> (s: Expr_List_State, err: Error) {
-	#partial switch p.current.kind {
-	case .EOF:
-		err = format_error(
-			Parsing_Error{
-				kind = .Invalid_Syntax,
-				token = p.previous,
-				details = fmt.tprintf("Expected %s, got %s", rule.end, p.current.kind),
-			},
-		)
-		return
-	case rule.end:
-		s = .End
-		consume_token(p)
-	case rule.punctuation:
-		if !p.expect_punctuation {
-			fmt.println(p.previous, p.current)
-			err = format_error(
-				Parsing_Error{
-					kind = .Invalid_Syntax,
-					token = p.previous,
-					details = fmt.tprintf("Expected expression, got %s", p.current.kind),
-				},
-			)
-			return
 		} else {
-			s = .Loop
-			p.expect_punctuation = false
-			consume_token(p)
-		}
-	case:
-		if p.expect_punctuation {
-			err = format_error(
-				Parsing_Error{
-					kind = .Invalid_Syntax,
-					token = p.previous,
-					details = fmt.tprintf(
-						"Expected one of: %s, %s, got %s",
-						rule.punctuation,
-						rule.end,
-						p.current.kind,
-					),
-				},
-			)
-			return
-		} else if p.current.kind in rule.ignored {
-			s = .Loop
-			consume_token(p)
-		} else {
-			s = .Expect_Next
+			err := format_error(Parsing_Error{
+				kind = .Invalid_Syntax,
+				token = t,
+				details = fmt.tprintf("Invalid node"),
+			})
+			consume_token_until(&parser, .Newline)
+			append(&mod.errors, err)
 		}
 	}
+	ok = len(mod.errors) == err_count
 	return
 }
 
 parse_node :: proc(p: ^Parser) -> (result: Parsed_Node, err: Error) {
-	token := consume_token(p)
-	#partial switch token.kind {
-	case .EOF, .Newline, .End, .Else:
-		result = nil
+	#partial switch p.current.kind {
 	case .Import:
 		result, err = parse_import_stmt(p)
 	case .Var:
@@ -287,7 +298,7 @@ parse_node :: proc(p: ^Parser) -> (result: Parsed_Node, err: Error) {
 		if is_assign_token(p.current.kind) {
 			result, err = parse_assign_stmt(p, lhs)
 		} else {
-			result = new_clone(Parsed_Expression_Statement{token = token, expr = lhs})
+			result = new_clone(Parsed_Expression_Statement{token = p.current, expr = lhs})
 		}
 	case .If:
 		result, err = parse_if_stmt(p)
@@ -302,6 +313,9 @@ parse_node :: proc(p: ^Parser) -> (result: Parsed_Node, err: Error) {
 	case:
 		// Parsed_Expression statement most likely
 		result, err = parse_expression_stmt(p)
+	}
+	if err == nil {
+		err = match_token_kind(p, .Newline)
 	}
 	return
 }
@@ -655,6 +669,8 @@ parse_var_decl :: proc(p: ^Parser) -> (result: ^Parsed_Var_Declaration, err: Err
 			consume_token(p)
 			result.type_expr = &unresolved_identifier
 			result.expr, err = parse_expr(p, .Lowest)
+			fmt.println("boop:", p.previous.kind, p.current.kind)
+			
 
 		case .Colon:
 			consume_token(p)
@@ -882,6 +898,61 @@ parse_type_decl :: proc(p: ^Parser) -> (result: ^Parsed_Type_Declaration, err: E
 	return
 }
 
+advance_expr_list :: proc(p: ^Parser, rule: Expr_List_Rule) -> (s: Expr_List_State, err: Error) {
+	#partial switch p.current.kind {
+	case .EOF:
+		err = format_error(
+			Parsing_Error{
+				kind = .Invalid_Syntax,
+				token = p.previous,
+				details = fmt.tprintf("Expected %s, got %s", rule.end, p.current.kind),
+			},
+		)
+		return
+	case rule.end:
+		s = .End
+		consume_token(p)
+	case rule.punctuation:
+		if !p.expect_punctuation {
+			fmt.println(p.previous, p.current)
+			err = format_error(
+				Parsing_Error{
+					kind = .Invalid_Syntax,
+					token = p.previous,
+					details = fmt.tprintf("Expected expression, got %s", p.current.kind),
+				},
+			)
+			return
+		} else {
+			s = .Loop
+			p.expect_punctuation = false
+			consume_token(p)
+		}
+	case:
+		if p.expect_punctuation {
+			err = format_error(
+				Parsing_Error{
+					kind = .Invalid_Syntax,
+					token = p.previous,
+					details = fmt.tprintf(
+						"Expected one of: %s, %s, got %s",
+						rule.punctuation,
+						rule.end,
+						p.current.kind,
+					),
+				},
+			)
+			return
+		} else if p.current.kind in rule.ignored {
+			s = .Loop
+			consume_token(p)
+		} else {
+			s = .Expect_Next
+		}
+	}
+	return
+}
+
 parse_expr :: proc(p: ^Parser, prec: Precedence) -> (result: Parsed_Expression, err: Error) {
 	consume_token(p)
 	if rule, exist := parser_rules[p.previous.kind]; exist {
@@ -954,6 +1025,10 @@ parse_binary :: proc(p: ^Parser, left: Parsed_Expression) -> (result: Parsed_Exp
 	binary := new_clone(
 		Parsed_Binary_Expression{token = p.previous, left = left, op = token_to_operator(p.previous.kind)},
 	)
+	for p.current.kind == .Newline {
+		consume_token(p)
+	}
+	fmt.println("boop:", p.previous.kind, p.current.kind)
 	binary.right, err = parse_expr(p, parser_rules[p.previous.kind].prec)
 	result = binary
 	return

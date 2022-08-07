@@ -106,7 +106,7 @@ var fooVal = Foo.Bar
 
 ## Status and Roadmap:
 - [x] GC Memory management
-    - Very basic collector and doesn't handle very well resizing of maps and arrays
+    - Very basic collector and doesn't handle resizing of maps and arrays very well
 - [x] Zero initialize class fields
 - [x] += (and others) assignment operators
 - [x] Control flow
@@ -143,9 +143,9 @@ var fooVal = Foo.Bar
 ## Tooling:
 - [x] lily (Standalone compiler/interpreter)
 - [x] lilyfmt: Functioning but very simple
-    - [x] Source code handling    :: On par with compiler features [07/08/2022]
-    - [ ] Comment handling        :: 
-    - [ ] Able to disable regions :: 
+    - [x] Source code handling => On par with compiler features [07/08/2022]
+    - [ ] Comment handling 
+    - [ ] Can disable regions
 - [ ] lilycheck
 
 

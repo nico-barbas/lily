@@ -136,9 +136,9 @@ compile_source :: proc(
 	module_name: string,
 	source: string,
 ) -> (
-	err: Error,
+	[]Error,
 ) {
-	DEBUG_PARSER :: false
+	DEBUG_PARSER :: true
 	DEBUG_SYMBOLS :: false
 	DEBUG_CHECKER :: false
 	DEBUG_COMPILER :: false
@@ -146,43 +146,75 @@ compile_source :: proc(
 	context.allocator = state.allocator
 	context.temp_allocator = state.temp_allocator
 
-	module := make_parsed_module(module_name, state.temp_allocator)
-	parse_module(source, module, state.temp_allocator) or_return
-	append(&state.sources, source)
-
 	parsed_modules := make([dynamic]^Parsed_Module, state.temp_allocator)
+	defer {
+		when DEBUG_PARSER {
+			for p in parsed_modules {
+				print_parsed_ast(p)
+			}
+		}
+	}
+	
+	
+	module := make_parsed_module(module_name, state.temp_allocator)
+	parse_ok := parse_module(source, module, state.temp_allocator)
+	append(&state.sources, source)
 	append(&parsed_modules, module)
+	if !parse_ok {
+		return module.errors[:]
+	}
+
 	state.import_modules_id[module_name] = 0
 
-	parse_dependencies(
+	parse_ok = parse_dependencies(
 		state,
 		&parsed_modules,
 		&state.import_modules_id,
 		module,
 		state.temp_allocator,
-	) or_return
+	)
+	if !parse_ok {
+		parsing_errors := make([dynamic]Error, state.temp_allocator)
+		for m in parsed_modules {
+			for err in m.errors {
+				append(&parsing_errors, err)
+			}
+		}
+		return parsing_errors[:]
+	}
 	for name, id in state.import_modules_id {
 		state.import_modules_name[id] = name
 	}
-	state.init_order = check_dependency_graph(
+
+
+	dep_err: Error 
+	state.init_order, dep_err = check_dependency_graph(
 		parsed_modules[:],
 		state.import_modules_id,
 		module_name,
-	) or_return
-	when DEBUG_PARSER {
-		for p in parsed_modules {
-			print_parsed_ast(p)
-		}
+	)
+	if dep_err != nil {
+		errors := make([]Error, 1, state.temp_allocator)
+		errors[0] = dep_err
+		return errors
 	}
+	
 	state.checked_modules = make([]^Checked_Module, len(parsed_modules))
 
 	state.checker.modules = state.checked_modules
-	build_checked_program(
+	_, check_err := build_checked_program(
 		&state.checker,
 		state.import_modules_id,
 		parsed_modules[:],
 		state.init_order,
-	) or_return
+	)
+	if check_err != nil {
+		errors := make([]Error, 1, state.temp_allocator)
+		errors[0] = check_err
+		return errors
+	}
+
+	// Compile program
 	state.compiled_modules = make_compiled_program(state)
 	for i in 0 ..< len(state.compiled_modules) {
 		when DEBUG_SYMBOLS {
@@ -198,10 +230,10 @@ compile_source :: proc(
 	}
 	state.need_init = true
 	state.vm.modules = state.compiled_modules
-	return
+	return nil
 }
 
-compile_file :: proc(state: ^State, file_path: string) -> (err: Error) {
+compile_file :: proc(state: ^State, file_path: string) -> ([]Error) {
 	module_name: string
 	source: string
 	{
@@ -222,7 +254,8 @@ compile_file :: proc(state: ^State, file_path: string) -> (err: Error) {
 		module_name = strings.reverse(strings.to_string(state.std_builder))
 		source_slice, ok := os.read_entire_file(file_path)
 		if !ok {
-			err = format_error(
+			errors := make([]Error, 1, state.temp_allocator)
+			errors[0] = format_error(
 				Runtime_Error{
 					kind = .Invalid_Source_File_Name,
 					details = fmt.tprintf(
@@ -231,7 +264,7 @@ compile_file :: proc(state: ^State, file_path: string) -> (err: Error) {
 					),
 				},
 			)
-			return
+			return errors
 		}
 		source = string(source_slice)
 	}

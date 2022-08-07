@@ -7,16 +7,18 @@ Parsed_Module :: struct {
 	functions:    [dynamic]Parsed_Node,
 	variables:    [dynamic]Parsed_Node,
 	nodes:        [dynamic]Parsed_Node,
+	errors: [dynamic]Error,
 }
 
 make_parsed_module :: proc(name: string, allocator := context.allocator) -> ^Parsed_Module {
 	return new_clone(
 		Parsed_Module{
 			name = name,
-			import_nodes = make([dynamic]Parsed_Node),
-			types = make([dynamic]Parsed_Node),
-			functions = make([dynamic]Parsed_Node),
-			nodes = make([dynamic]Parsed_Node),
+			import_nodes = make([dynamic]Parsed_Node, allocator),
+			types = make([dynamic]Parsed_Node, allocator),
+			functions = make([dynamic]Parsed_Node, allocator),
+			nodes = make([dynamic]Parsed_Node, allocator),
+			errors = make([dynamic]Error, allocator),
 		},
 		allocator,
 	)

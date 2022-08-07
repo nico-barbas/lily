@@ -2,7 +2,7 @@ package playground
 
 import "core:fmt"
 import "core:mem"
-import lily "../lib"
+import "lily:lib"
 
 main :: proc() {
 	track := mem.Tracking_Allocator{}
@@ -26,28 +26,13 @@ main :: proc() {
 }
 
 playground :: proc() {
-	using lily
-
-	// input: string = `
-	// 	type Foo is class
-	// 		x: number
-
-	// 		constructor new(_x: number):
-	// 			self.x = _x
-	// 		end
-
-	// 		fn add(n: number):
-	// 			self.x = self.x + n
-	// 		end
-	// 	end
-
-	//     var a = Foo.new(1)
-	// 	a.add(13)
-	// `
-	input := `
-	var a = map of (string, number)[]
-
+	using lib
+	input :: `
+	var a = 10 +
+	b = 2
+	var c = false
 	`
+
 	init_global_temporary_allocator(mem.Megabyte * 20)
 
 	buf := make([]byte, mem.Megabyte * 20)
@@ -62,13 +47,15 @@ playground :: proc() {
 	state := new_state(
 		Config{allocator = compiler_allocator, temp_allocator = context.temp_allocator},
 	)
-	err := compile_source(state, "main", input)
-	assert(err == nil, fmt.tprint(err))
+	errors := compile_source(state, "main", input)
+	if len(errors) > 0 {
+		for err in errors {
+			fmt.println(err)
+		}
+		return
+	}
 
 	run_module(state, "main")
-	// update_handle, handle_err := make_fn_handle(state, "main", "update")
-	// assert(handle_err == nil)
-	// call(state, update_handle)
 	free_state(state)
 	fmt.println("finished")
 }

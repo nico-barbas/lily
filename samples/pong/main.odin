@@ -10,8 +10,13 @@ main :: proc() {
 
 	state := new_state(Config{load_module_source = load_module_source_fn, bind_fn = rl_bind_foreign_fn})
 	defer free_state(state)
-	err := compile_file(state, "./game.lily")
-	assert(err == nil, fmt.tprint(err))
+	errors := compile_file(state, "./game.lily")
+	if len(errors) > 0 {
+		for err in errors {
+			fmt.println(err)
+		}
+		return
+	}
 
 	update_handle, update_err := make_fn_handle(state, "game", "update")
 	assert(update_err == nil)
