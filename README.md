@@ -104,36 +104,44 @@ end
 var fooVal = Foo.Bar
 ```
 
+## Notes:
+- Class fields are zero initialized
+- Function parameters are immutables
+
 ## Status and Roadmap:
 - [x] GC Memory management
     - Very basic collector and doesn't handle resizing of maps and arrays very well
-- [x] Zero initialize class fields
-- [x] += (and others) assignment operators
-- [x] Control flow
+- [x] Most common assignment operators (=, +=, -=, *=, /=)
+- Control flow:
     - [x] If statement
     - [x] For statement
     - [x] Match statement
     - [x] 'break' statement
     - [x] 'continue' statement
 - [ ] Container iterators
-- [x] Array Type
-- [x] Array builtin procedures 
-- [x] Map Type
-- [ ] Map builtin procedures 
-- [x] Custom functions
-- [ ] Custom Type Alias
-- [x] Custom Class Types
-- [x] Class constructors
-- [x] Class methods
-- [ ] Custom Enumeration types
-- [ ] Custom ADTs
+- Builtin types:
+    - [x] Array Type
+    - [x] Array builtin procedures 
+    - [x] Map Type
+    - [ ] Map builtin procedures 
+- User defined types:
+    - [x] Functions
+    - [ ] Type Alias
+    - [x] Class Types
+    - [ ] Enumeration Types
+    - [ ] ADTs
+    - [ ] Ranges
 - [x] Modules
-- [x] Dot chaining
-- [x] Immutable function parameters
 - [ ] Variadic function parameters
-- [x] Foreign functions
-- [ ] Minimal standard library
-- [ ] Full test suite
+- Embedding features:
+    - [x] Foreign functions declaration in Lily source code
+    - [x] Lily Function handles capture in host application
+    - [x] Safe (sortof) VM stack manipulation
+- Minimal standard library:
+    - [x] Print
+    - [x] String conversion (super hacky)
+    - [x] A few common math procedures
+- Full test suite:
     - [x] Lexer
     - [ ] Parser :: 80%
     - [ ] Checker
