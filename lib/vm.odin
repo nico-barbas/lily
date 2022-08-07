@@ -1,32 +1,71 @@
 package lily
 
 import "core:fmt"
+import "core:mem"
 
 Vm :: struct {
-	ip:                    int,
-	modules:               []^Compiled_Module,
-	current:               ^Compiled_Module,
-	chunk:                 ^Chunk,
+	ip:                int,
+	modules:           []^Compiled_Module,
+	current:           ^Compiled_Module,
+	chunk:             ^Chunk,
 
 	// Callbacks
-	gc:                    ^Gc,
-	state:                 ^State,
-	call_foreign:          proc(s: ^State, fn: Foreign_Procedure, stack_slice: []Value),
+	gc:                ^Gc,
+	state:             ^State,
+	call_foreign_proc: proc(s: ^State, fn: Foreign_Procedure, stack_slice: []Value),
 
 	// Stack states
-	call_stack:            [255]struct {
+	call_stack:        [255]struct {
 		chunk:       ^Chunk,
 		ip:          int,
 		stack_depth: int,
 	},
-	call_count:            int,
-	stack:                 [255]Value,
-	header_addr:           int,
-	stack_ptr:             int,
-	stack_depth:           int,
+	call_count:        int,
+	stack:             [255]Value,
+	header_addr:       int,
+	stack_ptr:         int,
+	stack_depth:       int,
 
 	// vm flags
-	show_debug_stack_info: bool,
+	show_debug_info:   bool,
+}
+
+Vm_Config :: struct {
+	state:             ^State,
+	call_foreign_proc: proc(s: ^State, fn: Foreign_Procedure, stack_slice: []Value),
+	show_debug_info:   bool,
+
+	// Allocators
+	temp_allocator:    mem.Allocator,
+}
+
+new_vm :: proc(config: Vm_Config, allocator := context.allocator) -> ^Vm {
+	vm := new(Vm, allocator)
+	vm.state = config.state
+	vm.call_foreign_proc = config.call_foreign_proc
+	vm.show_debug_info = config.show_debug_info
+
+	root_interface := Gc_Roots_Interface {
+		gather_roots_proc = proc(
+			data: rawptr,
+			allocator := context.allocator,
+		) -> [][]Value {
+			vm := cast(^Vm)data
+			root_slice := make([][]Value, len(vm.modules) + 1, allocator)
+			for module, i in vm.modules {
+				root_slice[i] = module.variables
+			}
+			root_slice[len(vm.modules)] = vm.stack[:vm.stack_ptr]
+			return root_slice
+		},
+		data = vm,
+	}
+	vm.gc = new_gc(it = root_interface, allocator = allocator)
+	return vm
+}
+
+delete_vm :: proc(vm: ^Vm) {
+	delete_gc(vm.gc)
 }
 
 get_byte :: proc(vm: ^Vm) -> byte {
@@ -100,9 +139,6 @@ get_stack_value :: proc(vm: ^Vm, addr: int) -> (result: Value) {
 
 set_stack_value :: proc(vm: ^Vm, addr: int, value: Value) {
 	vm.stack[addr] = value
-	// if vm.stack_ptr < addr + 1 {
-	// 	vm.stack_ptr = addr + 1
-	// }
 }
 
 stack_addr :: proc(vm: ^Vm) -> int {
@@ -207,15 +243,24 @@ run_vm :: proc(vm: ^Vm) {
 
 		case .Op_Add:
 			v2, v1 := pop_stack_value(vm), pop_stack_value(vm)
-			push_stack_value(vm, Value{kind = .Number, data = v1.data.(f64) + v2.data.(f64)})
+			push_stack_value(
+				vm,
+				Value{kind = .Number, data = v1.data.(f64) + v2.data.(f64)},
+			)
 
 		case .Op_Mul:
 			v2, v1 := pop_stack_value(vm), pop_stack_value(vm)
-			push_stack_value(vm, Value{kind = .Number, data = v1.data.(f64) * v2.data.(f64)})
+			push_stack_value(
+				vm,
+				Value{kind = .Number, data = v1.data.(f64) * v2.data.(f64)},
+			)
 
 		case .Op_Div:
 			v2, v1 := pop_stack_value(vm), pop_stack_value(vm)
-			push_stack_value(vm, Value{kind = .Number, data = v1.data.(f64) / v2.data.(f64)})
+			push_stack_value(
+				vm,
+				Value{kind = .Number, data = v1.data.(f64) / v2.data.(f64)},
+			)
 
 		case .Op_Rem:
 			v2, v1 := pop_stack_value(vm), pop_stack_value(vm)
@@ -224,36 +269,60 @@ run_vm :: proc(vm: ^Vm) {
 
 		case .Op_And:
 			v2, v1 := pop_stack_value(vm), pop_stack_value(vm)
-			push_stack_value(vm, Value{kind = .Boolean, data = v1.data.(bool) && v2.data.(bool)})
+			push_stack_value(
+				vm,
+				Value{kind = .Boolean, data = v1.data.(bool) && v2.data.(bool)},
+			)
 
 		case .Op_Or:
 			v2, v1 := pop_stack_value(vm), pop_stack_value(vm)
-			push_stack_value(vm, Value{kind = .Boolean, data = v1.data.(bool) || v2.data.(bool)})
+			push_stack_value(
+				vm,
+				Value{kind = .Boolean, data = v1.data.(bool) || v2.data.(bool)},
+			)
 
 		case .Op_Eq:
 			v2, v1 := pop_stack_value(vm), pop_stack_value(vm)
 			#partial switch v1.kind {
 			case .Number:
-				push_stack_value(vm, Value{kind = .Boolean, data = v1.data.(f64) == v2.data.(f64)})
+				push_stack_value(
+					vm,
+					Value{kind = .Boolean, data = v1.data.(f64) == v2.data.(f64)},
+				)
 			case .Boolean:
-				push_stack_value(vm, Value{kind = .Boolean, data = v1.data.(bool) == v2.data.(bool)})
+				push_stack_value(
+					vm,
+					Value{kind = .Boolean, data = v1.data.(bool) == v2.data.(bool)},
+				)
 			}
 
 		case .Op_Greater:
 			v2, v1 := pop_stack_value(vm), pop_stack_value(vm)
-			push_stack_value(vm, Value{kind = .Boolean, data = v1.data.(f64) > v2.data.(f64)})
+			push_stack_value(
+				vm,
+				Value{kind = .Boolean, data = v1.data.(f64) > v2.data.(f64)},
+			)
 
 		case .Op_Greater_Eq:
 			v2, v1 := pop_stack_value(vm), pop_stack_value(vm)
-			push_stack_value(vm, Value{kind = .Boolean, data = v1.data.(f64) >= v2.data.(f64)})
+			push_stack_value(
+				vm,
+				Value{kind = .Boolean, data = v1.data.(f64) >= v2.data.(f64)},
+			)
 
 		case .Op_Lesser:
 			v2, v1 := pop_stack_value(vm), pop_stack_value(vm)
-			push_stack_value(vm, Value{kind = .Boolean, data = v1.data.(f64) < v2.data.(f64)})
+			push_stack_value(
+				vm,
+				Value{kind = .Boolean, data = v1.data.(f64) < v2.data.(f64)},
+			)
 
 		case .Op_Lesser_Eq:
 			v2, v1 := pop_stack_value(vm), pop_stack_value(vm)
-			push_stack_value(vm, Value{kind = .Boolean, data = v1.data.(f64) <= v2.data.(f64)})
+			push_stack_value(
+				vm,
+				Value{kind = .Boolean, data = v1.data.(f64) <= v2.data.(f64)},
+			)
 
 		case .Op_Begin:
 			push_stack_scope(vm)
@@ -271,7 +340,11 @@ run_vm :: proc(vm: ^Vm) {
 			return_val: Value
 
 			fn_values := vm.stack[get_scope_start_addr(vm):vm.stack_ptr]
-			vm.call_foreign(vm.state, vm.current.functions[fn_addr].foreign_fn, fn_values)
+			vm.call_foreign_proc(
+				vm.state,
+				vm.current.functions[fn_addr].foreign_fn,
+				fn_values,
+			)
 			if has_return {
 				return_val = fn_values[0]
 			}
@@ -396,42 +469,28 @@ run_vm :: proc(vm: ^Vm) {
 
 		case .Op_Make_Instance:
 			prototype := cast(^Class_Object)pop_stack_value(vm).data.(^Object)
-			instance := new_clone(
-				Class_Object{
-					base = Object{kind = .Class},
-					fields = make([]Value, len(prototype.fields)),
-					vtable = prototype.vtable,
-				},
-			)
-			for field, j in prototype.fields {
-				instance.fields[j] = field
-			}
-			push_stack_value(vm, Value{kind = .Object_Ref, data = cast(^Object)instance})
+			instance := allocate_traced_class(vm.gc, prototype)
+			push_stack_value(vm, instance)
 
 		case .Op_Make_Array:
-			push_stack_value(vm, new_array_object())
+			push_stack_value(vm, allocate_traced_array(vm.gc))
 
 		case .Op_Append_Array:
 			array_val := pop_stack_value(vm)
 			array := cast(^Array_Object)array_val.data.(^Object)
-			append(&array.data, pop_stack_value(vm))
+			array_object_append(array, pop_stack_value(vm))
 			push_stack_value(vm, array_val)
 
 		case .Op_Make_Map:
 			init_elem_count := get_i16(vm)
-			data := make(map[Value]Value)
+			map_value := allocate_traced_map(vm.gc)
+			map_object := cast(^Map_Object)map_value.data.(^Object)
 			for i in 0 ..< init_elem_count {
 				k := pop_stack_value(vm)
 				v := pop_stack_value(vm)
-				data[v] = k
+				map_object.data[v] = k
 			}
-			push_stack_value(
-				vm,
-				Value{
-					kind = .Object_Ref,
-					data = cast(^Object)new_clone(Map_Object{base = Object{kind = .Map}, data = data}),
-				},
-			)
+			push_stack_value(vm, map_value)
 
 		case .Op_Length:
 			array := cast(^Array_Object)pop_stack_value(vm).data.(^Object)
@@ -439,7 +498,7 @@ run_vm :: proc(vm: ^Vm) {
 		}
 
 
-		if vm.show_debug_stack_info {
+		if vm.show_debug_info {
 			print_stack(vm, op)
 		}
 		if vm_finished(vm) {

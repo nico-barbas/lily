@@ -1,6 +1,5 @@
 package tools
 
-import "core:fmt"
 import "core:strings"
 
 Print_Item :: struct {
@@ -13,14 +12,20 @@ print_newline :: proc(f: ^Formatter, item: Print_Item, should_indent: bool) {
 	strings.write_string(&f.builder, f.newline)
 	f.written = len(f.newline)
 	if should_indent {
-		for i in 0 ..< item.indentation {
+		for _ in 0 ..< item.indentation {
 			strings.write_string(&f.builder, f.indentation)
 			f.written += len(f.indentation)
 		}
 	}
 }
 
-print_document :: proc(f: ^Formatter, allocator := context.allocator) -> (result: string, ok: bool) {
+print_document :: proc(
+	f: ^Formatter,
+	allocator := context.allocator,
+) -> (
+	result: string,
+	ok: bool,
+) {
 	list := make([dynamic]Print_Item, allocator)
 	start := Print_Item {
 		document      = f.document,
@@ -28,8 +33,6 @@ print_document :: proc(f: ^Formatter, allocator := context.allocator) -> (result
 		force_newline = false,
 	}
 	append(&list, start)
-
-	recalculate := false
 
 	for len(list) > 0 {
 		item := pop(&list)

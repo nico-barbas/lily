@@ -1,7 +1,5 @@
 package tools
 
-import "core:fmt"
-
 Document :: union {
 	Document_Nil,
 	Document_Text,
@@ -61,7 +59,12 @@ text :: proc(value: string, allocator := context.allocator) -> (result: ^Documen
 	return
 }
 
-text_if_break :: proc(value: string, allocator := context.allocator) -> (result: ^Document) {
+text_if_break :: proc(
+	value: string,
+	allocator := context.allocator,
+) -> (
+	result: ^Document,
+) {
 	result = new(Document, allocator)
 	result^ = Document_If_Break {
 		document = text(value, allocator),
@@ -77,7 +80,12 @@ newline :: proc(count: int, allocator := context.allocator) -> (result: ^Documen
 	return
 }
 
-newline_if_break :: proc(count: int, allocator := context.allocator) -> (result: ^Document) {
+newline_if_break :: proc(
+	count: int,
+	allocator := context.allocator,
+) -> (
+	result: ^Document,
+) {
 	result = new(Document, allocator)
 	result^ = Document_If_Break {
 		document = newline(count, allocator),
@@ -85,7 +93,13 @@ newline_if_break :: proc(count: int, allocator := context.allocator) -> (result:
 	return
 }
 
-space :: proc(spacing := " ", count: int = 1, allocator := context.allocator) -> (result: ^Document) {
+space :: proc(
+	spacing := " ",
+	count: int = 1,
+	allocator := context.allocator,
+) -> (
+	result: ^Document,
+) {
 	result = new(Document, allocator)
 	result^ = Document_Spacing {
 		value = spacing,
@@ -108,7 +122,12 @@ space_if_break :: proc(
 	return
 }
 
-nest :: proc(document: ^Document, allocator := context.allocator) -> (result: ^Document) {
+nest :: proc(
+	document: ^Document,
+	allocator := context.allocator,
+) -> (
+	result: ^Document,
+) {
 	result = new(Document, allocator)
 	result^ = Document_Nest {
 		document = document,
@@ -140,7 +159,11 @@ list :: proc(
 	return
 }
 
-join :: proc(document: ^Document_List, elements: ..^Document, allocator := context.allocator) {
+join :: proc(
+	document: ^Document_List,
+	elements: ..^Document,
+	allocator := context.allocator,
+) {
 	for elem in elements {
 		#partial switch e in elem {
 		case Document_Nil:

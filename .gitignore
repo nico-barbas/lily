@@ -1,3 +1,7 @@
+bin/lily.exe
+bin/lily
+bin/lilyfmt.exe
+bin/lilyfmt
 tests/.exe
 playground/playground.exe
 playground/playground.pdb

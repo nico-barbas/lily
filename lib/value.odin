@@ -1,5 +1,9 @@
 package lily
 
+import "core:mem"
+import "core:runtime"
+// import "core:fmt"
+
 // TODO: remove the hard-coded length of parameters and arguments in functions
 
 // Values are runtime representation of different object kinds.
@@ -79,7 +83,11 @@ String_Object :: struct {
 
 Array_Object :: struct {
 	using base: Object,
-	data:       [dynamic]Value,
+	data:       []Value,
+	cap:        int,
+	len:        int,
+	allocator:  mem.Allocator,
+	size:       int,
 }
 
 Map_Object :: struct {
@@ -126,6 +134,34 @@ zero_value :: proc(kind: Value_Kind) -> (value: Value) {
 	return
 }
 
+object_size :: #force_inline proc(object: ^Object) -> (size: int) {
+	switch object.kind {
+	case .String:
+		string_object := cast(^String_Object)object
+		size += size_of(String_Object)
+		size += len(string_object.data) * size_of(rune)
+	case .Array:
+		array_object := cast(^Array_Object)object
+		size += size_of(Array_Object)
+		size += len(array_object.data) * size_of(Value)
+	case .Map:
+		map_object := cast(^Map_Object)object
+		size += size_of(Map_Object)
+		header := runtime.__get_map_header(&map_object.data)
+		cap := cap(map_object.data)
+		size += header.entry_size * cap
+		size += cap * 2 * size_of(header.m.hashes)
+
+	case .Fn:
+		assert(false)
+	case .Class:
+		class_object := cast(^Class_Object)object
+		size += size_of(Class_Object)
+		size += len(class_object.fields) * size_of(Value)
+	}
+	return size
+}
+
 new_string_object :: proc(from := "", allocator := context.allocator) -> Value {
 	object := new(String_Object, allocator)
 	object^ = String_Object {
@@ -135,20 +171,50 @@ new_string_object :: proc(from := "", allocator := context.allocator) -> Value {
 	for r, i in from {
 		object.data[i] = r
 	}
-	return Value{kind = .Object_Ref, data = cast(^Object)object}
+	value := Value {
+		kind = .Object_Ref,
+		data = cast(^Object)object,
+	}
+	return value
 }
 
+DEFAULT_ARRAY_SIZE :: 16
 new_array_object :: proc(allocator := context.allocator) -> Value {
 	object := new(Array_Object, allocator)
 	object^ = Array_Object {
 		base = Object{kind = .Array},
-		data = make([dynamic]Value, allocator),
+		data = make([]Value, DEFAULT_ARRAY_SIZE, allocator),
+		len = 0,
+		cap = DEFAULT_ARRAY_SIZE,
+		allocator = allocator,
+		size = size_of(Value) * DEFAULT_ARRAY_SIZE,
 	}
-	return Value{kind = .Object_Ref, data = cast(^Object)object}
+	value := Value {
+		kind = .Object_Ref,
+		data = cast(^Object)object,
+	}
+	return value
 }
 
+array_object_resize :: proc(array: ^Array_Object) {
+	old := array.data
+	array.cap *= 2
+	array.size = size_of(Value) * array.cap
+	array.data = make([]Value, array.cap, array.allocator)
+	copy(array.data[:array.len], old[:])
+	delete(old)
+}
+
+array_object_append :: proc(array: ^Array_Object, value: Value) {
+	if array.len >= array.cap {
+		array_object_resize(array)
+	}
+	array.data[array.len] = value
+	array.len += 1
+}
+
+DEFAULT_MAP_SIZE :: 32
 new_map_object :: proc(allocator := context.allocator) -> Value {
-	DEFAULT_MAP_SIZE :: 16
 
 	object := new(Map_Object, allocator)
 	object^ = Map_Object {
@@ -158,8 +224,11 @@ new_map_object :: proc(allocator := context.allocator) -> Value {
 	return Value{kind = .Object_Ref, data = cast(^Object)object}
 }
 
-new_class_object :: proc(prototype: ^Class_Object, allocator := context.allocator) -> Value {
-	object := new(Class_Object)
+new_class_object :: proc(
+	prototype: ^Class_Object,
+	allocator := context.allocator,
+) -> Value {
+	object := new(Class_Object, allocator)
 	object^ = Class_Object {
 		base = Object{kind = .Class},
 		fields = make([]Value, len(prototype.fields), allocator),
@@ -171,22 +240,26 @@ new_class_object :: proc(prototype: ^Class_Object, allocator := context.allocato
 	return Value{kind = .Object_Ref, data = cast(^Object)object}
 }
 
-free_object :: proc(object: ^Object) {
+free_object :: proc(object: ^Object, allocator: mem.Allocator) {
 	switch object.kind {
 	case .String:
+		object := cast(^String_Object)object
+		delete(object.data, allocator)
+		free(object, allocator)
 	case .Array:
+		object := cast(^Array_Object)object
+		delete(object.data, allocator)
+		free(object, allocator)
 	case .Map:
+		object := cast(^Map_Object)object
+		delete(object.data)
+		free(object, allocator)
 	case .Fn:
-		fn_object := cast(^Fn_Object)object
-	// delete_chunk(&fn_object.chunk)
+		assert(false)
 	case .Class:
-		class_object := cast(^Class_Object)object
-		// FIXME: Need to recursively delete fields
-		for field in class_object.fields {
-			if field_object, ok := field.data.(^Object); ok {
-				free_object(field_object)
-			}
-		}
+		object := cast(^Class_Object)object
+		delete(object.fields, allocator)
+		free(object, allocator)
 	}
 }
 

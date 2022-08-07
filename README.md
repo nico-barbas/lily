@@ -105,7 +105,8 @@ var fooVal = Foo.Bar
 ```
 
 ## Status and Roadmap:
-- [ ] Memory management (either GC or RC)
+- [x] GC Memory management
+    - Very basic collector and doesn't handle very well resizing of maps and arrays
 - [x] Zero initialize class fields
 - [x] += (and others) assignment operators
 - [x] Control flow
@@ -140,11 +141,14 @@ var fooVal = Foo.Bar
     - [ ] VM
 
 ## Tooling:
-- [x] lilyfmt:   Functioning but very simple
-- [ ] lilycheck: 0%
+- [ ] lily (Standalone compiler/interpreter)
+- [x] lilyfmt: Functioning but very simple
+    - Source code handling    :: [x] (On par with compiler features [07/08/2022])
+    - Comment handling        :: [ ]
+    - Able to disable regions :: [ ]
+- [ ] lilycheck
 
 
 ## Known Bugs:
 - User defined foreign fn declaration are not supported in the standalone compiler and should be disallowed
-- Many, many compiler memory leaks (will be fixed very soon)
 - Fix symbol table overflow

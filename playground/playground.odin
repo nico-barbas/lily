@@ -45,12 +45,10 @@ playground :: proc() {
 	// 	a.add(13)
 	// `
 	input := `
-	import std
+	var a = map of (string, number)[]
 
-	var a = 10
-	a += 1
 	`
-	init_global_temporary_allocator(mem.Megabyte * 20, )
+	init_global_temporary_allocator(mem.Megabyte * 20)
 
 	buf := make([]byte, mem.Megabyte * 20)
 	compiler_arena: mem.Arena
@@ -58,13 +56,12 @@ playground :: proc() {
 	compiler_allocator := mem.arena_allocator(&compiler_arena)
 	defer {
 		free_all(compiler_allocator)
-		delete(buf) 
+		delete(buf)
 	}
-	
-	state := new_state(Config{
-		allocator = compiler_allocator,
-		temp_allocator = context.temp_allocator,
-	})
+
+	state := new_state(
+		Config{allocator = compiler_allocator, temp_allocator = context.temp_allocator},
+	)
 	err := compile_source(state, "main", input)
 	assert(err == nil, fmt.tprint(err))
 
