@@ -141,11 +141,11 @@ var fooVal = Foo.Bar
     - [ ] VM
 
 ## Tooling:
-- [ ] lily (Standalone compiler/interpreter)
+- [x] lily (Standalone compiler/interpreter)
 - [x] lilyfmt: Functioning but very simple
-    - Source code handling    :: [x] (On par with compiler features [07/08/2022])
-    - Comment handling        :: [ ]
-    - Able to disable regions :: [ ]
+    - [x] Source code handling    :: On par with compiler features [07/08/2022]
+    - [ ] Comment handling        :: 
+    - [ ] Able to disable regions :: 
 - [ ] lilycheck
 
 
