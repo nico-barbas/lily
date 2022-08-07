@@ -109,44 +109,46 @@ var fooVal = Foo.Bar
 - Function parameters are immutables
 
 ## Status and Roadmap:
+### Control flow:
+- [x] If statement
+- [x] For statement
+- [x] Match statement
+- [x] 'break' statement
+- [x] 'continue' statement
+### Builtin types:
+- [x] Array Type
+- [x] Array builtin procedures 
+- [x] Map Type
+- [ ] Map builtin procedures 
+### User defined types:
+- [x] Functions
+- [ ] Type Alias
+- [x] Class Types
+- [ ] Enumeration Types
+- [ ] ADTs
+- [ ] Ranges
+### Embedding features:
+- [x] Foreign functions declaration in Lily source code
+- [x] Lily Function handles capture in host application
+- [x] Safe (sortof) VM stack manipulation
+### Minimal standard library:
+- [x] Print
+- [x] String conversion (super hacky)
+- [x] A few common math procedures
+### Full test suite:
+- [x] Lexer
+- [ ] Parser :: 80%
+- [ ] Checker
+- [ ] Compiler
+- [ ] VM
+
+### Features TODO:
 - [x] GC Memory management
     - Very basic collector and doesn't handle resizing of maps and arrays very well
 - [x] Most common assignment operators (=, +=, -=, *=, /=)
-- Control flow:
-    - [x] If statement
-    - [x] For statement
-    - [x] Match statement
-    - [x] 'break' statement
-    - [x] 'continue' statement
 - [ ] Container iterators
-- Builtin types:
-    - [x] Array Type
-    - [x] Array builtin procedures 
-    - [x] Map Type
-    - [ ] Map builtin procedures 
-- User defined types:
-    - [x] Functions
-    - [ ] Type Alias
-    - [x] Class Types
-    - [ ] Enumeration Types
-    - [ ] ADTs
-    - [ ] Ranges
 - [x] Modules
 - [ ] Variadic function parameters
-- Embedding features:
-    - [x] Foreign functions declaration in Lily source code
-    - [x] Lily Function handles capture in host application
-    - [x] Safe (sortof) VM stack manipulation
-- Minimal standard library:
-    - [x] Print
-    - [x] String conversion (super hacky)
-    - [x] A few common math procedures
-- Full test suite:
-    - [x] Lexer
-    - [ ] Parser :: 80%
-    - [ ] Checker
-    - [ ] Compiler
-    - [ ] VM
 
 ## Tooling:
 - [x] lily (Standalone compiler/interpreter)
