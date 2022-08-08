@@ -209,9 +209,10 @@ scan_token :: proc(l: ^Lexer) -> (t: Token) {
 			advance(l)
 			t.kind = .Comment
 			comment_loop: for {
-				if is_eof(l) || advance(l) == '\n' {
-					l.line += 1
+				if is_eof(l) || peek(l) == '\n' {
 					break comment_loop
+				} else {
+					advance(l)
 				}
 			}
 		case '=':

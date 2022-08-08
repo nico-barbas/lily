@@ -28,9 +28,9 @@ main :: proc() {
 playground :: proc() {
 	using lib
 	input :: `
-	var a = 10 +
-	b = 2
-	var c = false
+	fn add():
+		var a = 10
+	end
 	`
 
 	init_global_temporary_allocator(mem.Megabyte * 20)
@@ -44,9 +44,7 @@ playground :: proc() {
 		delete(buf)
 	}
 
-	state := new_state(
-		Config{allocator = compiler_allocator, temp_allocator = context.temp_allocator},
-	)
+	state := new_state(Config{allocator = compiler_allocator, temp_allocator = context.temp_allocator})
 	errors := compile_source(state, "main", input)
 	if len(errors) > 0 {
 		for err in errors {

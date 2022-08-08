@@ -41,36 +41,43 @@ parser_rules := map[Token_Kind]struct {
 }
 //odinfmt: enable
 
-Parse_Node_Command:: enum {
+Parse_Node_Command :: enum {
 	Exit,
 	Skip,
 	Parse_Node,
+	Parse_Comment,
 }
 
-node_parsing_rules := map[Token_Kind]Parse_Node_Command {
-	.EOF = .Exit,
-	.Newline = .Skip,
-	.End = .Skip,
-	.Else = .Skip,
-	.Import = .Parse_Node,
-	.Var = .Parse_Node,
-	.Fn = .Parse_Node,
-	.Foreign = .Parse_Node,
-	.Type = .Parse_Node,
-	.Identifier = .Parse_Node,
-	.Self = .Parse_Node,
-	.Result = .Parse_Node,
-	.Number_Literal = .Parse_Node,
-	.True = .Parse_Node,
-	.False = .Parse_Node,
-	.String_Literal = .Parse_Node,
-	.If = .Parse_Node,
-	.For = .Parse_Node,
-	.Match = .Parse_Node,
-	.Break = .Parse_Node,
-	.Continue = .Parse_Node,
-	.Return = .Parse_Node,
+//odinfmt: disable
+node_parsing_rules := map[Token_Kind]struct {
+	command: Parse_Node_Command,
+	end:     Token_Kind,
+} {
+	.EOF            = {.Exit, .Newline},
+	.Newline        = {.Skip, .Newline},
+	.Comment        = {.Parse_Comment, .Newline},
+	.Import         = {.Parse_Node, .Newline},
+	.Var            = {.Parse_Node, .Newline},
+	.Fn             = {.Parse_Node, .End},
+	.Foreign        = {.Parse_Node, .End},
+	.Type           = {.Parse_Node, .End},
+	.Identifier     = {.Parse_Node, .Newline},
+	.Self           = {.Parse_Node, .Newline},
+	.Result         = {.Parse_Node, .Newline},
+	.Number_Literal = {.Parse_Node, .Newline},
+	.True           = {.Parse_Node, .Newline},
+	.False          = {.Parse_Node, .Newline},
+	.String_Literal = {.Parse_Node, .Newline},
+	.Map            = {.Parse_Node, .Newline},
+	.Array          = {.Parse_Node, .Newline},
+	.If             = {.Parse_Node, .End},
+	.For            = {.Parse_Node, .End},
+	.Match          = {.Parse_Node, .End},
+	.Break          = {.Parse_Node, .Newline},
+	.Continue       = {.Parse_Node, .Newline},
+	.Return         = {.Parse_Node, .Newline},
 }
+//odinfmt: enable
 
 consume_token :: proc(p: ^Parser) -> Token {
 	p.previous = p.current
@@ -139,9 +146,11 @@ match_token_kind_next :: proc(p: ^Parser, kind: Token_Kind, loc := #caller_locat
 
 Parser :: struct {
 	lexer:              Lexer,
+	module:             ^Parsed_Module,
 	current:            Token,
 	previous:           Token,
 	expect_punctuation: bool,
+	end_token:          Token_Kind,
 }
 
 Precedence :: enum {
@@ -192,6 +201,7 @@ parse_dependencies :: proc(
 ) {
 	context.allocator = allocator
 	if len(entry_point.import_nodes) == 0 {
+		ok = true
 		return
 	}
 
@@ -238,16 +248,18 @@ parse_module :: proc(input: string, mod: ^Parsed_Module, allocator := context.al
 	err_count := len(mod.errors)
 	parser := Parser {
 		lexer = Lexer{},
+		module = mod,
 	}
 	set_lexer_input(&parser.lexer, input)
 	ast: for {
 		t := consume_token(&parser)
 		if rule, exist := node_parsing_rules[t.kind]; exist {
-			switch rule {
+			parser.end_token = rule.end
+			switch rule.command {
 			case .Parse_Node:
-				node, node_err := parse_node(&parser) 
+				node, node_err := parse_node(&parser)
 				if node_err != nil {
-					consume_token_until(&parser, .Newline)
+					consume_token_until(&parser, parser.end_token)
 					append(&mod.errors, node_err)
 				}
 				if node != nil {
@@ -264,17 +276,17 @@ parse_module :: proc(input: string, mod: ^Parsed_Module, allocator := context.al
 						append(&mod.nodes, node)
 					}
 				}
+			case .Parse_Comment:
+				append(&mod.comments, t)
 			case .Skip:
 				continue ast
 			case .Exit:
 				break ast
 			}
 		} else {
-			err := format_error(Parsing_Error{
-				kind = .Invalid_Syntax,
-				token = t,
-				details = fmt.tprintf("Invalid node"),
-			})
+			err := format_error(
+				Parsing_Error{kind = .Invalid_Syntax, token = t, details = fmt.tprintf("Invalid node")},
+			)
 			consume_token_until(&parser, .Newline)
 			append(&mod.errors, err)
 		}
@@ -311,10 +323,15 @@ parse_node :: proc(p: ^Parser) -> (result: Parsed_Node, err: Error) {
 	case .Return:
 		result, err = parse_return_stmt(p)
 	case:
-		// Parsed_Expression statement most likely
+		// FIXME: do it more elegantly
+		// At this point, all that is left are literals
 		result, err = parse_expression_stmt(p)
 	}
 	if err == nil {
+		if p.current.kind == .Comment {
+			append(&p.module.comments, p.current)
+			consume_token(p)
+		}
 		err = match_token_kind(p, .Newline)
 	}
 	return
@@ -324,6 +341,48 @@ parse_expression_stmt :: proc(p: ^Parser) -> (result: ^Parsed_Expression_Stateme
 	result = new(Parsed_Expression_Statement)
 	result.token = p.current
 	result.expr, err = parse_expr(p, .Lowest)
+	return
+}
+
+parse_block_stmt :: proc(p: ^Parser, end := Token_Kind_Group{.End}) -> (result: ^Parsed_Block_Statement) {
+	result = new(Parsed_Block_Statement)
+	result.nodes = make([dynamic]Parsed_Node)
+	block: for {
+		consume_token(p)
+		if p.current.kind in end {
+			consume_token(p)
+			break block
+		}
+		if rule, exist := node_parsing_rules[p.current.kind]; exist {
+			switch rule.command {
+			case .Parse_Node:
+				node, node_err := parse_node(p)
+				if node_err != nil {
+					consume_token_until(p, rule.end)
+					append(&p.module.errors, node_err)
+				}
+				if node != nil {
+					append(&result.nodes, node)
+				}
+			case .Parse_Comment:
+				append(&p.module.comments, p.current)
+			case .Skip:
+				continue block
+			case .Exit:
+				break block
+			}
+		} else {
+			err := format_error(
+				Parsing_Error{
+					kind = .Invalid_Syntax,
+					token = p.current,
+					details = fmt.tprintf("Invalid node"),
+				},
+			)
+			consume_token_until(p, .Newline)
+			append(&p.module.errors, err)
+		}
+	}
 	return
 }
 
@@ -365,100 +424,42 @@ parse_if_stmt :: proc(p: ^Parser) -> (result: ^Parsed_If_Statement, err: Error) 
 		err: Error,
 	) {
 		result = new(Parsed_If_Statement)
+		result.token = p.current
 		switch is_end_branch {
 		case true:
 			result.is_alternative = true
-			result.body = new_clone(Parsed_Block_Statement{nodes = make([dynamic]Parsed_Node)})
-			else_body: for {
-				body_node := parse_node(p) or_return
-				if body_node != nil {
-					append(&result.body.nodes, body_node)
-				}
-				if p.current.kind == .End {
-					consume_token(p)
-					break else_body
-				}
-			}
+			result.body = parse_block_stmt(p)
 		case false:
 			consume_token(p)
 			result.condition = parse_expr(p, .Lowest) or_return
 			match_token_kind(p, .Colon) or_return
 			consume_token(p)
-			result.body = new_clone(Parsed_Block_Statement{nodes = make([dynamic]Parsed_Node)})
-			else_if_body: for {
-				body_node := parse_node(p) or_return
-				if body_node != nil {
-					append(&result.body.nodes, body_node)
-				}
+			result.body = parse_block_stmt(p, {.End, .Else})
+			if p.previous.kind == .Else {
 				#partial switch p.current.kind {
-				case .End:
-					consume_token(p)
-					break else_if_body
-				case .Else:
-					#partial switch consume_token(p).kind {
-					case .If:
-						result.next_branch = parse_branch(p, false) or_return
-					case .Colon:
-						result.next_branch = parse_branch(p, true) or_return
-						break else_if_body
-					case:
-						err = format_error(
-							Parsing_Error{
-								kind = .Invalid_Syntax,
-								token = p.current,
-								details = fmt.tprintf(
-									"Expected one of: %s, %s, got %s",
-									Token_Kind.If,
-									Token_Kind.Colon,
-									p.current.kind,
-								),
-							},
-							loc,
-						)
-					}
+				case .If, .Colon:
+					result.next_branch = parse_branch(p, p.current.kind == .Colon) or_return
+				case:
+					err = format_error(
+						Parsing_Error{
+							kind = .Invalid_Syntax,
+							token = p.current,
+							details = fmt.tprintf(
+								"Expected one of: %s, %s, got %s",
+								Token_Kind.If,
+								Token_Kind.Colon,
+								p.current.kind,
+							),
+						},
+						loc,
+					)
 				}
 			}
 		}
 		return
 	}
 
-	result = new_clone(Parsed_If_Statement{token = p.current})
-	consume_token(p)
-	result.condition = parse_expr(p, .Lowest) or_return
-	match_token_kind(p, .Colon) or_return
-
-	result.body = new_clone(Parsed_Block_Statement{nodes = make([dynamic]Parsed_Node)})
-	body: for {
-		body_node := parse_node(p) or_return
-		if body_node != nil {
-			append(&result.body.nodes, body_node)
-		}
-		#partial switch p.current.kind {
-		case .End:
-			consume_token(p)
-			break body
-		case .Else:
-			#partial switch consume_token(p).kind {
-			case .If:
-				result.next_branch = parse_branch(p, false) or_return
-				break body
-			case .Colon:
-				result.next_branch = parse_branch(p, true) or_return
-				break body
-			case:
-				err = Parsing_Error {
-					kind    = .Invalid_Syntax,
-					token   = p.current,
-					details = fmt.tprintf(
-						"Expected one of: %s, %s, got %s",
-						Token_Kind.If,
-						Token_Kind.Colon,
-						p.current.kind,
-					),
-				}
-			}
-		}
-	}
+	result, err = parse_branch(p, false)
 	return
 }
 
@@ -492,18 +493,7 @@ parse_range_stmt :: proc(p: ^Parser) -> (result: ^Parsed_Range_Statement, err: E
 		result.op_token = p.current
 		consume_token(p)
 		result.high = parse_expr(p, .Lowest) or_return
-
-		result.body = new_clone(Parsed_Block_Statement{nodes = make([dynamic]Parsed_Node)})
-		body: for {
-			body_node := parse_node(p) or_return
-			if body_node != nil {
-				append(&result.body.nodes, body_node)
-			}
-			if p.current.kind == .End {
-				consume_token(p)
-				break body
-			}
-		}
+		result.body = parse_block_stmt(p)
 
 	} else {
 		err = Parsing_Error {
@@ -534,22 +524,11 @@ parse_match_stmt :: proc(p: ^Parser) -> (result: ^Parsed_Match_Statement, err: E
 			consume_token(p)
 			current.condition = parse_expr(p, .Lowest) or_return
 			match_token_kind(p, .Colon) or_return
-			current.body = new_clone(
-				Parsed_Block_Statement{token = p.current, nodes = make([dynamic]Parsed_Node)},
-			)
-			body: for {
-				body_node := parse_node(p) or_return
-				if body_node != nil {
-					append(&current.body.nodes, body_node)
-				}
-				if p.current.kind == .End {
-					consume_token(p)
-					break body
-				}
-			}
+			current.body = parse_block_stmt(p)
 			append(&result.cases, current)
 
 		case .End:
+			consume_token(p)
 			break cases
 		case:
 			err = Parsing_Error {
@@ -669,8 +648,6 @@ parse_var_decl :: proc(p: ^Parser) -> (result: ^Parsed_Var_Declaration, err: Err
 			consume_token(p)
 			result.type_expr = &unresolved_identifier
 			result.expr, err = parse_expr(p, .Lowest)
-			fmt.println("boop:", p.previous.kind, p.current.kind)
-			
 
 		case .Colon:
 			consume_token(p)
@@ -776,16 +753,8 @@ parse_fn_decl :: proc(p: ^Parser) -> (result: ^Parsed_Fn_Declaration, err: Error
 
 	with_body := Fn_Kind_Set{.Function, .Constructor, .Method}
 	if result.kind in with_body {
-		result.body = new_clone(Parsed_Block_Statement{nodes = make([dynamic]Parsed_Node)})
-		body: for {
-			body_node := parse_node(p) or_return
-			if body_node != nil {
-				append(&result.body.nodes, body_node)
-			}
-			if p.current.kind == .End {
-				break body
-			}
-		}
+		result.body = parse_block_stmt(p)
+		result.end = p.previous
 	}
 	return
 }
@@ -809,6 +778,7 @@ parse_type_decl :: proc(p: ^Parser) -> (result: ^Parsed_Type_Declaration, err: E
 					continue fields
 
 				case .End:
+					consume_token(p)
 					break fields
 
 				case .Identifier:
@@ -914,7 +884,6 @@ advance_expr_list :: proc(p: ^Parser, rule: Expr_List_Rule) -> (s: Expr_List_Sta
 		consume_token(p)
 	case rule.punctuation:
 		if !p.expect_punctuation {
-			fmt.println(p.previous, p.current)
 			err = format_error(
 				Parsing_Error{
 					kind = .Invalid_Syntax,
@@ -1028,7 +997,6 @@ parse_binary :: proc(p: ^Parser, left: Parsed_Expression) -> (result: Parsed_Exp
 	for p.current.kind == .Newline {
 		consume_token(p)
 	}
-	fmt.println("boop:", p.previous.kind, p.current.kind)
 	binary.right, err = parse_expr(p, parser_rules[p.previous.kind].prec)
 	result = binary
 	return

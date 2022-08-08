@@ -1,10 +1,11 @@
 import std
 import myModule
 
+-- Comment
 var a = 10
 a += 1
 a = -a
-a[0]
+a[0] -- Inline comment
 
 type Foo is class
 	x:          number

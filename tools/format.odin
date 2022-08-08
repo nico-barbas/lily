@@ -4,11 +4,13 @@ import "core:strings"
 import "core:os"
 import "core:slice"
 import "core:sort"
+import "core:fmt"
 import "lily:lib"
 
 Formatter :: struct {
 	module:             ^lib.Parsed_Module,
 	document:           ^Document,
+	last_comment:       int,
 
 	// Runtime states
 	state:              Format_State,
@@ -49,8 +51,8 @@ format_file :: proc(filepath: string, allocator := context.allocator) -> Format_
 	}
 
 	module := lib.make_parsed_module("main")
-	err := lib.parse_module(string(source), module)
-	if err != nil {
+	parse_ok := lib.parse_module(string(source), module)
+	if !parse_ok {
 		return .Source_Parsing_Error
 	}
 
@@ -59,13 +61,7 @@ format_file :: proc(filepath: string, allocator := context.allocator) -> Format_
 	return nil
 }
 
-build_module_document :: proc(
-	module: ^lib.Parsed_Module,
-	allocator := context.allocator,
-) -> (
-	string,
-	bool,
-) {
+build_module_document :: proc(module: ^lib.Parsed_Module, allocator := context.allocator) -> (string, bool) {
 	context.allocator = allocator
 
 	f := new(Formatter)
@@ -86,12 +82,7 @@ build_module_document :: proc(
 
 
 	roots := slice.concatenate(
-		[][]lib.Parsed_Node{
-			module.types[:],
-			module.functions[:],
-			module.variables[:],
-			module.nodes[:],
-		},
+		[][]lib.Parsed_Node{module.types[:], module.functions[:], module.variables[:], module.nodes[:]},
 		allocator,
 	)
 	sort.sort(sort.Interface {
@@ -101,8 +92,7 @@ build_module_document :: proc(
 		},
 		less = proc(it: sort.Interface, i, j: int) -> bool {
 			roots := cast(^[]lib.Parsed_Node)it.collection
-			i_token, j_token :=
-				lib.parsed_node_token(roots[i]), lib.parsed_node_token(roots[j])
+			i_token, j_token := lib.parsed_node_token(roots[i]), lib.parsed_node_token(roots[j])
 			return i_token.line < j_token.line
 		},
 		swap = proc(it: sort.Interface, i, j: int) {
@@ -118,7 +108,9 @@ build_module_document :: proc(
 		if current_line - previous_line > 1 {
 			join(list, newline(1))
 		}
-		join(list, format_stmt(f, node))
+		node_document := format_stmt(f, node, false)
+		node_document = format_comment(f, node_document, current_line)
+		join(list, node_document, newline(1))
 		previous_line = current_line
 	}
 
@@ -126,11 +118,7 @@ build_module_document :: proc(
 	return print_document(f)
 }
 
-format_stmt :: proc(
-	f: ^Formatter,
-	node: lib.Parsed_Node,
-	add_newline := true,
-) -> ^Document {
+format_stmt :: proc(f: ^Formatter, node: lib.Parsed_Node, add_newline := true) -> ^Document {
 	using lib
 
 	switch n in node {
@@ -198,19 +186,8 @@ format_stmt :: proc(
 		outer := cast(^Document_List)document
 		for c, i in n.cases {
 			// inner_document :=
-			inner := list(
-				newline(1),
-				text("when"),
-				space(),
-				format_expr(f, c.condition),
-				text(":"),
-			)
-			join(
-				cast(^Document_List)inner,
-				format_stmt(f, c.body, false),
-				newline(1),
-				text("end"),
-			)
+			inner := list(newline(1), text("when"), space(), format_expr(f, c.condition), text(":"))
+			join(cast(^Document_List)inner, format_stmt(f, c.body, false), newline(1), text("end"))
 			join(outer, nest(inner))
 			if i != len(n.cases) - 1 {
 				join(outer, newline(1))
@@ -325,24 +302,11 @@ format_stmt :: proc(
 		return document
 
 	case ^Parsed_Type_Declaration:
-		document := list(
-			text("type"),
-			space(),
-			text(n.identifier.text),
-			space(),
-			text("is"),
-			space(),
-		)
+		document := list(text("type"), space(), text(n.identifier.text), space(), text("is"), space())
 		list := cast(^Document_List)document
 		switch n.type_kind {
 		case .Class:
-			join(
-				list,
-				text("class"),
-				nest(format_class_decl(f, n)),
-				newline(1),
-				text("end"),
-			)
+			join(list, text("class"), nest(format_class_decl(f, n)), newline(1), text("end"))
 		case .Enum:
 		case .Alias:
 		}
@@ -354,17 +318,11 @@ format_stmt :: proc(
 	return empty()
 }
 
-format_import_stmt :: proc(
-	f: ^Formatter,
-	node: ^lib.Parsed_Import_Statement,
-) -> ^Document {
+format_import_stmt :: proc(f: ^Formatter, node: ^lib.Parsed_Import_Statement) -> ^Document {
 	return list(text("import"), space(), text(node.identifier.text), newline(1))
 }
 
-format_fn_signature :: proc(
-	f: ^Formatter,
-	decl: ^lib.Parsed_Fn_Declaration,
-) -> ^Document {
+format_fn_signature :: proc(f: ^Formatter, decl: ^lib.Parsed_Fn_Declaration) -> ^Document {
 	document := list(elements = {}, mod = {.Nest_If_Break, .Force_Newline, .Can_Break})
 	outer := cast(^Document_List)document
 
@@ -395,10 +353,7 @@ format_fn_signature :: proc(
 	return document
 }
 
-format_class_decl :: proc(
-	f: ^Formatter,
-	decl: ^lib.Parsed_Type_Declaration,
-) -> ^Document {
+format_class_decl :: proc(f: ^Formatter, decl: ^lib.Parsed_Type_Declaration) -> ^Document {
 	document := list(newline(1))
 	list := cast(^Document_List)document
 	join(list, format_field_list(f, decl.fields[:]))
@@ -417,10 +372,7 @@ format_class_decl :: proc(
 	return document
 }
 
-format_field_list :: proc(
-	f: ^Formatter,
-	fields: []^lib.Parsed_Field_Declaration,
-) -> ^Document {
+format_field_list :: proc(f: ^Formatter, fields: []^lib.Parsed_Field_Declaration) -> ^Document {
 	document := list()
 	list := cast(^Document_List)document
 	max_len := -1
@@ -463,20 +415,14 @@ format_expr :: proc(f: ^Formatter, expr: lib.Parsed_Expression) -> ^Document {
 
 
 	case ^Parsed_Array_Literal_Expression:
-		document := list(
-			elements = {format_expr(f, e.type_expr), text("[")},
-			mod = {.Can_Break},
-		)
+		document := list(elements = {format_expr(f, e.type_expr), text("[")}, mod = {.Can_Break})
 		list := cast(^Document_List)document
 		join(list, format_expr_list(f, e.values[:]), newline_if_break(1), text("]"))
 		return document
 
 
 	case ^Parsed_Map_Literal_Expression:
-		document := list(
-			elements = {format_expr(f, e.type_expr), text("[")},
-			mod = {.Can_Break},
-		)
+		document := list(elements = {format_expr(f, e.type_expr), text("[")}, mod = {.Can_Break})
 		list := cast(^Document_List)document
 		join(list, format_map_elements(f, e.elements[:]), newline_if_break(1), text("]"))
 		return document
@@ -498,9 +444,7 @@ format_expr :: proc(f: ^Formatter, expr: lib.Parsed_Expression) -> ^Document {
 		return text(e.name.text)
 
 	case ^Parsed_Index_Expression:
-		return(
-			list(format_expr(f, e.left), text("["), format_expr(f, e.index), text("]")) \
-		)
+		return list(format_expr(f, e.left), text("["), format_expr(f, e.index), text("]"))
 
 
 	case ^Parsed_Dot_Expression:
@@ -508,25 +452,14 @@ format_expr :: proc(f: ^Formatter, expr: lib.Parsed_Expression) -> ^Document {
 
 
 	case ^Parsed_Call_Expression:
-		document := list(
-			elements = {format_expr(f, e.func), text("(")},
-			mod = {.Can_Break},
-		)
+		document := list(elements = {format_expr(f, e.func), text("(")}, mod = {.Can_Break})
 		list := cast(^Document_List)document
 		join(list, format_expr_list(f, e.args[:]), newline_if_break(1), text(")"))
 		return document
 
 
 	case ^Parsed_Array_Type_Expression:
-		return(
-			list(
-				text("array"),
-				space(),
-				text("of"),
-				space(),
-				format_expr(f, e.elem_type),
-			) \
-		)
+		return list(text("array"), space(), text("of"), space(), format_expr(f, e.elem_type))
 
 
 	case ^Parsed_Map_Type_Expression:
@@ -553,10 +486,7 @@ format_expr_list :: proc(f: ^Formatter, exprs: []lib.Parsed_Expression) -> ^Docu
 	outer := cast(^Document_List)document
 	for expr, i in exprs {
 		last_param := i == len(exprs) - 1
-		inner := list(
-			format_expr(f, expr),
-			text(",") if !last_param else text_if_break(","),
-		)
+		inner := list(format_expr(f, expr), text(",") if !last_param else text_if_break(","))
 		if !last_param {
 			join(cast(^Document_List)inner, space())
 		}
@@ -565,10 +495,7 @@ format_expr_list :: proc(f: ^Formatter, exprs: []lib.Parsed_Expression) -> ^Docu
 	return document
 }
 
-format_map_elements :: proc(
-	f: ^Formatter,
-	elements: []lib.Parsed_Map_Element,
-) -> ^Document {
+format_map_elements :: proc(f: ^Formatter, elements: []lib.Parsed_Map_Element) -> ^Document {
 	document := list(elements = {}, mod = {.Nest_If_Break, .Force_Newline, .Can_Break})
 	outer := cast(^Document_List)document
 	for elem, i in elements {
@@ -587,4 +514,35 @@ format_map_elements :: proc(
 		join(outer, inner)
 	}
 	return document
+}
+
+format_comment :: proc(f: ^Formatter, previous: ^Document, line: int) -> ^Document {
+	document := previous
+	comments: ^Document
+	comment_list: ^Document_List
+	to := -1
+	for comment, i in f.module.comments[f.last_comment:] {
+		if comment.line < line {
+			if i == 0 {
+				comments = list()
+				comment_list = cast(^Document_List)comments
+			}
+			join(comment_list, text(comment.text), newline(1))
+			to = f.last_comment + i
+		} else if comment.line == line {
+			document = list(document, text(comment.text))
+			to = f.last_comment + i
+			break
+		} else {
+			break
+		}
+	}
+	if to >= 0 {
+		f.last_comment = to + 1
+	}
+	if comments != nil {
+		return list(comments, document)
+	} else {
+		return document
+	}
 }

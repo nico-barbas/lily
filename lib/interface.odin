@@ -31,14 +31,8 @@ State :: struct {
 
 	// Various callbacks
 	internal_load_module_source: proc(state: ^State, name: string) -> (string, Error),
-	internal_bind_fn:            proc(
-		state: ^State,
-		decl: ^Checked_Fn_Declaration,
-	) -> Foreign_Procedure,
-	user_bind_fn:                proc(
-		state: ^State,
-		info: Foreign_Decl_Info,
-	) -> Foreign_Procedure,
+	internal_bind_fn:            proc(state: ^State, decl: ^Checked_Fn_Declaration) -> Foreign_Procedure,
+	user_bind_fn:                proc(state: ^State, info: Foreign_Decl_Info) -> Foreign_Procedure,
 	user_load_module_source:     proc(state: ^State, name: string) -> (string, bool),
 }
 
@@ -47,10 +41,7 @@ Config :: struct {
 	temp_allocator:     mem.Allocator,
 	runtime_allocator:  mem.Allocator,
 	load_module_source: proc(state: ^State, name: string) -> (string, bool),
-	bind_fn:            proc(
-		state: ^State,
-		info: Foreign_Decl_Info,
-	) -> Foreign_Procedure,
+	bind_fn:            proc(state: ^State, info: Foreign_Decl_Info) -> Foreign_Procedure,
 }
 
 new_state :: proc(
@@ -61,8 +52,7 @@ new_state :: proc(
 	DEBUG_VM :: false
 
 	allocator := c.allocator if c.allocator.data != nil else allocator
-	temp_allocator :=
-		c.temp_allocator if c.temp_allocator.data != nil else temp_allocator
+	temp_allocator := c.temp_allocator if c.temp_allocator.data != nil else temp_allocator
 
 	state := new(State, allocator)
 	state^ = State {
@@ -131,13 +121,7 @@ load_source :: proc(state: ^State, name: string) -> (source: string, err: Error)
 	return
 }
 
-compile_source :: proc(
-	state: ^State,
-	module_name: string,
-	source: string,
-) -> (
-	[]Error,
-) {
+compile_source :: proc(state: ^State, module_name: string, source: string) -> []Error {
 	DEBUG_PARSER :: true
 	DEBUG_SYMBOLS :: false
 	DEBUG_CHECKER :: false
@@ -154,8 +138,8 @@ compile_source :: proc(
 			}
 		}
 	}
-	
-	
+
+
 	module := make_parsed_module(module_name, state.temp_allocator)
 	parse_ok := parse_module(source, module, state.temp_allocator)
 	append(&state.sources, source)
@@ -187,7 +171,7 @@ compile_source :: proc(
 	}
 
 
-	dep_err: Error 
+	dep_err: Error
 	state.init_order, dep_err = check_dependency_graph(
 		parsed_modules[:],
 		state.import_modules_id,
@@ -198,7 +182,7 @@ compile_source :: proc(
 		errors[0] = dep_err
 		return errors
 	}
-	
+
 	state.checked_modules = make([]^Checked_Module, len(parsed_modules))
 
 	state.checker.modules = state.checked_modules
@@ -233,7 +217,7 @@ compile_source :: proc(
 	return nil
 }
 
-compile_file :: proc(state: ^State, file_path: string) -> ([]Error) {
+compile_file :: proc(state: ^State, file_path: string) -> []Error {
 	module_name: string
 	source: string
 	{
@@ -258,10 +242,7 @@ compile_file :: proc(state: ^State, file_path: string) -> ([]Error) {
 			errors[0] = format_error(
 				Runtime_Error{
 					kind = .Invalid_Source_File_Name,
-					details = fmt.tprintf(
-						"Could not find source file: %state",
-						file_path,
-					),
+					details = fmt.tprintf("Could not find source file: %state", file_path),
 				},
 			)
 			return errors
@@ -272,7 +253,6 @@ compile_file :: proc(state: ^State, file_path: string) -> ([]Error) {
 }
 
 run_module :: proc(state: ^State, module_name: string) {
-
 	entry_point := state.import_modules_id[module_name]
 	should_run := true
 	if state.need_init {
@@ -341,12 +321,7 @@ Foreign_Decl_Info :: struct {
 
 Foreign_Procedure :: #type proc(state: ^State)
 
-bind_foreign_fn :: proc(
-	state: ^State,
-	decl: ^Checked_Fn_Declaration,
-) -> (
-	fn: Foreign_Procedure,
-) {
+bind_foreign_fn :: proc(state: ^State, decl: ^Checked_Fn_Declaration) -> (fn: Foreign_Procedure) {
 	module_name := state.import_modules_name[decl.identifier.module_id]
 	if module_name == "std" {
 		switch decl.identifier.name {
@@ -395,14 +370,7 @@ Handle :: struct {
 	info:         int,
 }
 
-make_fn_handle :: proc(
-	state: ^State,
-	module_name,
-	fn_name: string,
-) -> (
-	handle: Handle,
-	err: Error,
-) {
+make_fn_handle :: proc(state: ^State, module_name, fn_name: string) -> (handle: Handle, err: Error) {
 	if id, exist := state.import_modules_id[module_name]; exist {
 		module := state.compiled_modules[id]
 		if fn_id, exist := module.fn_addr[fn_name]; exist {
@@ -420,10 +388,7 @@ make_fn_handle :: proc(
 			err = format_error(
 				Runtime_Error{
 					kind = .Invalid_Module_Name,
-					details = fmt.tprintf(
-						"No imported module with name %state",
-						module_name,
-					),
+					details = fmt.tprintf("No imported module with name %state", module_name),
 				},
 			)
 		}
@@ -431,10 +396,7 @@ make_fn_handle :: proc(
 		err = format_error(
 			Runtime_Error{
 				kind = .Invalid_Module_Name,
-				details = fmt.tprintf(
-					"No imported module with name %state",
-					module_name,
-				),
+				details = fmt.tprintf("No imported module with name %state", module_name),
 			},
 		)
 	}

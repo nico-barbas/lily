@@ -7,21 +7,22 @@ Parsed_Module :: struct {
 	functions:    [dynamic]Parsed_Node,
 	variables:    [dynamic]Parsed_Node,
 	nodes:        [dynamic]Parsed_Node,
-	errors: [dynamic]Error,
+	errors:       [dynamic]Error,
+	comments:     [dynamic]Token,
 }
 
 make_parsed_module :: proc(name: string, allocator := context.allocator) -> ^Parsed_Module {
-	return new_clone(
-		Parsed_Module{
-			name = name,
-			import_nodes = make([dynamic]Parsed_Node, allocator),
-			types = make([dynamic]Parsed_Node, allocator),
-			functions = make([dynamic]Parsed_Node, allocator),
-			nodes = make([dynamic]Parsed_Node, allocator),
-			errors = make([dynamic]Error, allocator),
-		},
-		allocator,
-	)
+	module := new(Parsed_Module, allocator)
+	module^ = Parsed_Module {
+		name         = name,
+		import_nodes = make([dynamic]Parsed_Node, allocator),
+		types        = make([dynamic]Parsed_Node, allocator),
+		functions    = make([dynamic]Parsed_Node, allocator),
+		nodes        = make([dynamic]Parsed_Node, allocator),
+		errors       = make([dynamic]Error, allocator),
+		comments     = make([dynamic]Token, allocator),
+	}
+	return module
 }
 
 delete_parsed_module :: proc(p: ^Parsed_Module) {
@@ -62,13 +63,13 @@ Parsed_Expression :: union {
 	^Parsed_Map_Type_Expression,
 }
 
+// Bolean and Number
 Parsed_Literal_Expression :: struct {
 	token: Token,
 	value: Value,
 }
 
-// We separate this from the other fixed sized native value types
-// since strings are reference types in Lily
+// Strings are reference types
 Parsed_String_Literal_Expression :: struct {
 	token: Token,
 	value: string,
@@ -354,6 +355,7 @@ Parsed_Fn_Declaration :: struct {
 	token:            Token,
 	identifier:       Token,
 	colon:            Token,
+	end:              Token,
 	kind:             Fn_Kind,
 	parameters:       [dynamic]^Parsed_Field_Declaration,
 	body:             ^Parsed_Block_Statement,
