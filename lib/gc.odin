@@ -2,123 +2,68 @@ package lily
 
 import "core:fmt"
 import "core:mem"
-import "core:os"
+import "lily:lib/allocators"
 
 DEFAULT_GC_THRESHOLD :: mem.Byte * 1000
-DEFAULT_TRACED_OBJECT_CAP :: 50
+DEFAULT_TRACED_NODE_CAP :: 50
 
-Gc :: struct {
-	roots_interface:       Gc_Roots_Interface,
-	// NOTE(nico): Not used for now. Will most likely be some sort of slab allocator
-	class_allocator:       mem.Allocator,
-	heap_allocator:        mem.Allocator,
-	temp_allocator:        mem.Allocator,
-	nodes:                 [dynamic]Traced_Node,
+Gc_Allocator :: struct {
+	temp_allocator:       mem.Allocator,
+	backing:              allocators.Free_List_Allocator,
+	traced_allocations:   map[rawptr]Traced_Allocation_Entry,
+	gather_roots_proc:    Gather_Roots_Proc,
+	data:                 rawptr,
 
 	// runtime data
-	allocated_bytes:       int,
-	collection_threshhold: int,
-	collecting:            bool,
-	worklist:              [dynamic]^Object,
+	growth_factor:        int,
+	next_collection:      int,
+	last_collection_size: int,
+	nodes:                [dynamic]Mark_Node_Interface,
 }
 
-Gc_Roots_Interface :: struct {
-	gather_roots_proc: proc(data: rawptr, allocator := context.allocator) -> [][]Value,
-	data:              rawptr,
+Gc_Allocator_Options :: struct {
+	gather_roots_proc:   Gather_Roots_Proc,
+	data:                rawptr,
+	temp_allocator:      mem.Allocator,
+	internals_allocator: mem.Allocator,
+	initial_size:        int,
+	first_collection:    int,
+	growth_factor:       int,
 }
 
-Trace_Color :: enum {
-	White,
-	Gray,
-	Black,
-}
+Gather_Roots_Proc :: #type proc(data: rawptr, allocator := context.temp_allocator) -> []Mark_Node_Interface
 
-Traced_Node :: struct {
+Mark_Node_Interface :: struct {
 	data:      rawptr,
+	mark_proc: proc(gc: ^Gc_Allocator, data: rawptr),
+}
+
+Traced_Allocation_Entry :: struct {
 	size:      int,
-	free_proc: proc(data: rawptr, allocator: mem.Allocator),
-	color:     Trace_Color,
+	alignment: int,
+	data:      rawptr,
+	color:     enum {
+		White,
+		Gray,
+		Black,
+	},
 }
 
-traced_node :: proc(object: ^Object) -> Traced_Node {
-	node := Traced_Node {
-		data = object,
-		size = object_size(object),
-		free_proc = proc(data: rawptr, allocator: mem.Allocator) {
-			object := cast(^Object)data
-			free_object(object, allocator)
-		},
-	}
-	return node
+init_gc_allocator :: proc(gc: ^Gc_Allocator, opt: Gc_Allocator_Options) {
+	gc.gather_roots_proc = opt.gather_roots_proc
+	gc.data = opt.data
+	gc.traced_allocations.allocator = opt.internals_allocator
+	gc.nodes.allocator = opt.temp_allocator
+	gc.temp_allocator = opt.temp_allocator
+
+	backing_buf := make([]byte, opt.initial_size, opt.internals_allocator)
+	allocators.init_free_list_allocator(&gc.backing, backing_buf, .Find_Best, 8)
+
+	gc.growth_factor = opt.growth_factor
+	gc.next_collection = opt.first_collection
 }
 
-new_gc :: proc(
-	it: Gc_Roots_Interface,
-	initial_threshold := DEFAULT_GC_THRESHOLD,
-	allocator := context.allocator,
-	temp_allocator := context.temp_allocator,
-) -> ^Gc {
-
-	gc := new(Gc, allocator)
-	gc.roots_interface = it
-	gc.heap_allocator = mem.Allocator {
-		procedure = gc_generic_allocator_proc,
-		data      = gc,
-	}
-	gc.nodes = make([dynamic]Traced_Node, 0, DEFAULT_TRACED_OBJECT_CAP, allocator)
-	gc.temp_allocator = temp_allocator
-	gc.collection_threshhold = initial_threshold
-	return gc
-}
-
-delete_gc :: proc(gc: ^Gc) {
-	start := gc.allocated_bytes
-	for node in gc.nodes {
-		node.free_proc(node.data, gc.heap_allocator)
-		gc.allocated_bytes -= node.size
-	}
-	fmt.printf(
-		"Closed GC. %d bytes freed\n%d bytes leaked\n",
-		start - gc.allocated_bytes,
-		gc.allocated_bytes,
-	)
-}
-
-allocate_traced_string :: proc(gc: ^Gc, from: string) -> Value {
-	value := new_string_object(from, gc.heap_allocator)
-	object := value.data.(^Object)
-	object.traced = true
-	append(&gc.nodes)
-	return value
-}
-
-allocate_traced_array :: proc(gc: ^Gc) -> Value {
-	value := new_array_object(gc.heap_allocator)
-	object := value.data.(^Object)
-	object.traced = true
-	append(&gc.nodes, traced_node(object))
-	return value
-}
-
-allocate_traced_map :: proc(gc: ^Gc) -> Value {
-	value := new_map_object(gc.heap_allocator)
-	object := value.data.(^Object)
-	object.traced = true
-	append(&gc.nodes, traced_node(object))
-	return value
-}
-
-allocate_traced_class :: proc(gc: ^Gc, prototype: ^Class_Object) -> Value {
-	value := new_class_object(prototype, gc.heap_allocator)
-	object := value.data.(^Object)
-	object.traced = true
-	append(&gc.nodes, traced_node(object))
-	return value
-}
-
-// gc_class_allocator :: proc() {}
-
-gc_generic_allocator_proc :: proc(
+gc_allocator_proc :: proc(
 	allocator_data: rawptr,
 	mode: mem.Allocator_Mode,
 	size,
@@ -127,32 +72,17 @@ gc_generic_allocator_proc :: proc(
 	old_size: int,
 	location := #caller_location,
 ) -> (
-	[]byte,
-	mem.Allocator_Error,
+	result: []byte,
+	err: mem.Allocator_Error,
 ) {
-	gc := cast(^Gc)allocator_data
+	gc := cast(^Gc_Allocator)allocator_data
 
-	#partial switch mode {
-	case .Alloc:
-		fmt.println(location, size)
-		gc.allocated_bytes += size
-	case .Free:
-	case .Resize:
-		fmt.println(size, "/", old_size)
-		gc.allocated_bytes += size - old_size
+	if mode == .Free {
+		assert(false)
+		return nil, .Mode_Not_Implemented
 	}
-
-	if gc.allocated_bytes >= gc.collection_threshhold && !gc.collecting {
-		gc.collecting = true
-		defer {
-			gc.collecting = false
-			gc.collection_threshhold *= 2
-		}
-		collect_garbage(gc)
-	}
-
-	bytes, err := os.heap_allocator_proc(
-		allocator_data,
+	result, err = allocators.free_list_allocator_proc(
+		&gc.backing,
 		mode,
 		size,
 		alignment,
@@ -160,112 +90,102 @@ gc_generic_allocator_proc :: proc(
 		old_size,
 		location,
 	)
-	return bytes, err
-}
-
-collect_garbage :: proc(gc: ^Gc) {
-	start := gc.allocated_bytes
-	fmt.println("collecting garbage:", start)
-	mark(gc)
-	fmt.println("finish marking")
-	sweep(gc)
-	fmt.printf("collected %d bytes of garbage\n", start - gc.allocated_bytes)
-}
-
-mark :: proc(gc: ^Gc) {
-	gc.worklist = make([dynamic]^Object, gc.temp_allocator)
-
-	roots := gc.roots_interface.gather_roots_proc(
-		gc.roots_interface.data,
-		gc.temp_allocator,
-	)
-
-	for root_slice in roots {
-		mark_root_slice(gc, root_slice)
+	if err != nil {
+		return nil, err
 	}
 
-	for len(gc.worklist) > 0 {
-		object := pop(&gc.worklist)
-
-		switch object.kind {
-		case .Fn, .String:
-		case .Array:
-			array := cast(^Array_Object)object
-			for element in array.data {
-				if element.kind == .Object_Ref {
-					next := element.data.(^Object)
-					mark_object_gray(gc, next)
-					append(&gc.worklist, next)
-				}
-			}
-		case .Map:
-			_map := cast(^Map_Object)object
-			for key, value in _map.data {
-				if key.kind == .Object_Ref {
-					next := key.data.(^Object)
-					mark_object_gray(gc, next)
-					append(&gc.worklist, next)
-				}
-				if value.kind == .Object_Ref {
-					next := value.data.(^Object)
-					mark_object_gray(gc, next)
-					append(&gc.worklist, next)
-				}
-			}
-		case .Class:
-			instance := cast(^Array_Object)object
-			for field in instance.data {
-				if field.kind == .Object_Ref {
-					next := field.data.(^Object)
-					mark_object_gray(gc, next)
-					append(&gc.worklist, next)
-				}
-			}
+	result_ptr := raw_data(result)
+	#partial switch mode {
+	case .Alloc:
+		gc.traced_allocations[result_ptr] = Traced_Allocation_Entry {
+			size      = size,
+			alignment = alignment,
+			data      = result_ptr,
+			color     = .White,
+		}
+	case .Free_All:
+		clear(&gc.traced_allocations)
+	case .Resize:
+		if old_memory != result_ptr {
+			delete_key(&gc.traced_allocations, old_memory)
+		}
+		gc.traced_allocations[result_ptr] = Traced_Allocation_Entry {
+			size      = size,
+			alignment = alignment,
+			data      = result_ptr,
+			color     = .White,
 		}
 
-		object.tracing_color = .Black
+	case:
+		return result, err
 	}
+
+
+	if gc.backing.used >= gc.next_collection {
+		collect_garbage(gc)
+	}
+
+	return
 }
 
-mark_root_slice :: proc(gc: ^Gc, s: []Value) {
-	for value in s {
-		if value.kind == .Object_Ref {
-			object := value.data.(^Object)
-			object.marked = true
-			object.tracing_color = .Gray
-			append(&gc.worklist, object)
-		}
-	}
+gc_allocator :: proc(gc: ^Gc_Allocator) -> mem.Allocator {
+	return mem.Allocator{data = gc, procedure = gc_allocator_proc}
 }
 
-mark_object_gray :: proc(gc: ^Gc, object: ^Object) {
-	if !object.marked {
-		object.marked = true
-		switch object.tracing_color {
-		case .White:
-			object.tracing_color = .Gray
-			append(&gc.worklist, object)
-		case .Gray, .Black:
-		}
-	}
-}
-
-sweep :: proc(gc: ^Gc) {
-	remaining := make([dynamic]Traced_Node, 0, len(gc.nodes), gc.temp_allocator)
-	for node in gc.nodes {
-		object := cast(^Object)node.data
-		if !object.marked && object.tracing_color == .White {
-			node.free_proc(node.data, gc.heap_allocator)
-			gc.allocated_bytes -= node.size
-		} else {
-			object.marked = false
-			object.tracing_color = .White
-			append(&remaining, node)
-		}
-	}
-
+collect_garbage :: proc(gc: ^Gc_Allocator) {
+	fmt.println("Collection at:", gc.backing.used)
+	defer fmt.println("End at:", gc.backing.used)
 	clear(&gc.nodes)
-	for node in remaining {
-		append(&gc.nodes, node)
+	roots := gc.gather_roots_proc(gc.data, gc.temp_allocator)
+	for root in roots {
+		root.mark_proc(gc, root.data)
 	}
+
+	for len(gc.nodes) > 0 {
+		node := pop(&gc.nodes)
+		node.mark_proc(gc, node.data)
+	}
+
+	garbage := make([dynamic]Traced_Allocation_Entry, gc.temp_allocator)
+	for ptr, entry in &gc.traced_allocations {
+		if entry.color == .White {
+			append(&garbage, entry)
+		}
+		entry.color = .White
+		gc.traced_allocations[ptr] = entry
+	}
+	for entry in garbage {
+		allocator := allocators.free_list_allocator(&gc.backing)
+		free(entry.data, allocator)
+		delete_key(&gc.traced_allocations, entry.data)
+	}
+
+	gc.next_collection *= gc.growth_factor
+}
+
+mark_raw_allocation :: proc(gc: ^Gc_Allocator, memory: rawptr) {
+	if entry, exist := gc.traced_allocations[memory]; exist {
+		if entry.color == .White {
+			entry.color = .Gray
+			gc.traced_allocations[memory] = entry
+		}
+	}
+}
+
+mark_slice :: proc(gc: ^Gc_Allocator, a: $T/[]$E) {
+	mark_raw_allocation(gc, raw_slice_data(a))
+}
+
+mark_dynamic_array :: proc(gc: ^Gc_Allocator, a: $T/[dynamic]$E) {
+	mark_raw_allocation(gc, raw_dynamic_array_data(a))
+}
+
+mark_map :: proc(gc: ^Gc_Allocator, m: $T/map[$K]$V) {
+	raw := transmute(mem.Raw_Map)m
+	mark_raw_allocation(gc, raw_data(raw.hashes))
+	mark_raw_allocation(gc, raw.entries.data)
+}
+
+append_mark_node :: proc(gc: ^Gc_Allocator, node: Mark_Node_Interface) {
+	append(&gc.nodes, node)
 }

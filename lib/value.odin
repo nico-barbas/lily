@@ -70,10 +70,7 @@ Object_Kind :: enum {
 }
 
 Object :: struct {
-	kind:          Object_Kind,
-	marked:        bool,
-	traced:        bool,
-	tracing_color: Trace_Color,
+	kind: Object_Kind,
 }
 
 String_Object :: struct {
@@ -224,10 +221,7 @@ new_map_object :: proc(allocator := context.allocator) -> Value {
 	return Value{kind = .Object_Ref, data = cast(^Object)object}
 }
 
-new_class_object :: proc(
-	prototype: ^Class_Object,
-	allocator := context.allocator,
-) -> Value {
+new_class_object :: proc(prototype: ^Class_Object, allocator := context.allocator) -> Value {
 	object := new(Class_Object, allocator)
 	object^ = Class_Object {
 		base = Object{kind = .Class},

@@ -68,6 +68,7 @@ make_compiled_program :: proc(state: ^State) -> []^Compiled_Module {
 		)
 
 		for node, j in module.classes {
+			fmt.println(node)
 			n := node.(^Checked_Class_Declaration)
 			current.class_addr[n.identifier.name] = i16(j)
 			current.class_consts[j] = make(Const_Pool)
@@ -201,7 +202,7 @@ compile_module :: proc(state: ^State, index: int) {
 
 	for node, i in c.current_read.classes {
 		n := node.(^Checked_Class_Declaration)
-		enter_class_scope(c.current_read, Token{text = n.identifier.name})
+		enter_type_scope(c.current_read, Token{text = n.identifier.name})
 		defer pop_scope(c.current_read)
 
 		vtable := &c.current_write.vtables[i]
@@ -522,6 +523,7 @@ compile_node :: proc(c: ^Compiler, node: Checked_Node) {
 
 	case ^Checked_Class_Declaration:
 
+	case ^Checked_Enum_Declaration:
 	}
 }
 
@@ -682,6 +684,9 @@ compile_dot_expr :: proc(c: ^Compiler, expr: ^Checked_Dot_Expression, lhs: bool,
 			frame.access = .Class_Access
 			frame.class = left.symbol
 
+		case .Enum_Symbol:
+			frame.access = .Enum_Access
+
 		case .Module_Symbol:
 			frame.access = .Module_Access
 		}
@@ -694,7 +699,7 @@ compile_dot_expr :: proc(c: ^Compiler, expr: ^Checked_Dot_Expression, lhs: bool,
 		frame.class = left.symbol
 
 	case ^Checked_Call_Expression:
-		switch frame.access {
+		#partial switch frame.access {
 		case .None, .Module_Access:
 			compile_expr(c, left)
 		case .Class_Access:
@@ -717,6 +722,11 @@ compile_dot_expr :: proc(c: ^Compiler, expr: ^Checked_Dot_Expression, lhs: bool,
 			class_module := c.state.compiled_modules[frame.class.module_id]
 			field_addr := get_field_addr(class_module, frame.class.name, selector.symbol.name)
 			push_simple_instruction(&c.chunk, op, field_addr)
+
+		case .Enum_Access:
+			enum_value := selector.symbol.info.(Enum_Field_Symbol_Info).value
+			const_addr := add_constant(c.constants, Value{kind = .Number, data = f64(enum_value)})
+			push_simple_instruction(&c.chunk, .Op_Const, const_addr)
 
 		case .Module_Access:
 			var_addr := get_global_addr_from_frame(c, frame, selector.symbol)

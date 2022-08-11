@@ -4,12 +4,12 @@ import "core:fmt"
 
 
 Semantic_Scope :: struct {
-	id:           Scope_ID,
-	symbols:      []Symbol,
-	symbol_count: int,
-	lookup:       map[string]^Symbol,
-	parent:       ^Semantic_Scope,
-	children:     map[Scope_ID]^Semantic_Scope,
+	id:       Scope_ID,
+	// symbols:      []Symbol,
+	// symbol_count: int,
+	lookup:   map[string]^Symbol,
+	parent:   ^Semantic_Scope,
+	children: map[Scope_ID]^Semantic_Scope,
 }
 
 Scope_ID :: distinct int
@@ -21,6 +21,8 @@ Symbol :: struct {
 		Generic_Symbol,
 		Alias_Symbol,
 		Class_Symbol,
+		Enum_Symbol,
+		Enum_Field_Symbol,
 		Fn_Symbol,
 		Var_Symbol,
 		Module_Symbol,
@@ -33,6 +35,8 @@ Symbol :: struct {
 		Generic_Symbol_Info,
 		Alias_Symbol_Info,
 		Class_Symbol_Info,
+		Enum_Symbol_Info,
+		Enum_Field_Symbol_Info,
 		Fn_Symbol_Info,
 		Var_Symbol_Info,
 	},
@@ -53,6 +57,15 @@ Alias_Symbol_Info :: struct {
 
 Class_Symbol_Info :: struct {
 	sub_scope_id: Scope_ID,
+}
+
+Enum_Symbol_Info :: struct {
+	sub_scope_id: Scope_ID,
+}
+
+Enum_Field_Symbol_Info :: struct {
+	parent: ^Symbol,
+	value:  int,
 }
 
 Var_Symbol_Info :: struct {
@@ -95,7 +108,7 @@ is_valid_accessor :: proc(s: ^Symbol) -> bool {
 new_scope :: proc(allocator := context.allocator) -> ^Semantic_Scope {
 	scope := new(Semantic_Scope, allocator)
 	// FIXME: Do some lookahead during checking to know how big the scope needs to be
-	scope.symbols = make([]Symbol, 32, allocator)
+	// scope.symbols = make([]Symbol, 32, allocator)
 	scope.lookup = make(map[string]^Symbol, 32, allocator)
 	scope.children = make(map[Scope_ID]^Semantic_Scope, 32, allocator)
 	return scope
@@ -105,7 +118,7 @@ free_scope :: proc(s: ^Semantic_Scope) {
 	for _, children in s.children {
 		free_scope(children)
 	}
-	delete(s.symbols)
+	// delete(s.symbols)
 	delete(s.lookup)
 	delete(s.children)
 	free(s)
@@ -115,6 +128,7 @@ add_symbol_to_scope :: proc(
 	s: ^Semantic_Scope,
 	symbol: Symbol,
 	shadow := false,
+	allocator := context.allocator,
 ) -> (
 	result: ^Symbol,
 	err: Error,
@@ -126,9 +140,7 @@ add_symbol_to_scope :: proc(
 		}
 		return
 	}
-	s.symbols[s.symbol_count] = symbol
-	result = &s.symbols[s.symbol_count]
-	s.symbol_count += 1
+	result = new_clone(symbol, allocator)
 	s.lookup[symbol.name] = result
 	return
 }

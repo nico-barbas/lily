@@ -20,6 +20,7 @@ Checked_Module :: struct {
 	variables:   [dynamic]Checked_Node,
 	functions:   [dynamic]Checked_Node,
 	classes:     [dynamic]Checked_Node,
+	enums:       [dynamic]Checked_Node,
 
 	// Symbol table
 	scope:       ^Semantic_Scope,
@@ -36,6 +37,7 @@ make_checked_module :: proc(name: string, id: int) -> ^Checked_Module {
 			variables = make([dynamic]Checked_Node),
 			functions = make([dynamic]Checked_Node),
 			classes = make([dynamic]Checked_Node),
+			enums = make([dynamic]Checked_Node),
 		},
 	)
 	m.scope = new_scope()
@@ -109,14 +111,53 @@ push_class_scope :: proc(c: ^Checked_Module, name: Token) -> (err: Error) {
 	return
 }
 
-enter_class_scope :: proc(c: ^Checked_Module, name: Token) -> (err: Error) {
-	class_symbol := get_scoped_symbol(c.root, name) or_return
-	if class_symbol.kind == .Class_Symbol {
-		info := class_symbol.info.(Class_Symbol_Info)
+push_enum_scope :: proc(c: ^Checked_Module, name: Token) -> (symbol: ^Symbol, err: Error) {
+	assert(c.scope.id == c.root.id, "Can only declare Class at the root of a module")
+	enum_scope := new_scope()
+	enum_scope.id = hash_scope_id(c, name)
+	enum_scope.parent = c.scope
+	symbol = add_symbol_to_scope(
+		c.scope,
+		Symbol{
+			name = name.text,
+			kind = .Enum_Symbol,
+			module_id = c.id,
+			scope_id = c.scope.id,
+			info = Enum_Symbol_Info{sub_scope_id = enum_scope.id},
+		},
+	) or_return
+
+	c.scope.children[enum_scope.id] = enum_scope
+	c.scope = enum_scope
+	c.scope_depth += 1
+	return
+}
+
+// enter_class_scope :: proc(c: ^Checked_Module, name: Token) -> (err: Error) {
+// 	class_symbol := get_scoped_symbol(c.root, name) or_return
+// 	if class_symbol.kind == .Class_Symbol {
+// 		info := class_symbol.info.(Class_Symbol_Info)
+// 		c.scope = c.root.children[info.sub_scope_id]
+// 		c.scope_depth = 1
+// 	} else {
+
+// 	}
+// 	return
+// }
+
+enter_type_scope :: proc(c: ^Checked_Module, name: Token) -> (err: Error) {
+	type_symbol := get_scoped_symbol(c.root, name) or_return
+	#partial switch type_symbol.kind {
+	case .Class_Symbol:
+		info := type_symbol.info.(Class_Symbol_Info)
 		c.scope = c.root.children[info.sub_scope_id]
 		c.scope_depth = 1
-	} else {
-
+	case .Enum_Symbol:
+		info := type_symbol.info.(Enum_Symbol_Info)
+		c.scope = c.root.children[info.sub_scope_id]
+		c.scope_depth = 1
+	case:
+		assert(false)
 	}
 	return
 }
@@ -261,6 +302,7 @@ Accessor_Kind :: enum {
 	None,
 	Module_Access,
 	Class_Access,
+	Enum_Access,
 	Instance_Access,
 }
 
@@ -408,6 +450,7 @@ Checked_Node :: union {
 	^Checked_Fn_Declaration,
 	^Checked_Type_Declaration,
 	^Checked_Class_Declaration,
+	^Checked_Enum_Declaration,
 }
 
 Checked_Expression_Statement :: struct {
@@ -493,6 +536,13 @@ Checked_Class_Declaration :: struct {
 	methods:      []^Checked_Fn_Declaration,
 }
 
+Checked_Enum_Declaration :: struct {
+	token:      Token,
+	is_token:   Token,
+	identifier: ^Symbol,
+	fields:     []^Symbol,
+}
+
 checked_node_token :: proc(node: Checked_Node) -> Token {
 	switch n in node {
 	case ^Checked_Expression_Statement:
@@ -529,6 +579,9 @@ checked_node_token :: proc(node: Checked_Node) -> Token {
 		return n.token
 
 	case ^Checked_Class_Declaration:
+		return n.token
+
+	case ^Checked_Enum_Declaration:
 		return n.token
 	}
 	return {}
@@ -611,5 +664,8 @@ free_checked_node :: proc(node: Checked_Node) {
 		delete(n.methods)
 		free(n)
 
+	case ^Checked_Enum_Declaration:
+		delete(n.fields)
+		free(n)
 	}
 }

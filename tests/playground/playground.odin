@@ -28,8 +28,17 @@ main :: proc() {
 playground :: proc() {
 	using lib
 	input :: `
-	fn add():
-		var a = 10
+	import std
+
+	type Foo is enum
+		Bar
+		Baz
+	end
+
+	var a = Foo.Bar
+	var b: Foo = Foo.Baz
+	if a == Foo.Bar:
+		std.print("Hurray!")
 	end
 	`
 

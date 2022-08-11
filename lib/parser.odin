@@ -832,6 +832,7 @@ parse_type_decl :: proc(p: ^Parser) -> (result: ^Parsed_Type_Declaration, err: E
 					append(&result.fields, field)
 
 				case .End:
+					consume_token(p)
 					break enum_fields
 
 				case:

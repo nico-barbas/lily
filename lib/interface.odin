@@ -122,9 +122,9 @@ load_source :: proc(state: ^State, name: string) -> (source: string, err: Error)
 }
 
 compile_source :: proc(state: ^State, module_name: string, source: string) -> []Error {
-	DEBUG_PARSER :: true
+	DEBUG_PARSER :: false
 	DEBUG_SYMBOLS :: false
-	DEBUG_CHECKER :: false
+	DEBUG_CHECKER :: true
 	DEBUG_COMPILER :: false
 
 	context.allocator = state.allocator
@@ -483,7 +483,8 @@ std_to_string :: proc(state: ^State) {
 			str = fmt.tprint(instance.fields)
 		}
 	}
-	state->set_value(allocate_traced_string(state.vm.gc, str).data.(^Object), 0)
+	str_object := new_string_object(str, state.vm.gc)
+	state->set_value(str_object.data.(^Object), 0)
 }
 
 std_sqrt :: proc(state: ^State) {

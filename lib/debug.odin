@@ -378,6 +378,15 @@ print_checked_ast :: proc(module: ^Checked_Module, checker: ^Checker) {
 		print_checked_node(&printer, checker, class)
 	}
 
+	if len(module.enums) > 0 {
+		write_line(&printer, "====================")
+		write_line(&printer, "* Module's Enums *")
+		write_line(&printer, "====================")
+		for e in module.enums {
+			print_checked_node(&printer, checker, e)
+		}
+	}
+
 	write_line(&printer, "====================")
 	write_line(&printer, "* Module's Variables *")
 	write_line(&printer, "====================")
@@ -638,14 +647,14 @@ print_checked_node :: proc(p: ^Debug_Printer, c: ^Checker, node: Checked_Node) {
 	// decrement(p)
 
 	case ^Checked_Class_Declaration:
-		write_line(p, "Type Declaration: ")
+		write_line(p, "Class Declaration: ")
 		increment(p)
 		{
 			write_line(p, "Identifier name: ")
 			print_symbol(p, n.identifier)
 			write_line(p, "Fields: ")
 			increment(p)
-			for field, i in n.fields {
+			for field in n.fields {
 				print_symbol(p, field)
 			}
 			decrement(p)
@@ -665,6 +674,21 @@ print_checked_node :: proc(p: ^Debug_Printer, c: ^Checker, node: Checked_Node) {
 			decrement(p)
 		}
 		decrement(p)
+	case ^Checked_Enum_Declaration:
+		write_line(p, "Enum Declaration: ")
+		increment(p)
+		{
+			write_line(p, "Identifier name: ")
+			print_symbol(p, n.identifier)
+			write_line(p, "Fields: ")
+			increment(p)
+			for field in n.fields {
+				print_symbol(p, field)
+			}
+			decrement(p)
+		}
+		decrement(p)
+
 	}
 }
 
@@ -702,8 +726,8 @@ print_semantic_scope :: proc(p: ^Debug_Printer, c: ^Checker, s: ^Semantic_Scope)
 	{
 		write_line(p, "Symbols: ")
 		increment(p)
-		for _, i in s.symbols {
-			print_symbol(p, &s.symbols[i])
+		for _, symbol in s.lookup {
+			print_symbol(p, symbol)
 		}
 		decrement(p)
 		if len(s.children) > 0 {
@@ -749,6 +773,20 @@ print_symbol :: proc(p: ^Debug_Printer, symbol: ^Symbol, leading_char := "-") {
 	case .Class_Symbol:
 		class_info := symbol.info.(Class_Symbol_Info)
 		fmt.sbprintf(&p.builder, "Info: Class Scope ID: %d", class_info.sub_scope_id)
+
+	case .Enum_Symbol:
+		enum_info := symbol.info.(Enum_Symbol_Info)
+		fmt.sbprintf(&p.builder, "Info: Class Scope ID: %d", enum_info.sub_scope_id)
+
+	case .Enum_Field_Symbol:
+		enum_field_info := symbol.info.(Enum_Field_Symbol_Info)
+		fmt.sbprintf(&p.builder, "Info: Parent:")
+		increment(p)
+		print_symbol(p, enum_field_info.parent, "=>")
+		decrement(p)
+		write_line(p)
+		fmt.sbprintf(&p.builder, "Value: %d", enum_field_info.value)
+
 
 	case .Module_Symbol:
 		module_info := symbol.info.(Module_Symbol_Info)

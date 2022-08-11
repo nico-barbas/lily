@@ -15,7 +15,7 @@ Checker :: struct {
 	builtin_fn:          [MAP_SYMBOL + 1]^Semantic_Scope,
 	array_symbols:       [dynamic]Symbol,
 	map_symbols:         [dynamic]Symbol,
-	types:               [dynamic]Type_ID,
+	types:               map[Type_ID]Type_Info,
 	type_id_ptr:         Type_ID,
 
 	// to keep track of if "break" and "continue" are allowed in the current context
@@ -48,6 +48,11 @@ MAP_SYMBOL :: 6
 
 Type_ID :: distinct int
 
+Type_Info :: struct {
+	type_id: Type_ID,
+	symbol:  ^Symbol,
+}
+
 BUILT_IN_ID_COUNT :: MAP_ID + 1
 
 UNTYPED_ID :: 0
@@ -75,8 +80,8 @@ init_checker :: proc(c: ^Checker, allocator := context.allocator) {
 	c.builtin_fn[ARRAY_SYMBOL] = new_scope(allocator)
 	{
 		add_symbol_to_scope(
-			c.builtin_fn[ARRAY_SYMBOL],
-			Symbol{
+			s = c.builtin_fn[ARRAY_SYMBOL],
+			symbol = Symbol{
 				name = "append",
 				kind = .Fn_Symbol,
 				module_id = BUILTIN_MODULE_ID,
@@ -86,10 +91,11 @@ init_checker :: proc(c: ^Checker, allocator := context.allocator) {
 					param_symbols = []^Symbol{&c.builtin_symbols[ANY_SYMBOL]},
 				},
 			},
+			allocator = allocator,
 		)
 		add_symbol_to_scope(
-			c.builtin_fn[ARRAY_SYMBOL],
-			Symbol{
+			s = c.builtin_fn[ARRAY_SYMBOL],
+			symbol = Symbol{
 				name = "length",
 				kind = .Fn_Symbol,
 				module_id = BUILTIN_MODULE_ID,
@@ -99,16 +105,32 @@ init_checker :: proc(c: ^Checker, allocator := context.allocator) {
 					return_symbol = &c.builtin_symbols[NUMBER_SYMBOL],
 				},
 			},
+			allocator = allocator,
 		)
 	}
 
-	c.types = make([dynamic]Type_ID, allocator)
+	c.types = make(map[Type_ID]Type_Info, 32, allocator)
 	{
-		append(&c.types, UNTYPED_ID)
-		append(&c.types, NUMBER_ID)
-		append(&c.types, BOOL_ID)
-		append(&c.types, STRING_ID)
-		append(&c.types, ARRAY_ID)
+		c.types[UNTYPED_ID] = Type_Info {
+			type_id = UNTYPED_ID,
+			symbol  = &c.builtin_symbols[UNTYPED_SYMBOL],
+		}
+		c.types[NUMBER_ID] = Type_Info {
+			type_id = NUMBER_ID,
+			symbol  = &c.builtin_symbols[NUMBER_SYMBOL],
+		}
+		c.types[BOOL_ID] = Type_Info {
+			type_id = BOOL_ID,
+			symbol  = &c.builtin_symbols[BOOL_SYMBOL],
+		}
+		c.types[STRING_ID] = Type_Info {
+			type_id = STRING_ID,
+			symbol  = &c.builtin_symbols[STRING_SYMBOL],
+		}
+		c.types[ARRAY_ID] = Type_Info {
+			type_id = ARRAY_ID,
+			symbol  = &c.builtin_symbols[ARRAY_SYMBOL],
+		}
 	}
 	c.type_id_ptr = BUILT_IN_ID_COUNT
 	c.allow_new_dot_chain = true
@@ -155,9 +177,9 @@ get_symbol :: proc(c: ^Checker, token: Token, loc := #caller_location) -> (resul
 
 	scope := c.current.scope
 	find: for scope != nil {
-		for symbol, i in scope.symbols {
-			if symbol.name == token.text {
-				result = &scope.symbols[i]
+		for name, symbol in scope.lookup {
+			if name == token.text {
+				result = symbol
 				return
 			}
 		}
@@ -174,6 +196,10 @@ get_symbol :: proc(c: ^Checker, token: Token, loc := #caller_location) -> (resul
 		loc,
 	)
 	return
+}
+
+symbol_from_typeid :: proc(c: ^Checker, type_id: Type_ID) -> ^Symbol {
+	return c.types[type_id].symbol
 }
 
 push_dot_frame :: proc(c: ^Checker) {
@@ -339,58 +365,10 @@ add_module_decl_symbols :: proc(c: ^Checker, module_id: int) -> (err: Error) {
 				) or_return
 
 			case .Enum:
-			case .Class:
-				push_class_scope(c.current, n.identifier) or_return
-				defer pop_scope(c.current)
-				for field in n.fields {
-					add_symbol_to_scope(
-						c.current.scope,
-						Symbol{
-							name = field.name.(^Parsed_Identifier_Expression).name.text,
-							kind = .Var_Symbol,
-							module_id = module_id,
-							scope_id = c.current.scope.id,
-						},
-					) or_return
-				}
-				for constructor in n.constructors {
-					constr_scope_id := push_scope(c.current, constructor.identifier)
-					pop_scope(c.current)
-					add_symbol_to_scope(
-						c.current.scope,
-						Symbol{
-							name = constructor.identifier.text,
-							kind = .Fn_Symbol,
-							module_id = module_id,
-							scope_id = c.current.scope.id,
-							info = Fn_Symbol_Info{
-								sub_scope_id = constr_scope_id,
-								has_return = true,
-								kind = .Constructor,
-								param_symbols = make([]^Symbol, len(constructor.parameters)),
-							},
-						},
-					) or_return
-				}
+				add_enum_decl_symbol(c, n) or_return
 
-				for method in n.methods {
-					method_scope_id := push_scope(c.current, method.identifier)
-					pop_scope(c.current)
-					add_symbol_to_scope(
-						c.current.scope,
-						Symbol{
-							name = method.identifier.text,
-							kind = .Fn_Symbol,
-							module_id = module_id,
-							scope_id = c.current.scope.id,
-							info = Fn_Symbol_Info{
-								sub_scope_id = method_scope_id,
-								kind = .Method,
-								param_symbols = make([]^Symbol, len(method.parameters)),
-							},
-						},
-					) or_return
-				}
+			case .Class:
+				add_class_decl_symbol(c, n) or_return
 
 			}
 		}
@@ -434,6 +412,89 @@ add_module_decl_symbols :: proc(c: ^Checker, module_id: int) -> (err: Error) {
 	return
 }
 
+add_class_decl_symbol :: proc(c: ^Checker, decl: ^Parsed_Type_Declaration) -> (err: Error) {
+	push_class_scope(c.current, decl.identifier) or_return
+	defer pop_scope(c.current)
+	for field in decl.fields {
+		add_symbol_to_scope(
+			c.current.scope,
+			Symbol{
+				name = field.name.(^Parsed_Identifier_Expression).name.text,
+				kind = .Var_Symbol,
+				module_id = c.current.id,
+				scope_id = c.current.scope.id,
+			},
+		) or_return
+	}
+	for constructor in decl.constructors {
+		constr_scope_id := push_scope(c.current, constructor.identifier)
+		pop_scope(c.current)
+		add_symbol_to_scope(
+			c.current.scope,
+			Symbol{
+				name = constructor.identifier.text,
+				kind = .Fn_Symbol,
+				module_id = c.current.id,
+				scope_id = c.current.scope.id,
+				info = Fn_Symbol_Info{
+					sub_scope_id = constr_scope_id,
+					has_return = true,
+					kind = .Constructor,
+					param_symbols = make([]^Symbol, len(constructor.parameters)),
+				},
+			},
+		) or_return
+	}
+
+	for method in decl.methods {
+		method_scope_id := push_scope(c.current, method.identifier)
+		pop_scope(c.current)
+		add_symbol_to_scope(
+			c.current.scope,
+			Symbol{
+				name = method.identifier.text,
+				kind = .Fn_Symbol,
+				module_id = c.current.id,
+				scope_id = c.current.scope.id,
+				info = Fn_Symbol_Info{
+					sub_scope_id = method_scope_id,
+					kind = .Method,
+					param_symbols = make([]^Symbol, len(method.parameters)),
+				},
+			},
+		) or_return
+	}
+	return
+}
+
+add_enum_decl_symbol :: proc(c: ^Checker, decl: ^Parsed_Type_Declaration) -> (err: Error) {
+	enum_symbol := push_enum_scope(c.current, decl.identifier) or_return
+	defer pop_scope(c.current)
+	for field, i in decl.fields {
+		if field.type_expr != nil {
+			err = format_error(
+				Semantic_Error{
+					kind = .Invalid_Symbol,
+					token = field.token,
+					details = "Enum field cannot have types",
+				},
+			)
+			return
+		}
+		add_symbol_to_scope(
+			c.current.scope,
+			Symbol{
+				name = field.name.(^Parsed_Identifier_Expression).name.text,
+				kind = .Enum_Field_Symbol,
+				module_id = c.current.id,
+				scope_id = c.current.scope.id,
+				info = Enum_Field_Symbol_Info{parent = enum_symbol, value = i},
+			},
+		) or_return
+	}
+	return
+}
+
 add_module_type_decl :: proc(c: ^Checker, module_id: int) -> (err: Error) {
 	c.current = c.modules[module_id]
 	c.current_parsed = c.parsed[module_id]
@@ -446,24 +507,49 @@ add_module_type_decl :: proc(c: ^Checker, module_id: int) -> (err: Error) {
 				// add_type_alias(c, n.identifier, UNTYPED_ID)
 				assert(false)
 			case .Enum:
+				add_enum_type(c, n) or_return
 			case .Class:
-				add_module_class_type(c, n)
+				add_class_type(c, n) or_return
 			}
 		}
 	}
 	return
 }
 
-add_module_class_type :: proc(c: ^Checker, decl: ^Parsed_Type_Declaration) -> (err: Error) {
-	append(&c.types, c.type_id_ptr)
+add_class_type :: proc(c: ^Checker, decl: ^Parsed_Type_Declaration) -> (err: Error) {
 	class_symbol := get_scoped_symbol(c.current.root, decl.identifier) or_return
 	class_symbol.type_id = c.type_id_ptr
+	c.types[c.type_id_ptr] = Type_Info {
+		type_id = c.type_id_ptr,
+		symbol  = class_symbol,
+	}
 	c.type_id_ptr += 1
 
-	enter_class_scope(c.current, decl.identifier)
+	enter_type_scope(c.current, decl.identifier)
 	defer pop_scope(c.current)
 	self_symbol := get_scoped_symbol(c.current.scope, Token{text = "self"}) or_return
 	self_symbol.type_id = class_symbol.type_id
+	return
+}
+
+add_enum_type :: proc(c: ^Checker, decl: ^Parsed_Type_Declaration) -> (err: Error) {
+	enum_symbol := get_scoped_symbol(c.current.root, decl.identifier) or_return
+	enum_symbol.type_id = c.type_id_ptr
+	c.types[c.type_id_ptr] = Type_Info {
+		type_id = c.type_id_ptr,
+		symbol  = enum_symbol,
+	}
+	c.type_id_ptr += 1
+
+	enter_type_scope(c.current, decl.identifier)
+	defer pop_scope(c.current)
+	for field in decl.fields {
+		enum_field_symbol := get_scoped_symbol(
+			c.current.scope,
+			field.name.(^Parsed_Identifier_Expression).name,
+		) or_return
+		enum_field_symbol.type_id = enum_symbol.type_id
+	}
 	return
 }
 
@@ -476,42 +562,13 @@ check_module_signatures_symbols :: proc(c: ^Checker, module_id: int) -> (err: Er
 	// class constructors
 	for node in c.current_parsed.types {
 		n := node.(^Parsed_Type_Declaration)
-		if n.type_kind == .Alias {
-			continue
-		}
+		switch n.type_kind {
+		case .Alias:
+			assert(false)
+		case .Class:
+			check_class_decl_symbols(c, n) or_return
 
-		enter_class_scope(c.current, n.identifier)
-		defer pop_scope(c.current)
-
-		for field in n.fields {
-			if field.type_expr == nil {
-				err = format_error(
-					Semantic_Error{
-						kind = .Invalid_Symbol,
-						token = field.token,
-						details = "Expected type expression for class's field declaration",
-					},
-				)
-				return
-			}
-			type_symbol := symbol_from_type_expr(c, field.type_expr.?) or_return
-			field_name := field.name.(^Parsed_Identifier_Expression).name
-			field_symbol := get_scoped_symbol(c.current.scope, field_name) or_return
-			field_symbol_info := Var_Symbol_Info {
-				symbol  = type_symbol,
-				mutable = true,
-				depth   = c.current.scope_depth,
-			}
-			field_symbol.info = field_symbol_info
-			field_symbol.type_id = type_symbol.type_id
-		}
-
-		for constructor in n.constructors {
-			check_fn_signature_symbols(c, constructor) or_return
-		}
-
-		for method in n.methods {
-			check_fn_signature_symbols(c, method) or_return
+		case .Enum:
 		}
 	}
 
@@ -520,6 +577,43 @@ check_module_signatures_symbols :: proc(c: ^Checker, module_id: int) -> (err: Er
 	for node in c.current_parsed.functions {
 		n := node.(^Parsed_Fn_Declaration)
 		check_fn_signature_symbols(c, n) or_return
+	}
+	return
+}
+
+check_class_decl_symbols :: proc(c: ^Checker, decl: ^Parsed_Type_Declaration) -> (err: Error) {
+	enter_type_scope(c.current, decl.identifier)
+	defer pop_scope(c.current)
+
+	for field in decl.fields {
+		if field.type_expr == nil {
+			err = format_error(
+				Semantic_Error{
+					kind = .Invalid_Symbol,
+					token = field.token,
+					details = "Expected type expression for class's field declaration",
+				},
+			)
+			return
+		}
+		type_symbol := symbol_from_type_expr(c, field.type_expr.?) or_return
+		field_name := field.name.(^Parsed_Identifier_Expression).name
+		field_symbol := get_scoped_symbol(c.current.scope, field_name) or_return
+		field_symbol_info := Var_Symbol_Info {
+			symbol  = type_symbol,
+			mutable = true,
+			depth   = c.current.scope_depth,
+		}
+		field_symbol.info = field_symbol_info
+		field_symbol.type_id = type_symbol.type_id
+	}
+
+	for constructor in decl.constructors {
+		check_fn_signature_symbols(c, constructor) or_return
+	}
+
+	for method in decl.methods {
+		check_fn_signature_symbols(c, method) or_return
 	}
 	return
 }
@@ -690,7 +784,7 @@ add_inner_symbols :: proc(c: ^Checker, node: Parsed_Node) -> (err: Error) {
 
 	case ^Parsed_Type_Declaration:
 		if n.type_kind == .Class {
-			enter_class_scope(c.current, n.identifier)
+			enter_type_scope(c.current, n.identifier)
 			defer pop_scope(c.current)
 
 			for constructor in n.constructors {
@@ -714,8 +808,13 @@ build_checked_ast :: proc(c: ^Checker, module_id: int) -> (err: Error) {
 		append(&c.current.variables, var_node)
 	}
 	for node in c.current_parsed.types {
-		class_node := build_checked_node(c, node) or_return
-		append(&c.current.classes, class_node)
+		type_node := build_checked_node(c, node) or_return
+		#partial switch n in type_node {
+		case ^Checked_Class_Declaration:
+			append(&c.current.classes, type_node)
+		case ^Checked_Enum_Declaration:
+			append(&c.current.enums, type_node)
+		}
 	}
 	for node in c.current_parsed.functions {
 		fn_node := build_checked_node(c, node) or_return
@@ -908,7 +1007,7 @@ build_checked_node :: proc(c: ^Checker, node: Parsed_Node) -> (result: Checked_N
 		#partial switch expr in var_decl.expr {
 		case ^Checked_Identifier_Expression:
 			#partial switch expr_symbol.kind {
-			case .Class_Symbol, .Module_Symbol, .Fn_Symbol, .Name:
+			case .Class_Symbol, .Module_Symbol, .Fn_Symbol, .Name, .Enum_Symbol:
 				err = rhs_assign_semantic_err(expr_symbol, n.token)
 				return
 			}
@@ -920,8 +1019,12 @@ build_checked_node :: proc(c: ^Checker, node: Parsed_Node) -> (result: Checked_N
 			var_decl.identifier.type_id = type_hint.type_id
 			expect_type(c, var_decl.expr, type_hint) or_return
 		} else {
+			if expr_symbol.kind == .Enum_Field_Symbol {
+				var_info.symbol = expr_symbol.info.(Enum_Field_Symbol_Info).parent
+			} else {
+				var_info.symbol = expr_symbol
+			}
 			var_decl.identifier.type_id = expr_symbol.type_id
-			var_info.symbol = expr_symbol
 		}
 		var_decl.identifier.info = var_info
 		result = var_decl
@@ -956,6 +1059,23 @@ build_checked_node :: proc(c: ^Checker, node: Parsed_Node) -> (result: Checked_N
 		case .Alias:
 			assert(false)
 		case .Enum:
+			enum_decl := new(Checked_Enum_Declaration)
+			enum_decl^ = Checked_Enum_Declaration {
+				token      = n.token,
+				is_token   = n.is_token,
+				identifier = get_scoped_symbol(c.current.scope, n.identifier) or_return,
+				fields     = make([]^Symbol, len(n.fields)),
+			}
+			enter_type_scope(c.current, n.identifier) or_return
+			defer pop_scope(c.current)
+
+			for field, i in n.fields {
+				field_name := field.name.(^Parsed_Identifier_Expression).name
+				enum_decl.fields[i] = get_scoped_symbol(c.current.scope, field_name) or_return
+			}
+
+			result = enum_decl
+
 		case .Class:
 			class_decl := new_clone(
 				Checked_Class_Declaration{
@@ -970,7 +1090,7 @@ build_checked_node :: proc(c: ^Checker, node: Parsed_Node) -> (result: Checked_N
 			if err != nil {
 				print_semantic_scope_standalone(c, c.current.scope)
 			}
-			enter_class_scope(c.current, n.identifier) or_return
+			enter_type_scope(c.current, n.identifier) or_return
 			defer pop_scope(c.current)
 
 			for field, i in n.fields {
@@ -1084,7 +1204,10 @@ build_checked_expr :: proc(
 			},
 		)
 
-		expect_type(c, binary_expr.right, checked_expr_symbol(binary_expr.left)) or_return
+		left_symbol := checked_expr_symbol(binary_expr.left)
+		right_symbol := checked_expr_symbol(binary_expr.right)
+		fmt.println(left_symbol, right_symbol)
+		expect_type(c, binary_expr.right, left_symbol) or_return
 		#partial switch e.op {
 		case .Minus_Op, .Plus_Op, .Mult_Op, .Div_Op, .Rem_Op:
 			expect_type(c, binary_expr.left, &c.builtin_symbols[NUMBER_SYMBOL]) or_return
@@ -1097,8 +1220,13 @@ build_checked_expr :: proc(
 			binary_expr.symbol = &c.builtin_symbols[BOOL_SYMBOL]
 
 		case .Equal_Op, .Greater_Op, .Greater_Eq_Op, .Lesser_Op, .Lesser_Eq_Op:
-			expect_type(c, binary_expr.left, &c.builtin_symbols[NUMBER_SYMBOL]) or_return
-			expect_type(c, binary_expr.right, &c.builtin_symbols[NUMBER_SYMBOL]) or_return
+			type_symbol := symbol_from_typeid(c, left_symbol.type_id)
+			if type_symbol.kind == .Enum_Symbol {
+
+			} else {
+				expect_type(c, binary_expr.left, &c.builtin_symbols[NUMBER_SYMBOL]) or_return
+				expect_type(c, binary_expr.right, &c.builtin_symbols[NUMBER_SYMBOL]) or_return
+			}
 			binary_expr.symbol = &c.builtin_symbols[BOOL_SYMBOL]
 
 		}
@@ -1159,19 +1287,19 @@ build_checked_expr :: proc(
 			l := build_checked_expr(c, left) or_return
 			c.dot.symbol = checked_expr_symbol(l)
 			#partial switch c.dot.symbol.kind {
-			case .Class_Symbol:
+			case .Class_Symbol, .Enum_Symbol:
 				if c.dot.depth > 2 {
 					err = dot_operand_semantic_err(c.dot.symbol, e.token)
 					return
 				}
-				enter_class_scope(c.current, Token{text = c.dot.symbol.name}) or_return
+				enter_type_scope(c.current, Token{text = c.dot.symbol.name}) or_return
 
 			case .Var_Symbol:
 				var_info := c.dot.symbol.info.(Var_Symbol_Info)
 				#partial switch var_info.symbol.kind {
 				case .Class_Symbol:
 					c.current = c.modules[var_info.symbol.module_id]
-					enter_class_scope(c.current, Token{text = var_info.symbol.name}) or_return
+					enter_type_scope(c.current, Token{text = var_info.symbol.name}) or_return
 				case .Generic_Symbol:
 					if var_info.symbol.type_id == ARRAY_ID || var_info.symbol.type_id == MAP_ID {
 						c.dot.symbol = var_info.symbol
@@ -1240,7 +1368,7 @@ build_checked_expr :: proc(
 				return
 			}
 			c.current = c.modules[index_expr.symbol.module_id]
-			enter_class_scope(c.current, Token{text = index_expr.symbol.name}) or_return
+			enter_type_scope(c.current, Token{text = index_expr.symbol.name}) or_return
 			c.dot.symbol = index_expr.symbol
 			c.dot.current_module = c.current.id
 			c.dot.current_scope = c.current.scope
@@ -1283,7 +1411,7 @@ build_checked_expr :: proc(
 				return
 			}
 			c.current = c.modules[call_expr.symbol.module_id]
-			enter_class_scope(c.current, Token{text = call_expr.symbol.name}) or_return
+			enter_type_scope(c.current, Token{text = call_expr.symbol.name}) or_return
 			c.dot.symbol = call_expr.symbol
 			c.dot.current_module = c.current.id
 			c.dot.current_scope = c.current.scope
@@ -1304,6 +1432,12 @@ build_checked_expr :: proc(
 			case .Var_Symbol:
 				var_info := c.dot.symbol.info.(Var_Symbol_Info)
 				dot_expr.symbol = var_info.symbol
+				dot_expr.leaf_symbol = c.dot.symbol
+				dot_expr.selector = s
+				pop_dot_frame(c)
+			case .Enum_Field_Symbol:
+				enum_field_info := c.dot.symbol.info.(Enum_Field_Symbol_Info)
+				dot_expr.symbol = enum_field_info.parent
 				dot_expr.leaf_symbol = c.dot.symbol
 				dot_expr.selector = s
 				pop_dot_frame(c)

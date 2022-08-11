@@ -107,6 +107,7 @@ var fooVal = Foo.Bar
 ## Notes:
 - Class fields are zero initialized
 - Function parameters are immutables
+- At the moment, every trace allocation is done via `os.heap_allocator`
 
 ## Status and Roadmap:
 ### Control flow:
@@ -127,6 +128,11 @@ var fooVal = Foo.Bar
 - [ ] Enumeration Types
 - [ ] ADTs
 - [ ] Ranges
+### Memory Management:
+- [x] Extremely simple mark-and-sweep GC
+    - Doesn't handle resizing of maps and arrays very well
+- [ ] Escape analysis and scoped allocation
+- [ ] Custom class allocator for faster instanciation
 ### Embedding features:
 - [x] Foreign functions declaration in Lily source code
 - [x] Lily Function handles capture in host application
@@ -143,8 +149,6 @@ var fooVal = Foo.Bar
 - [ ] VM
 
 ### Features TODO:
-- [x] GC Memory management
-    - Very basic collector and doesn't handle resizing of maps and arrays very well
 - [x] Most common assignment operators (=, +=, -=, *=, /=)
 - [ ] Container iterators
 - [x] Modules
@@ -161,4 +165,5 @@ var fooVal = Foo.Bar
 
 ## Known Bugs:
 - User defined foreign fn declaration are not supported in the standalone compiler and should be disallowed
+- Unable to compile multiple modules separately in host application
 - Fix symbol table overflow

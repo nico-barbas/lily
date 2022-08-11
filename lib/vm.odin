@@ -10,7 +10,8 @@ Vm :: struct {
 	chunk:             ^Chunk,
 
 	// Callbacks
-	gc:                ^Gc,
+	gc_allocator:      Gc_Allocator,
+	gc:                mem.Allocator,
 	state:             ^State,
 	call_foreign_proc: proc(s: ^State, fn: Foreign_Procedure, stack_slice: []Value),
 
@@ -39,33 +40,34 @@ Vm_Config :: struct {
 	temp_allocator:    mem.Allocator,
 }
 
-new_vm :: proc(config: Vm_Config, allocator := context.allocator) -> ^Vm {
+new_vm :: proc(
+	config: Vm_Config,
+	allocator := context.allocator,
+	temp_allocator := context.temp_allocator,
+) -> ^Vm {
 	vm := new(Vm, allocator)
 	vm.state = config.state
 	vm.call_foreign_proc = config.call_foreign_proc
 	vm.show_debug_info = config.show_debug_info
 
-	root_interface := Gc_Roots_Interface {
-		gather_roots_proc = proc(
-			data: rawptr,
-			allocator := context.allocator,
-		) -> [][]Value {
-			vm := cast(^Vm)data
-			root_slice := make([][]Value, len(vm.modules) + 1, allocator)
-			for module, i in vm.modules {
-				root_slice[i] = module.variables
-			}
-			root_slice[len(vm.modules)] = vm.stack[:vm.stack_ptr]
-			return root_slice
+	init_gc_allocator(
+		&vm.gc_allocator,
+		Gc_Allocator_Options{
+			gather_roots_proc = gather_vm_root_objects,
+			data = vm,
+			temp_allocator = temp_allocator,
+			internals_allocator = allocator,
+			initial_size = mem.Megabyte * 5,
+			first_collection = mem.Byte * 200,
+			growth_factor = 2,
 		},
-		data = vm,
-	}
-	vm.gc = new_gc(it = root_interface, allocator = allocator)
+	)
+	vm.gc = gc_allocator(&vm.gc_allocator)
 	return vm
 }
 
 delete_vm :: proc(vm: ^Vm) {
-	delete_gc(vm.gc)
+	free_all(vm.gc)
 }
 
 get_byte :: proc(vm: ^Vm) -> byte {
@@ -243,24 +245,15 @@ run_vm :: proc(vm: ^Vm) {
 
 		case .Op_Add:
 			v2, v1 := pop_stack_value(vm), pop_stack_value(vm)
-			push_stack_value(
-				vm,
-				Value{kind = .Number, data = v1.data.(f64) + v2.data.(f64)},
-			)
+			push_stack_value(vm, Value{kind = .Number, data = v1.data.(f64) + v2.data.(f64)})
 
 		case .Op_Mul:
 			v2, v1 := pop_stack_value(vm), pop_stack_value(vm)
-			push_stack_value(
-				vm,
-				Value{kind = .Number, data = v1.data.(f64) * v2.data.(f64)},
-			)
+			push_stack_value(vm, Value{kind = .Number, data = v1.data.(f64) * v2.data.(f64)})
 
 		case .Op_Div:
 			v2, v1 := pop_stack_value(vm), pop_stack_value(vm)
-			push_stack_value(
-				vm,
-				Value{kind = .Number, data = v1.data.(f64) / v2.data.(f64)},
-			)
+			push_stack_value(vm, Value{kind = .Number, data = v1.data.(f64) / v2.data.(f64)})
 
 		case .Op_Rem:
 			v2, v1 := pop_stack_value(vm), pop_stack_value(vm)
@@ -269,60 +262,36 @@ run_vm :: proc(vm: ^Vm) {
 
 		case .Op_And:
 			v2, v1 := pop_stack_value(vm), pop_stack_value(vm)
-			push_stack_value(
-				vm,
-				Value{kind = .Boolean, data = v1.data.(bool) && v2.data.(bool)},
-			)
+			push_stack_value(vm, Value{kind = .Boolean, data = v1.data.(bool) && v2.data.(bool)})
 
 		case .Op_Or:
 			v2, v1 := pop_stack_value(vm), pop_stack_value(vm)
-			push_stack_value(
-				vm,
-				Value{kind = .Boolean, data = v1.data.(bool) || v2.data.(bool)},
-			)
+			push_stack_value(vm, Value{kind = .Boolean, data = v1.data.(bool) || v2.data.(bool)})
 
 		case .Op_Eq:
 			v2, v1 := pop_stack_value(vm), pop_stack_value(vm)
 			#partial switch v1.kind {
 			case .Number:
-				push_stack_value(
-					vm,
-					Value{kind = .Boolean, data = v1.data.(f64) == v2.data.(f64)},
-				)
+				push_stack_value(vm, Value{kind = .Boolean, data = v1.data.(f64) == v2.data.(f64)})
 			case .Boolean:
-				push_stack_value(
-					vm,
-					Value{kind = .Boolean, data = v1.data.(bool) == v2.data.(bool)},
-				)
+				push_stack_value(vm, Value{kind = .Boolean, data = v1.data.(bool) == v2.data.(bool)})
 			}
 
 		case .Op_Greater:
 			v2, v1 := pop_stack_value(vm), pop_stack_value(vm)
-			push_stack_value(
-				vm,
-				Value{kind = .Boolean, data = v1.data.(f64) > v2.data.(f64)},
-			)
+			push_stack_value(vm, Value{kind = .Boolean, data = v1.data.(f64) > v2.data.(f64)})
 
 		case .Op_Greater_Eq:
 			v2, v1 := pop_stack_value(vm), pop_stack_value(vm)
-			push_stack_value(
-				vm,
-				Value{kind = .Boolean, data = v1.data.(f64) >= v2.data.(f64)},
-			)
+			push_stack_value(vm, Value{kind = .Boolean, data = v1.data.(f64) >= v2.data.(f64)})
 
 		case .Op_Lesser:
 			v2, v1 := pop_stack_value(vm), pop_stack_value(vm)
-			push_stack_value(
-				vm,
-				Value{kind = .Boolean, data = v1.data.(f64) < v2.data.(f64)},
-			)
+			push_stack_value(vm, Value{kind = .Boolean, data = v1.data.(f64) < v2.data.(f64)})
 
 		case .Op_Lesser_Eq:
 			v2, v1 := pop_stack_value(vm), pop_stack_value(vm)
-			push_stack_value(
-				vm,
-				Value{kind = .Boolean, data = v1.data.(f64) <= v2.data.(f64)},
-			)
+			push_stack_value(vm, Value{kind = .Boolean, data = v1.data.(f64) <= v2.data.(f64)})
 
 		case .Op_Begin:
 			push_stack_scope(vm)
@@ -340,11 +309,7 @@ run_vm :: proc(vm: ^Vm) {
 			return_val: Value
 
 			fn_values := vm.stack[get_scope_start_addr(vm):vm.stack_ptr]
-			vm.call_foreign_proc(
-				vm.state,
-				vm.current.functions[fn_addr].foreign_fn,
-				fn_values,
-			)
+			vm.call_foreign_proc(vm.state, vm.current.functions[fn_addr].foreign_fn, fn_values)
 			if has_return {
 				return_val = fn_values[0]
 			}
@@ -469,11 +434,11 @@ run_vm :: proc(vm: ^Vm) {
 
 		case .Op_Make_Instance:
 			prototype := cast(^Class_Object)pop_stack_value(vm).data.(^Object)
-			instance := allocate_traced_class(vm.gc, prototype)
+			instance := new_class_object(prototype, vm.gc)
 			push_stack_value(vm, instance)
 
 		case .Op_Make_Array:
-			push_stack_value(vm, allocate_traced_array(vm.gc))
+			push_stack_value(vm, new_array_object(vm.gc))
 
 		case .Op_Append_Array:
 			array_val := pop_stack_value(vm)
@@ -483,7 +448,7 @@ run_vm :: proc(vm: ^Vm) {
 
 		case .Op_Make_Map:
 			init_elem_count := get_i16(vm)
-			map_value := allocate_traced_map(vm.gc)
+			map_value := new_map_object(vm.gc)
 			map_object := cast(^Map_Object)map_value.data.(^Object)
 			for i in 0 ..< init_elem_count {
 				k := pop_stack_value(vm)
@@ -509,4 +474,68 @@ run_vm :: proc(vm: ^Vm) {
 
 vm_finished :: proc(vm: ^Vm) -> bool {
 	return vm.chunk == nil || vm.ip >= len(vm.chunk.bytecode)
+}
+
+object_to_mark_proc := map[Object_Kind]proc(gc: ^Gc_Allocator, data: rawptr) {
+	.Array = proc(gc: ^Gc_Allocator, data: rawptr) {
+		array_object := cast(^Array_Object)data
+		mark_raw_allocation(gc, data)
+		mark_slice(gc, array_object.data)
+		for elem in array_object.data {
+			if elem.kind == .Object_Ref {
+				append_mark_node(gc, object_to_mark_interface(elem.data.(^Object)))
+			}
+		}
+	},
+	.Class = proc(gc: ^Gc_Allocator, data: rawptr) {
+		class_object := cast(^Class_Object)data
+		mark_raw_allocation(gc, data)
+		mark_slice(gc, class_object.fields)
+		for field in class_object.fields {
+			if field.kind == .Object_Ref {
+				append_mark_node(gc, object_to_mark_interface(field.data.(^Object)))
+			}
+		}
+	},
+	.Map = proc(gc: ^Gc_Allocator, data: rawptr) {
+		map_object := cast(^Map_Object)data
+		mark_raw_allocation(gc, data)
+		mark_map(gc, map_object.data)
+		for key, value in map_object.data {
+			if key.kind == .Object_Ref {
+				append_mark_node(gc, object_to_mark_interface(key.data.(^Object)))
+			}
+			if value.kind == .Object_Ref {
+				append_mark_node(gc, object_to_mark_interface(value.data.(^Object)))
+			}
+		}
+	},
+	.String = proc(gc: ^Gc_Allocator, data: rawptr) {
+		string_object := cast(^String_Object)data
+		mark_raw_allocation(gc, data)
+		mark_slice(gc, string_object.data)
+	},
+}
+
+object_to_mark_interface :: proc(object: ^Object) -> Mark_Node_Interface {
+	return Mark_Node_Interface{data = object, mark_proc = object_to_mark_proc[object.kind]}
+}
+
+gather_vm_root_objects :: proc(data: rawptr, allocator := context.temp_allocator) -> []Mark_Node_Interface {
+	vm := cast(^Vm)data
+	roots := make([dynamic]Mark_Node_Interface, allocator)
+	for value in vm.stack[:vm.stack_ptr] {
+		if value.kind == .Object_Ref {
+			append(&roots, object_to_mark_interface(value.data.(^Object)))
+		}
+	}
+
+	for module in vm.modules {
+		for variable in module.variables {
+			if variable.kind == .Object_Ref {
+				append(&roots, object_to_mark_interface(variable.data.(^Object)))
+			}
+		}
+	}
+	return roots[:]
 }
