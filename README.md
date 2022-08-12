@@ -125,12 +125,11 @@ var fooVal = Foo.Bar
 - [x] Functions
 - [ ] Type Alias
 - [x] Class Types
-- [ ] Enumeration Types
+- [x] Enumeration Types
 - [ ] ADTs
 - [ ] Ranges
 ### Memory Management:
 - [x] Extremely simple mark-and-sweep GC
-    - Doesn't handle resizing of maps and arrays very well
 - [ ] Escape analysis and scoped allocation
 - [ ] Custom class allocator for faster instanciation
 ### Embedding features:
@@ -153,6 +152,8 @@ var fooVal = Foo.Bar
 - [ ] Container iterators
 - [x] Modules
 - [ ] Variadic function parameters
+- [x] Nil check on ref types
+- [ ] Coroutine and builtin green threads
 
 ## Tooling:
 - [x] lily (Standalone compiler/interpreter)

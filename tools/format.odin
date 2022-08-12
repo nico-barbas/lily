@@ -308,6 +308,7 @@ format_stmt :: proc(f: ^Formatter, node: lib.Parsed_Node, add_newline := true) -
 		case .Class:
 			join(list, text("class"), nest(format_class_decl(f, n)), newline(1), text("end"))
 		case .Enum:
+			join(list, text("enum"), nest(format_enum_decl(f, n)), newline(1), text("end"))
 		case .Alias:
 		}
 		if add_newline {
@@ -372,6 +373,11 @@ format_class_decl :: proc(f: ^Formatter, decl: ^lib.Parsed_Type_Declaration) -> 
 	return document
 }
 
+format_enum_decl :: proc(f: ^Formatter, decl: ^lib.Parsed_Type_Declaration) -> ^Document {
+	document := list(newline(1), format_field_list(f, decl.fields[:]))
+	return document
+}
+
 format_field_list :: proc(f: ^Formatter, fields: []^lib.Parsed_Field_Declaration) -> ^Document {
 	document := list()
 	list := cast(^Document_List)document
@@ -385,14 +391,18 @@ format_field_list :: proc(f: ^Formatter, fields: []^lib.Parsed_Field_Declaration
 		}
 	}
 	for field, i in fields {
-		join(
-			list,
-			format_expr(f, field.name),
-			text(":"),
-			space(" ", max(1, max_len) if i != max_at else 1),
-			format_expr(f, field.type_expr.?),
-			newline(1),
-		)
+		if field.type_expr == nil {
+			join(list, format_expr(f, field.name), newline(1))
+		} else {
+			join(
+				list,
+				format_expr(f, field.name),
+				text(":"),
+				space(" ", max(1, max_len) if i != max_at else 1),
+				format_expr(f, field.type_expr.?),
+				newline(1),
+			)
+		}
 	}
 	return document
 }

@@ -128,12 +128,9 @@ add_string_constant :: proc(p: ^Const_Pool, str: string) -> (addr: i16) {
 			object := constant.data.(^Object)
 			if object.kind == .String {
 				str_object := cast(^String_Object)object
-				for r, j in str {
-					if r != str_object.data[j] {
-						continue loop
-					}
+				if str_object.data == str {
+					return i16(i)
 				}
-				return i16(i)
 			}
 		}
 	}

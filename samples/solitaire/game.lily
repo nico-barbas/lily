@@ -1,0 +1,61 @@
+import std
+import rl
+import card
+
+type Game is class
+    stacks: array of card.Stack
+    cursor: Cursor
+
+    constructor new():
+        self.stacks = array of card.Stack[
+            -- middle stacks
+            card.Stack.new(),
+            card.Stack.new(),
+            card.Stack.new(),
+            card.Stack.new(),
+            card.Stack.new(),
+            card.Stack.new(),
+
+            -- complete stacks
+            card.Stack.new(),
+            card.Stack.new(),
+            card.Stack.new(),
+            card.Stack.new(),
+        ]
+
+        self.cursor = Cursor.new()
+    end
+
+    fn update(dt: number):
+        var mousePos = rl.GetMousePosition()
+        self.updateHover()
+        if rl.MouseButtonDown(rl.MouseLeft):
+            self.cursor.selected = self.cursor.selectUnderCursor(mousePos)
+        end
+    end
+
+    fn updateHover(mouePos: rl.Vector):
+        for i in 0 .. self.stacks.length():
+            var s = self.stacks[i]
+            if s.isHovered(mousePos):
+                self.cursor.hovered = s
+                return
+            end
+        end
+    end
+end
+
+type Cursor is class
+    isDragging: bool
+    hovered: card.Stack
+    selected: card.Card
+    
+    constructor new():
+    end
+
+    fn selectUnderCursor(mPos: Vector):
+        
+    end
+end
+
+var game = Game.new()

@@ -30,15 +30,16 @@ playground :: proc() {
 	input :: `
 	import std
 
-	type Foo is enum
-		Bar
-		Baz
+	type Foo is class
+		constructor new():
+		end
 	end
 
-	var a = Foo.Bar
-	var b: Foo = Foo.Baz
-	if a == Foo.Bar:
-		std.print("Hurray!")
+	var a: Foo
+	std.print(a)
+	if a == nil:
+		std.print("is nil")
+		var a  = Foo.new()
 	end
 	`
 

@@ -1,0 +1,25 @@
+{
+    "name": "Lily",
+    "scopeName": "source.wren",
+    "fileTypes": [
+        "lily"
+    ],
+    "patterns": [
+        {
+            "include": "#comment"
+        },
+        {
+            "include": "#keyword"
+        }
+    ],
+    "repository": {
+        "comment": {
+            "name": "comment.line",
+            "match": "--.*"
+        },
+        "keyword": {
+            "name": "keyword",
+            "match": "\\b(?:break|continue|number|string|bool|class|enum|type|fn|constructor|foreign|end|return|in|is|if|for|match|when|true|false|self\\b"
+        }
+    }
+}

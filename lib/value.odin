@@ -2,6 +2,7 @@ package lily
 
 import "core:mem"
 import "core:runtime"
+import "core:strings"
 // import "core:fmt"
 
 // TODO: remove the hard-coded length of parameters and arguments in functions
@@ -75,7 +76,7 @@ Object :: struct {
 
 String_Object :: struct {
 	using base: Object,
-	data:       []rune,
+	data:       string,
 }
 
 Array_Object :: struct {
@@ -163,10 +164,7 @@ new_string_object :: proc(from := "", allocator := context.allocator) -> Value {
 	object := new(String_Object, allocator)
 	object^ = String_Object {
 		base = Object{kind = .String},
-		data = make([]rune, len(from), allocator),
-	}
-	for r, i in from {
-		object.data[i] = r
+		data = strings.clone(from, allocator),
 	}
 	value := Value {
 		kind = .Object_Ref,

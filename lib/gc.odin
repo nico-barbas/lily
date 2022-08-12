@@ -176,6 +176,10 @@ mark_slice :: proc(gc: ^Gc_Allocator, a: $T/[]$E) {
 	mark_raw_allocation(gc, raw_slice_data(a))
 }
 
+mark_string :: proc(gc: ^Gc_Allocator, s: string) {
+	mark_raw_allocation(gc, raw_string_data(s))
+}
+
 mark_dynamic_array :: proc(gc: ^Gc_Allocator, a: $T/[dynamic]$E) {
 	mark_raw_allocation(gc, raw_dynamic_array_data(a))
 }

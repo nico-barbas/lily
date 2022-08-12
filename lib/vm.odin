@@ -275,6 +275,12 @@ run_vm :: proc(vm: ^Vm) {
 				push_stack_value(vm, Value{kind = .Boolean, data = v1.data.(f64) == v2.data.(f64)})
 			case .Boolean:
 				push_stack_value(vm, Value{kind = .Boolean, data = v1.data.(bool) == v2.data.(bool)})
+			case .Object_Ref, .Nil:
+				comp := Value {
+					kind = .Boolean,
+					data = (v1.data == nil) && (v2.data == nil),
+				}
+				push_stack_value(vm, comp)
 			}
 
 		case .Op_Greater:
@@ -513,7 +519,7 @@ object_to_mark_proc := map[Object_Kind]proc(gc: ^Gc_Allocator, data: rawptr) {
 	.String = proc(gc: ^Gc_Allocator, data: rawptr) {
 		string_object := cast(^String_Object)data
 		mark_raw_allocation(gc, data)
-		mark_slice(gc, string_object.data)
+		mark_string(gc, string_object.data)
 	},
 }
 

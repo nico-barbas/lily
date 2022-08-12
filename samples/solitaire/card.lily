@@ -1,0 +1,94 @@
+type Stack is class
+    cards: array of Card
+    previous: Card
+
+    constructor new():
+    end
+
+    fn pushCard(c: Card): OpResult
+        result = self.isCardValid(c)
+        if not result == OpResult.Ok:
+            return
+        end
+        self.cards.append(c)
+        self.previous = c
+    end
+
+    fn isCardValid(c: Card): OpResult
+        if c.color == self.previous.color:
+            result = OpResult.InvalidColor
+            return
+        end
+        var prevVal = previousCardValue[self.previous.value] 
+        if not c.value == prevVal:
+            result = OpResult.InvalidValue
+            return
+        end
+        result = OpResult.Ok
+    end
+end
+
+type OpResult is enum
+    Ok
+    InvalidColor
+    InvalidKind
+    InvalidValue
+end
+
+type Card is class
+    color: CardColor
+    kind: CardKind
+    value: CardValue
+    
+    hidden: bool
+    dragged: bool
+    parent: Card
+
+    constructor new(clr: CardColor, k: CardKind, v: CardValue):
+        self.color = clr
+        self.kind = k
+        self.value = v
+    end
+end
+
+type CardKind is enum
+    Heart
+
+    Spade
+end
+
+type CardColor is enum
+    Red
+    Black
+end
+
+type CardValue is enum
+    King
+    Queen
+    Joker
+    Ten
+    Nine
+    Eight
+    Seven
+    Six
+    Five
+    Four
+    Three
+    Two
+    Ace
+end
+
+var previousCardValue = map of (CardValue, CardValue)[
+    CardValue.Queen = CardValue.King, 
+    CardValue.Joker = CardValue.Queen,
+    CardValue.Ten = CardValue.Joker,
+    CardValue.Nine = CardValue.Ten,
+    CardValue.Eight = CardValue.Nine,
+    CardValue.Seven = CardValue.Eight,
+    CardValue.Six = CardValue.Seven,
+    CardValue.Five = CardValue.Six,
+    CardValue.Four = CardValue.Five,
+    CardValue.Three = CardValue.Four,
+    CardValue.Two = CardValue.Three,
+    CardValue.Ace = CardValue.Two,
+]

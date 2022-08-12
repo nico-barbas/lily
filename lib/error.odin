@@ -84,6 +84,17 @@ lhs_assign_semantic_err :: proc(s: ^Symbol, t: Token, loc := #caller_location) -
 	)
 }
 
+nil_assign_semantic_err :: proc(s: ^Symbol, t: Token, loc := #caller_location) -> Error {
+	return format_error(
+		Semantic_Error{
+			kind = .Invalid_Symbol,
+			token = t,
+			details = fmt.tprintf("Invalid use of nil in assign"),
+		},
+		loc,
+	)
+}
+
 mutable_semantic_err :: proc(s: ^Symbol, t: Token, loc := #caller_location) -> Error {
 	return format_error(
 		Semantic_Error{

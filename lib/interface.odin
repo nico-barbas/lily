@@ -111,7 +111,7 @@ load_source :: proc(state: ^State, name: string) -> (source: string, err: Error)
 		err = format_error(
 			Runtime_Error{
 				kind = .Invalid_Source_File_Name,
-				details = fmt.tprintf("Could not find source file: %state", module_path),
+				details = fmt.tprintf("Could not find source file: %s", module_path),
 			},
 		)
 		return
@@ -124,8 +124,8 @@ load_source :: proc(state: ^State, name: string) -> (source: string, err: Error)
 compile_source :: proc(state: ^State, module_name: string, source: string) -> []Error {
 	DEBUG_PARSER :: false
 	DEBUG_SYMBOLS :: false
-	DEBUG_CHECKER :: true
-	DEBUG_COMPILER :: false
+	DEBUG_CHECKER :: false
+	DEBUG_COMPILER :: true
 
 	context.allocator = state.allocator
 	context.temp_allocator = state.temp_allocator

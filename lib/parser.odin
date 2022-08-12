@@ -22,22 +22,23 @@ parser_rules := map[Token_Kind]struct {
     .String_Literal =  {prec = .Lowest,     prefix_fn = parse_string,     infix_fn = nil},
 	.True =            {prec = .Lowest,     prefix_fn = parse_boolean,    infix_fn = nil},
 	.False =           {prec = .Lowest,     prefix_fn = parse_boolean,    infix_fn = nil},
-	.Not = 	           {prec = .Unary  ,    prefix_fn = parse_unary,     infix_fn = nil},
+	.Nil =             {prec = .Lowest,     prefix_fn = parse_nil,        infix_fn = nil},
+	.Not = 	           {prec = .Unary  ,    prefix_fn = parse_unary,      infix_fn = nil},
 	.Plus =            {prec = .Term  ,     prefix_fn = nil,              infix_fn = parse_binary},
 	.Minus =           {prec = .Term  ,     prefix_fn = parse_unary,      infix_fn = parse_binary},
 	.Star =            {prec = .Factor,     prefix_fn = nil,              infix_fn = parse_binary},
 	.Slash =           {prec = .Factor,     prefix_fn = nil,              infix_fn = parse_binary},
 	.Percent =         {prec = .Factor,     prefix_fn = nil,              infix_fn = parse_binary},
-	.And =             {prec = .Comparison, prefix_fn = nil,          infix_fn = parse_binary},
-	.Or =              {prec = .Comparison, prefix_fn = nil,          infix_fn = parse_binary},
-	.Equal =           {prec = .Equality,   prefix_fn = nil,            infix_fn = parse_binary},
-	.Greater =         {prec = .Equality,   prefix_fn = nil,            infix_fn = parse_binary},
-	.Greater_Equal =   {prec = .Equality,   prefix_fn = nil,            infix_fn = parse_binary},
-	.Lesser =          {prec = .Equality,   prefix_fn = nil,            infix_fn = parse_binary},
-	.Lesser_Equal =    {prec = .Equality,   prefix_fn = nil,            infix_fn = parse_binary},
-	.Open_Paren =      {prec = .Call,       prefix_fn = parse_group,         infix_fn = parse_call},
-	.Open_Bracket =    {prec = .Call,       prefix_fn = nil,                 infix_fn = parse_infix_open_bracket},
-	.Dot =             {prec = .Call,       prefix_fn = nil,                 infix_fn = parse_dot},
+	.And =             {prec = .Comparison, prefix_fn = nil,              infix_fn = parse_binary},
+	.Or =              {prec = .Comparison, prefix_fn = nil,              infix_fn = parse_binary},
+	.Equal =           {prec = .Equality,   prefix_fn = nil,              infix_fn = parse_binary},
+	.Greater =         {prec = .Equality,   prefix_fn = nil,              infix_fn = parse_binary},
+	.Greater_Equal =   {prec = .Equality,   prefix_fn = nil,              infix_fn = parse_binary},
+	.Lesser =          {prec = .Equality,   prefix_fn = nil,              infix_fn = parse_binary},
+	.Lesser_Equal =    {prec = .Equality,   prefix_fn = nil,              infix_fn = parse_binary},
+	.Open_Paren =      {prec = .Call,       prefix_fn = parse_group,      infix_fn = parse_call},
+	.Open_Bracket =    {prec = .Call,       prefix_fn = nil,              infix_fn = parse_infix_open_bracket},
+	.Dot =             {prec = .Call,       prefix_fn = nil,              infix_fn = parse_dot},
 }
 //odinfmt: enable
 
@@ -639,6 +640,7 @@ parse_field_list :: proc(p: ^Parser, fields: ^[dynamic]^Parsed_Field_Declaration
 parse_var_decl :: proc(p: ^Parser) -> (result: ^Parsed_Var_Declaration, err: Error) {
 	result = new(Parsed_Var_Declaration)
 	result.token = p.current
+	result.initialized = true
 	name_token := consume_token(p)
 	if name_token.kind == .Identifier {
 		result.identifier = name_token
@@ -658,8 +660,9 @@ parse_var_decl :: proc(p: ^Parser) -> (result: ^Parsed_Var_Declaration, err: Err
 				result.expr, err = parse_expr(p, .Lowest)
 
 			// Uninitialized variable declaration. We mark it as is and let
-			// the checker and vm deal with it
+			// the checker with it
 			case .Newline:
+				result.initialized = false
 
 			case:
 				err = Parsing_Error {
@@ -971,6 +974,11 @@ parse_boolean :: proc(p: ^Parser) -> (result: Parsed_Expression, err: Error) {
 	result = new_clone(
 		Parsed_Literal_Expression{token = p.previous, value = Value{kind = .Boolean, data = b}},
 	)
+	return
+}
+
+parse_nil :: proc(p: ^Parser) -> (result: Parsed_Expression, err: Error) {
+	result = new_clone(Parsed_Literal_Expression{token = p.previous, value = Value{}})
 	return
 }
 

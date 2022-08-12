@@ -90,6 +90,10 @@ is_indexable_symbol :: proc(s: ^Symbol) -> bool {
 	return s.kind == .Generic_Symbol && (s.type_id == ARRAY_ID || s.type_id == MAP_ID)
 }
 
+is_nullable_symbol :: proc(s: ^Symbol) -> bool {
+	return s.kind == .Class_Symbol || is_indexable_symbol(s)
+}
+
 is_valid_accessor :: proc(s: ^Symbol) -> bool {
 	#partial switch s.kind {
 	case .Class_Symbol:

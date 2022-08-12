@@ -40,11 +40,12 @@ Dot_Frame :: struct {
 
 UNTYPED_SYMBOL :: 0
 ANY_SYMBOL :: 1
-NUMBER_SYMBOL :: 2
-BOOL_SYMBOL :: 3
-STRING_SYMBOL :: 4
-ARRAY_SYMBOL :: 5
-MAP_SYMBOL :: 6
+NIL_SYMBOL :: 2
+NUMBER_SYMBOL :: 3
+BOOL_SYMBOL :: 4
+STRING_SYMBOL :: 5
+ARRAY_SYMBOL :: 6
+MAP_SYMBOL :: 7
 
 Type_ID :: distinct int
 
@@ -57,11 +58,12 @@ BUILT_IN_ID_COUNT :: MAP_ID + 1
 
 UNTYPED_ID :: 0
 ANY_ID :: 1
-NUMBER_ID :: 2
-BOOL_ID :: 3
-STRING_ID :: 4
-ARRAY_ID :: 5
-MAP_ID :: 6
+NIL_ID :: 2
+NUMBER_ID :: 3
+BOOL_ID :: 4
+STRING_ID :: 5
+ARRAY_ID :: 6
+MAP_ID :: 7
 
 BUILTIN_MODULE_ID :: -1
 
@@ -70,6 +72,7 @@ init_checker :: proc(c: ^Checker, allocator := context.allocator) {
 	c.builtin_symbols = {
 		Symbol{name = "untyped", kind = .Name, type_id = UNTYPED_ID, module_id = BUILTIN_MODULE_ID},
 		Symbol{name = "any", kind = .Name, type_id = ANY_ID, module_id = BUILTIN_MODULE_ID},
+		Symbol{name = "nil", kind = .Name, type_id = NIL_ID, module_id = BUILTIN_MODULE_ID},
 		Symbol{name = "number", kind = .Name, type_id = NUMBER_ID, module_id = BUILTIN_MODULE_ID},
 		Symbol{name = "bool", kind = .Name, type_id = BOOL_ID, module_id = BUILTIN_MODULE_ID},
 		Symbol{name = "string", kind = .Name, type_id = STRING_ID, module_id = BUILTIN_MODULE_ID},
@@ -114,6 +117,10 @@ init_checker :: proc(c: ^Checker, allocator := context.allocator) {
 		c.types[UNTYPED_ID] = Type_Info {
 			type_id = UNTYPED_ID,
 			symbol  = &c.builtin_symbols[UNTYPED_SYMBOL],
+		}
+		c.types[NIL_ID] = Type_Info {
+			type_id = NIL_ID,
+			symbol  = &c.builtin_symbols[NIL_SYMBOL],
 		}
 		c.types[NUMBER_ID] = Type_Info {
 			type_id = NUMBER_ID,
@@ -1000,33 +1007,47 @@ build_checked_node :: proc(c: ^Checker, node: Parsed_Node) -> (result: Checked_N
 			Checked_Var_Declaration{
 				token = n.token,
 				identifier = get_scoped_symbol(c.current.scope, n.identifier) or_return,
-				expr = build_checked_expr(c, n.expr) or_return,
+				initialized = n.expr != nil,
 			},
 		)
-		expr_symbol := checked_expr_symbol(var_decl.expr)
-		#partial switch expr in var_decl.expr {
-		case ^Checked_Identifier_Expression:
-			#partial switch expr_symbol.kind {
-			case .Class_Symbol, .Module_Symbol, .Fn_Symbol, .Name, .Enum_Symbol:
-				err = rhs_assign_semantic_err(expr_symbol, n.token)
-				return
+		if n.initialized {
+			var_decl.expr = build_checked_expr(c, n.expr) or_return
+			expr_symbol := checked_expr_symbol(var_decl.expr)
+			#partial switch expr in var_decl.expr {
+			case ^Checked_Identifier_Expression:
+				#partial switch expr_symbol.kind {
+				case .Class_Symbol, .Module_Symbol, .Fn_Symbol, .Name, .Enum_Symbol:
+					err = rhs_assign_semantic_err(expr_symbol, n.token)
+					return
+				}
 			}
-		}
-		type_hint := symbol_from_type_expr(c, n.type_expr) or_return
-		var_info := var_decl.identifier.info.(Var_Symbol_Info)
-		if type_hint.name != "untyped" {
-			var_info.symbol = type_hint
-			var_decl.identifier.type_id = type_hint.type_id
-			expect_type(c, var_decl.expr, type_hint) or_return
-		} else {
-			if expr_symbol.kind == .Enum_Field_Symbol {
-				var_info.symbol = expr_symbol.info.(Enum_Field_Symbol_Info).parent
+			type_hint := symbol_from_type_expr(c, n.type_expr) or_return
+			var_info := var_decl.identifier.info.(Var_Symbol_Info)
+			if type_hint.name != "untyped" {
+				var_info.symbol = type_hint
+				var_decl.identifier.type_id = type_hint.type_id
+				expect_type(c, var_decl.expr, type_hint) or_return
 			} else {
-				var_info.symbol = expr_symbol
+				if expr_symbol.kind == .Enum_Field_Symbol {
+					var_info.symbol = expr_symbol.info.(Enum_Field_Symbol_Info).parent
+				} else if expr_symbol.type_id == NIL_ID {
+					err = nil_assign_semantic_err(expr_symbol, n.token)
+					return
+				} else {
+					var_info.symbol = expr_symbol
+				}
+				var_decl.identifier.type_id = expr_symbol.type_id
 			}
-			var_decl.identifier.type_id = expr_symbol.type_id
+			var_decl.identifier.info = var_info
+		} else {
+			type_hint := symbol_from_type_expr(c, n.type_expr) or_return
+			var_info := var_decl.identifier.info.(Var_Symbol_Info)
+			if type_hint.name != "untyped" {
+				var_info.symbol = type_hint
+				var_decl.identifier.type_id = type_hint.type_id
+			}
+			var_decl.identifier.info = var_info
 		}
-		var_decl.identifier.info = var_info
 		result = var_decl
 
 	case ^Parsed_Fn_Declaration:
@@ -1126,6 +1147,8 @@ build_checked_expr :: proc(
 	case ^Parsed_Literal_Expression:
 		lit := new_clone(Checked_Literal_Expression{token = e.token, value = e.value})
 		#partial switch e.value.kind {
+		case .Nil:
+			lit.symbol = &c.builtin_symbols[NIL_SYMBOL]
 		case .Number:
 			lit.symbol = &c.builtin_symbols[NUMBER_SYMBOL]
 		case .Boolean:
@@ -1206,29 +1229,45 @@ build_checked_expr :: proc(
 
 		left_symbol := checked_expr_symbol(binary_expr.left)
 		right_symbol := checked_expr_symbol(binary_expr.right)
-		fmt.println(left_symbol, right_symbol)
-		expect_type(c, binary_expr.right, left_symbol) or_return
-		#partial switch e.op {
-		case .Minus_Op, .Plus_Op, .Mult_Op, .Div_Op, .Rem_Op:
-			expect_type(c, binary_expr.left, &c.builtin_symbols[NUMBER_SYMBOL]) or_return
-			expect_type(c, binary_expr.right, &c.builtin_symbols[NUMBER_SYMBOL]) or_return
-			binary_expr.symbol = checked_expr_symbol(binary_expr.left)
-
-		case .Or_Op, .And_Op:
-			expect_type(c, binary_expr.left, &c.builtin_symbols[BOOL_SYMBOL]) or_return
-			expect_type(c, binary_expr.right, &c.builtin_symbols[BOOL_SYMBOL]) or_return
-			binary_expr.symbol = &c.builtin_symbols[BOOL_SYMBOL]
-
-		case .Equal_Op, .Greater_Op, .Greater_Eq_Op, .Lesser_Op, .Lesser_Eq_Op:
-			type_symbol := symbol_from_typeid(c, left_symbol.type_id)
-			if type_symbol.kind == .Enum_Symbol {
-
-			} else {
-				expect_type(c, binary_expr.left, &c.builtin_symbols[NUMBER_SYMBOL]) or_return
-				expect_type(c, binary_expr.right, &c.builtin_symbols[NUMBER_SYMBOL]) or_return
+		type_symbol := symbol_from_typeid(c, left_symbol.type_id)
+		if is_nullable_symbol(type_symbol) {
+			if !(right_symbol.kind == .Name && right_symbol.type_id == NIL_ID) {
+				err = format_error(
+					Semantic_Error{
+						kind = .Mismatched_Types,
+						token = checked_expr_token(binary_expr.left),
+						details = fmt.tprintf(`Expected "nil", got %s`, right_symbol.name),
+					},
+				)
+				return
 			}
 			binary_expr.symbol = &c.builtin_symbols[BOOL_SYMBOL]
+		} else {
+			expect_type(c, binary_expr.right, left_symbol) or_return
+			#partial switch e.op {
+			case .Minus_Op, .Plus_Op, .Mult_Op, .Div_Op, .Rem_Op:
+				expect_type(c, binary_expr.left, &c.builtin_symbols[NUMBER_SYMBOL]) or_return
+				expect_type(c, binary_expr.right, &c.builtin_symbols[NUMBER_SYMBOL]) or_return
+				binary_expr.symbol = checked_expr_symbol(binary_expr.left)
 
+			case .Or_Op, .And_Op:
+				expect_type(c, binary_expr.left, &c.builtin_symbols[BOOL_SYMBOL]) or_return
+				expect_type(c, binary_expr.right, &c.builtin_symbols[BOOL_SYMBOL]) or_return
+				binary_expr.symbol = &c.builtin_symbols[BOOL_SYMBOL]
+
+			case .Equal_Op:
+				if type_symbol.kind != .Enum_Symbol {
+					expect_type(c, binary_expr.left, &c.builtin_symbols[NUMBER_SYMBOL]) or_return
+					expect_type(c, binary_expr.right, &c.builtin_symbols[NUMBER_SYMBOL]) or_return
+				}
+				binary_expr.symbol = &c.builtin_symbols[BOOL_SYMBOL]
+
+			case .Greater_Op, .Greater_Eq_Op, .Lesser_Op, .Lesser_Eq_Op:
+				expect_type(c, binary_expr.left, &c.builtin_symbols[NUMBER_SYMBOL]) or_return
+				expect_type(c, binary_expr.right, &c.builtin_symbols[NUMBER_SYMBOL]) or_return
+				binary_expr.symbol = &c.builtin_symbols[BOOL_SYMBOL]
+
+			}
 		}
 
 		result = binary_expr

@@ -345,10 +345,11 @@ Parsed_Field_Declaration :: struct {
 }
 
 Parsed_Var_Declaration :: struct {
-	token:      Token, // the "var" token
-	identifier: Token,
-	type_expr:  Parsed_Expression,
-	expr:       Parsed_Expression,
+	token:       Token, // the "var" token
+	identifier:  Token,
+	type_expr:   Parsed_Expression,
+	expr:        Parsed_Expression,
+	initialized: bool,
 }
 
 Parsed_Fn_Declaration :: struct {

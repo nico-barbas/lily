@@ -507,8 +507,15 @@ compile_node :: proc(c: ^Compiler, node: Checked_Node) {
 
 
 	case ^Checked_Var_Declaration:
-		compile_expr(c, n.expr)
 		var_info := n.identifier.info.(Var_Symbol_Info)
+		if n.initialized {
+			compile_expr(c, n.expr)
+		} else {
+			if var_info.depth == 0 {
+				return
+			}
+			push_op_code(&c.chunk, .Op_Push)
+		}
 		if var_info.depth == 0 {
 			var_addr := add_variable(c, n.identifier.name, true)
 			push_simple_instruction(&c.chunk, .Op_Set_Global, var_addr)
