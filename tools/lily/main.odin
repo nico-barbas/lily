@@ -4,7 +4,7 @@ import "core:fmt"
 import "core:os"
 import "core:mem"
 import "core:strings"
-import "lily:lib"
+import lily "../../lib"
 
 main :: proc() {
 	if len(os.args) < 2 {
@@ -34,22 +34,22 @@ main :: proc() {
 
 	buf := make([]byte, mem.Megabyte * 20)
 	compiler_arena: mem.Arena
-	mem.init_arena(&compiler_arena, buf)
+	mem.arena_init(&compiler_arena, buf)
 	compiler_allocator := mem.arena_allocator(&compiler_arena)
 
 
-	state := lib.new_state(
-		lib.Config{
+	state := lily.new_state(
+		lily.Config{
 			allocator = compiler_allocator,
 			temp_allocator = context.temp_allocator,
 		},
 	)
 	defer {
-		lib.free_state(state)
+		lily.free_state(state)
 		free_all(compiler_allocator)
 		delete(buf)
 	}
-	errors := lib.compile_file(state, file_path)
+	errors := lily.compile_file(state, file_path)
 	if len(errors) > 0 {
 		for err in errors {
 			fmt.println(err)
@@ -57,5 +57,5 @@ main :: proc() {
 		return
 	}
 
-	lib.run_module(state, module_name)
+	lily.run_module(state, module_name)
 }

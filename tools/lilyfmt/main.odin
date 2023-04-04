@@ -2,8 +2,8 @@ package main
 
 import "core:mem"
 import "core:os"
-import "core:fmt"
-import "lily:tools"
+// import "core:fmt"
+import tools ".."
 
 LILYFMT_USAGE_INFO :: `
 lilyfmt is a formatting tool for Lily source files

@@ -5,10 +5,10 @@ import "core:os"
 import "core:slice"
 import "core:sort"
 import "core:fmt"
-import "lily:lib"
+import lily "../lib"
 
 Formatter :: struct {
-	module:             ^lib.Parsed_Module,
+	module:             ^lily.Parsed_Module,
 	document:           ^Document,
 	last_comment:       int,
 
@@ -50,8 +50,8 @@ format_file :: proc(filepath: string, allocator := context.allocator) -> Format_
 		return .Invalid_File_Path
 	}
 
-	module := lib.make_parsed_module("main")
-	parse_ok := lib.parse_module(string(source), module)
+	module := lily.make_parsed_module("main")
+	parse_ok := lily.parse_module(string(source), module)
 	if !parse_ok {
 		return .Source_Parsing_Error
 	}
@@ -61,7 +61,7 @@ format_file :: proc(filepath: string, allocator := context.allocator) -> Format_
 	return nil
 }
 
-build_module_document :: proc(module: ^lib.Parsed_Module, allocator := context.allocator) -> (string, bool) {
+build_module_document :: proc(module: ^lily.Parsed_Module, allocator := context.allocator) -> (string, bool) {
 	context.allocator = allocator
 
 	f := new(Formatter)
@@ -76,27 +76,27 @@ build_module_document :: proc(module: ^lib.Parsed_Module, allocator := context.a
 	document := list()
 	list := cast(^Document_List)document
 	for node in module.import_nodes {
-		join(list, format_import_stmt(f, node.(^lib.Parsed_Import_Statement)))
+		join(list, format_import_stmt(f, node.(^lily.Parsed_Import_Statement)))
 	}
 	join(list, newline(1))
 
 
 	roots := slice.concatenate(
-		[][]lib.Parsed_Node{module.types[:], module.functions[:], module.variables[:], module.nodes[:]},
+		[][]lily.Parsed_Node{module.types[:], module.functions[:], module.variables[:], module.nodes[:]},
 		allocator,
 	)
 	sort.sort(sort.Interface {
 		len = proc(it: sort.Interface) -> int {
-			roots := cast(^[]lib.Parsed_Node)it.collection
+			roots := cast(^[]lily.Parsed_Node)it.collection
 			return len(roots)
 		},
 		less = proc(it: sort.Interface, i, j: int) -> bool {
-			roots := cast(^[]lib.Parsed_Node)it.collection
-			i_token, j_token := lib.parsed_node_token(roots[i]), lib.parsed_node_token(roots[j])
+			roots := cast(^[]lily.Parsed_Node)it.collection
+			i_token, j_token := lily.parsed_node_token(roots[i]), lily.parsed_node_token(roots[j])
 			return i_token.line < j_token.line
 		},
 		swap = proc(it: sort.Interface, i, j: int) {
-			roots := cast(^[]lib.Parsed_Node)it.collection
+			roots := cast(^[]lily.Parsed_Node)it.collection
 			roots[i], roots[j] = roots[j], roots[i]
 		},
 		collection = &roots,
@@ -104,7 +104,7 @@ build_module_document :: proc(module: ^lib.Parsed_Module, allocator := context.a
 
 	previous_line := len(module.import_nodes) + 1
 	for node in roots {
-		current_line := lib.parsed_node_token(node).line
+		current_line := lily.parsed_node_token(node).line
 		if current_line - previous_line > 1 {
 			join(list, newline(1))
 		}
@@ -118,8 +118,8 @@ build_module_document :: proc(module: ^lib.Parsed_Module, allocator := context.a
 	return print_document(f)
 }
 
-format_stmt :: proc(f: ^Formatter, node: lib.Parsed_Node, add_newline := true) -> ^Document {
-	using lib
+format_stmt :: proc(f: ^Formatter, node: lily.Parsed_Node, add_newline := true) -> ^Document {
+	using lily
 
 	switch n in node {
 	case ^Parsed_Expression_Statement:
@@ -319,11 +319,11 @@ format_stmt :: proc(f: ^Formatter, node: lib.Parsed_Node, add_newline := true) -
 	return empty()
 }
 
-format_import_stmt :: proc(f: ^Formatter, node: ^lib.Parsed_Import_Statement) -> ^Document {
+format_import_stmt :: proc(f: ^Formatter, node: ^lily.Parsed_Import_Statement) -> ^Document {
 	return list(text("import"), space(), text(node.identifier.text), newline(1))
 }
 
-format_fn_signature :: proc(f: ^Formatter, decl: ^lib.Parsed_Fn_Declaration) -> ^Document {
+format_fn_signature :: proc(f: ^Formatter, decl: ^lily.Parsed_Fn_Declaration) -> ^Document {
 	document := list(elements = {}, mod = {.Nest_If_Break, .Force_Newline, .Can_Break})
 	outer := cast(^Document_List)document
 
@@ -354,7 +354,7 @@ format_fn_signature :: proc(f: ^Formatter, decl: ^lib.Parsed_Fn_Declaration) -> 
 	return document
 }
 
-format_class_decl :: proc(f: ^Formatter, decl: ^lib.Parsed_Type_Declaration) -> ^Document {
+format_class_decl :: proc(f: ^Formatter, decl: ^lily.Parsed_Type_Declaration) -> ^Document {
 	document := list(newline(1))
 	list := cast(^Document_List)document
 	join(list, format_field_list(f, decl.fields[:]))
@@ -373,12 +373,12 @@ format_class_decl :: proc(f: ^Formatter, decl: ^lib.Parsed_Type_Declaration) -> 
 	return document
 }
 
-format_enum_decl :: proc(f: ^Formatter, decl: ^lib.Parsed_Type_Declaration) -> ^Document {
+format_enum_decl :: proc(f: ^Formatter, decl: ^lily.Parsed_Type_Declaration) -> ^Document {
 	document := list(newline(1), format_field_list(f, decl.fields[:]))
 	return document
 }
 
-format_field_list :: proc(f: ^Formatter, fields: []^lib.Parsed_Field_Declaration) -> ^Document {
+format_field_list :: proc(f: ^Formatter, fields: []^lily.Parsed_Field_Declaration) -> ^Document {
 	document := list()
 	list := cast(^Document_List)document
 	max_len := -1
@@ -407,13 +407,13 @@ format_field_list :: proc(f: ^Formatter, fields: []^lib.Parsed_Field_Declaration
 	return document
 }
 
-field_name_len :: proc(field: ^lib.Parsed_Field_Declaration) -> int {
-	return len(field.name.(^lib.Parsed_Identifier_Expression).name.text)
+field_name_len :: proc(field: ^lily.Parsed_Field_Declaration) -> int {
+	return len(field.name.(^lily.Parsed_Identifier_Expression).name.text)
 }
 
 
-format_expr :: proc(f: ^Formatter, expr: lib.Parsed_Expression) -> ^Document {
-	using lib
+format_expr :: proc(f: ^Formatter, expr: lily.Parsed_Expression) -> ^Document {
+	using lily
 
 	switch e in expr {
 	case ^Parsed_Literal_Expression:
@@ -491,7 +491,7 @@ format_expr :: proc(f: ^Formatter, expr: lib.Parsed_Expression) -> ^Document {
 	return empty()
 }
 
-format_expr_list :: proc(f: ^Formatter, exprs: []lib.Parsed_Expression) -> ^Document {
+format_expr_list :: proc(f: ^Formatter, exprs: []lily.Parsed_Expression) -> ^Document {
 	document := list(elements = {}, mod = {.Nest_If_Break, .Force_Newline, .Can_Break})
 	outer := cast(^Document_List)document
 	for expr, i in exprs {
@@ -505,7 +505,7 @@ format_expr_list :: proc(f: ^Formatter, exprs: []lib.Parsed_Expression) -> ^Docu
 	return document
 }
 
-format_map_elements :: proc(f: ^Formatter, elements: []lib.Parsed_Map_Element) -> ^Document {
+format_map_elements :: proc(f: ^Formatter, elements: []lily.Parsed_Map_Element) -> ^Document {
 	document := list(elements = {}, mod = {.Nest_If_Break, .Force_Newline, .Can_Break})
 	outer := cast(^Document_List)document
 	for elem, i in elements {

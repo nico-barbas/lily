@@ -45,8 +45,7 @@ init_free_list_allocator :: proc(
 
 find_first_free_list_node :: proc(
 	fl: ^Free_List_Allocator,
-	size,
-	alignment: int,
+	size, alignment: int,
 ) -> (
 	node: ^Free_List_Node,
 	previous: ^Free_List_Node,
@@ -54,7 +53,11 @@ find_first_free_list_node :: proc(
 ) {
 	node = fl.head
 	for node != nil {
-		padding = mem.calc_padding_with_header(uintptr(node), uintptr(alignment), size_of(Free_List_Header))
+		padding = mem.calc_padding_with_header(
+			uintptr(node),
+			uintptr(alignment),
+			size_of(Free_List_Header),
+		)
 		required_size := size + padding
 		if node.size >= required_size {
 			break
@@ -67,8 +70,7 @@ find_first_free_list_node :: proc(
 
 find_best_free_list_node :: proc(
 	fl: ^Free_List_Allocator,
-	size,
-	alignment: int,
+	size, alignment: int,
 ) -> (
 	node: ^Free_List_Node,
 	previous: ^Free_List_Node,
@@ -77,7 +79,11 @@ find_best_free_list_node :: proc(
 	current := fl.head
 	smallest_diff := 0
 	for current != nil {
-		p := mem.calc_padding_with_header(uintptr(current), uintptr(alignment), size_of(Free_List_Header))
+		p := mem.calc_padding_with_header(
+			uintptr(current),
+			uintptr(alignment),
+			size_of(Free_List_Header),
+		)
 		required_size := size + p
 		if current.size >= required_size && (current.size - required_size) < smallest_diff {
 			node = current
@@ -88,7 +94,11 @@ find_best_free_list_node :: proc(
 	}
 
 	if node != nil {
-		padding = mem.calc_padding_with_header(uintptr(node), uintptr(alignment), size_of(Free_List_Header))
+		padding = mem.calc_padding_with_header(
+			uintptr(node),
+			uintptr(alignment),
+			size_of(Free_List_Header),
+		)
 	}
 	return
 }
@@ -96,8 +106,7 @@ find_best_free_list_node :: proc(
 free_list_allocator_proc :: proc(
 	allocator_data: rawptr,
 	mode: mem.Allocator_Mode,
-	size,
-	alignment: int,
+	size, alignment: int,
 	old_memory: rawptr,
 	old_size: int,
 	location := #caller_location,
@@ -111,7 +120,13 @@ free_list_allocator_proc :: proc(
 		return nil, .Invalid_Argument
 	}
 
-	raw_alloc :: proc(fl: ^Free_List_Allocator, size, alignment: int) -> ([]byte, mem.Allocator_Error) {
+	raw_alloc :: proc(
+		fl: ^Free_List_Allocator,
+		size, alignment: int,
+	) -> (
+		[]byte,
+		mem.Allocator_Error,
+	) {
 		best_align := alignment if alignment > fl.min_alignment else fl.min_alignment
 		best_size := size if size > size_of(Free_List_Node) else size_of(Free_List_Node)
 
@@ -192,8 +207,12 @@ free_list_allocator_proc :: proc(
 	}
 
 	switch mode {
-	case .Alloc:
-		return raw_alloc(fl, size, alignment)
+	case .Alloc, .Alloc_Non_Zeroed:
+		memory, err := raw_alloc(fl, size, alignment)
+		if err == .None && mode != .Alloc_Non_Zeroed {
+			mem.zero(raw_data(memory), size)
+		}
+		return memory, err
 
 	case .Resize:
 		if old_memory == nil {

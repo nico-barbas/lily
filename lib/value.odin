@@ -1,9 +1,7 @@
 package lily
 
 import "core:mem"
-import "core:runtime"
 import "core:strings"
-// import "core:fmt"
 
 // TODO: remove the hard-coded length of parameters and arguments in functions
 
@@ -145,10 +143,10 @@ object_size :: #force_inline proc(object: ^Object) -> (size: int) {
 	case .Map:
 		map_object := cast(^Map_Object)object
 		size += size_of(Map_Object)
-		header := runtime.__get_map_header(&map_object.data)
-		cap := cap(map_object.data)
-		size += header.entry_size * cap
-		size += cap * 2 * size_of(header.m.hashes)
+		// header := runtime.__get_map_header(&map_object.data)
+		// cap := cap(map_object.data)
+		// size += header.entry_size * cap
+		// size += cap * 2 * size_of(header.m.hashes)
 
 	case .Fn:
 		assert(false)

@@ -1,7 +1,6 @@
 package main
 
 import "core:fmt"
-import "core:unicode/utf8"
 import lily "../../lib"
 import rl "vendor:raylib"
 
@@ -97,8 +96,8 @@ draw_text_fn :: proc(s: ^lily.State) {
 	x := s->get_value(1).data.(f64)
 	y := s->get_value(2).data.(f64)
 	size := s->get_value(3).data.(f64)
-	t := utf8.runes_to_string(text.data, context.temp_allocator)
-	rl.DrawText(cstring(raw_data(t)), i32(x), i32(y), i32(size), rl.WHITE)
+	// t := utf8.runes_to_string(text.data, context.temp_allocator)
+	rl.DrawText(cstring(raw_data(text.data)), i32(x), i32(y), i32(size), rl.WHITE)
 }
 
 is_key_down_fn :: proc(s: ^lily.State) {

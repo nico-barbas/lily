@@ -2,7 +2,7 @@ package lily
 
 import "core:fmt"
 import "core:mem"
-import "lily:lib/allocators"
+import "allocators"
 
 DEFAULT_GC_THRESHOLD :: mem.Byte * 1000
 DEFAULT_TRACED_NODE_CAP :: 50
@@ -173,11 +173,11 @@ mark_raw_allocation :: proc(gc: ^Gc_Allocator, memory: rawptr) {
 }
 
 mark_slice :: proc(gc: ^Gc_Allocator, a: $T/[]$E) {
-	mark_raw_allocation(gc, raw_slice_data(a))
+	mark_raw_allocation(gc, raw_data(a))
 }
 
 mark_string :: proc(gc: ^Gc_Allocator, s: string) {
-	mark_raw_allocation(gc, raw_string_data(s))
+	mark_raw_allocation(gc, raw_data(s))
 }
 
 mark_dynamic_array :: proc(gc: ^Gc_Allocator, a: $T/[dynamic]$E) {
@@ -186,8 +186,8 @@ mark_dynamic_array :: proc(gc: ^Gc_Allocator, a: $T/[dynamic]$E) {
 
 mark_map :: proc(gc: ^Gc_Allocator, m: $T/map[$K]$V) {
 	raw := transmute(mem.Raw_Map)m
-	mark_raw_allocation(gc, raw_data(raw.hashes))
-	mark_raw_allocation(gc, raw.entries.data)
+	// mark_raw_allocation(gc, raw_data(raw.hashes))
+	mark_raw_allocation(gc, rawptr(raw.data))
 }
 
 append_mark_node :: proc(gc: ^Gc_Allocator, node: Mark_Node_Interface) {
