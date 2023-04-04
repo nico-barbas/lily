@@ -9,5 +9,6 @@ tests/playground/playground
 samples/pong/pong.exe
 samples/pong/pong.lib
 samples/pong/pong.exp
+samples/pong/pong.pdb
 .vscode/
 ols.json

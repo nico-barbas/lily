@@ -498,7 +498,7 @@ object_to_mark_proc := map[Object_Kind]proc(gc: ^Gc_Allocator, data: rawptr) {
 		mark_raw_allocation(gc, data)
 		mark_slice(gc, class_object.fields)
 		for field in class_object.fields {
-			if field.kind == .Object_Ref {
+			if field.kind == .Object_Ref && field.data != nil {
 				append_mark_node(gc, object_to_mark_interface(field.data.(^Object)))
 			}
 		}
